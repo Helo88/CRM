@@ -1,0 +1,35 @@
+### Story 14: Start a live chat
+**As a** logged-in customer, **I want to** open a chat widget and start a new conversation, **so that** I can get help right away.
+- Starting a chat creates a conversation record linked to the customer.
+- The conversation updates in real time over a WebSocket connection.
+- The customer's first message triggers the AI agent to respond (Story 15).
+
+### Story 15: AI agent responds first (Google Gemini)
+**As a** customer, **I want** the AI agent to try answering as soon as I send a message, **so that** I get an instant response without waiting for a human.
+- The message plus recent conversation history is sent to the Gemini API (free tier) to generate a reply.
+- The reply appears in real time, clearly labeled "AI Agent."
+- If the Gemini call fails or times out, the customer sees a clear fallback message.
+
+### Story 16: Escalate to a human agent
+**As a** customer, **I want to** ask for a real person (or have the AI hand off) when the AI can't help, **so that** my issue still gets resolved.
+- Customer can request "talk to a human" at any point.
+- Escalation flags the conversation and queues it for auto-assignment (Story 17).
+- The human agent who joins sees the full prior AI conversation.
+
+### Story 17: Auto-assign an escalated chat to an available agent
+**As the** system, **I want to** automatically assign an escalated chat to the first agent marked online, **so that** no chat waits for someone to notice it manually.
+- Assignment happens within seconds of escalation.
+- If no agent is online, the customer is told to expect a delay and offered the email/ticket path instead.
+- Two escalations at the same instant don't get double-assigned to the same agent.
+
+### Story 18: Agent replies to a live chat in real time
+**As a** human agent, **I want to** see my assigned live chats and reply in real time, **so that** I can resolve the customer's issue directly.
+- Agent sees the full conversation, including prior AI messages, before replying.
+- Messages the agent sends appear instantly for the customer via WebSocket.
+- Agent can mark the conversation resolved (Story 19) once done.
+
+### Story 19: Close a live chat conversation
+**As a** human agent, **I want to** mark a live chat as resolved, **so that** it's clearly closed and leaves my active queue.
+- Closing updates status and records a closed timestamp.
+- Customer sees a "conversation closed" indicator.
+- Closed conversations remain viewable read-only in history.
