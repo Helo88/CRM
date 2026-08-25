@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE } from "@/lib/auth";
 
 export interface ContactActionState {
@@ -27,20 +28,22 @@ export async function updatePhone(
   _prevState: ContactActionState,
   formData: FormData
 ): Promise<ContactActionState> {
+  const t = await getTranslations("Settings");
   const phone = String(formData.get("phone") ?? "");
   const { ok, data } = await callContactApi({ phone });
-  if (!ok) return { error: data.error ?? "Could not update phone.", message: null };
+  if (!ok) return { error: data.error ?? t("phoneUpdateFailed"), message: null };
   revalidatePath("/settings");
-  return { error: null, message: "Phone updated" };
+  return { error: null, message: t("phoneUpdated") };
 }
 
 export async function updateEmail(
   _prevState: ContactActionState,
   formData: FormData
 ): Promise<ContactActionState> {
+  const t = await getTranslations("Settings");
   const email = String(formData.get("email") ?? "");
   const { ok, data } = await callContactApi({ email });
-  if (!ok) return { error: data.error ?? "Could not update email.", message: null };
+  if (!ok) return { error: data.error ?? t("emailUpdateFailed"), message: null };
   revalidatePath("/settings");
-  return { error: null, message: `Confirmation email sent to ${email}. Click the link to complete the change.` };
+  return { error: null, message: t("emailConfirmationSent", { email }) };
 }

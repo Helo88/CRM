@@ -134,7 +134,13 @@ router.post("/login", async (req: Request, res: Response) => {
 
 ### 2 — Frontend
 
-**No frontend changes required.** This story is backend-only; the frontend login form is a later story.
+**AMENDED 2026-08-25:** as with Story 1, "no frontend changes required... a later story" was a scoping mistake — no later story ever owned it. `CLAUDE.md`'s Conventions now require the UI in the same story; `USER_STORIES.md` Story 2 was updated to match.
+
+**Files:** `frontend/app/login/page.tsx` (Server Component), `frontend/app/login/LoginForm.tsx` (Client Component), `frontend/app/page.tsx` (rewrite).
+
+- `login/page.tsx`: same already-logged-in guard as Story 1's `register/page.tsx` (`await cookies()`, `redirect("/settings")` if present). Otherwise render `<LoginForm />`.
+- `LoginForm.tsx`: `"use client"`. Fields: `email`, `password`. `POST /api/auth/login` (existing BFF route, `frontend/app/api/auth/login/route.ts`) with `{ email, password }`. On non-OK, show the generic error string the backend returned (do not invent a more specific one — Story 2's backend deliberately keeps it generic). On success, `router.push("/settings")` then `router.refresh()`. Link to `/register` ("Don't have an account? Sign up").
+- `frontend/app/page.tsx`: replace the health-check placeholder with a real landing page. Server Component: `await cookies()` for `SESSION_COOKIE`. If present, show a welcome state with a link to `/settings` and a sign-out control (a small Client Component `LogoutButton.tsx` that `POST`s to the existing `/api/auth/logout` route, then `router.push("/")` + `router.refresh()`). If absent, show links to `/login` and `/register`. Drop the `axios` health-check call entirely — it was a scaffold-only placeholder, not a story requirement.
 
 ---
 

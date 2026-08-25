@@ -42,6 +42,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Passwords are hashed before storage (e.g. bcrypt); duplicate emails are rejected with a clear error.
 - On success, the customer is logged in automatically (session/JWT issued).
 - A customer profile record is created automatically alongside the account (feeds `customer-management`).
+- **Frontend:** a `/register` page with a real sign-up form (name, email, password) that calls this endpoint via the frontend's BFF proxy route, shows validation/duplicate-email errors inline, and on success lands the visitor on an authenticated page. This ships as part of this story, not a later one — see `CLAUDE.md`, "Every story... ships its frontend UI in the same story".
 
 ### Story 2: Login (customer, agent, or admin)
 **As a** registered user, **I want to** log in with my email and password, **so that** I can access the features for my role.
@@ -49,6 +50,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - A successful login returns a session/JWT encoding the user's role.
 - Sessions/tokens expire after a configurable time and require re-login.
 - The backend's job here ends at returning the JWT in the response body — the frontend never stores that raw token in browser-readable storage. It's carried only in an `httpOnly` cookie set by the frontend's own auth proxy routes (see `CLAUDE.md`, "Frontend auth (session handling)").
+- **Frontend:** a `/login` page with a real form (email, password) that calls this endpoint via the frontend's BFF proxy route, shows a generic error on failure, and redirects to an authenticated page on success. The site's landing page links to `/login` and `/register` when signed out, and offers sign-out when signed in. Ships as part of this story per the same convention as Story 1.
 
 ### Story 3: Role-based access control
 **As the** system, **I want** every API endpoint to check the caller's role, **so that** customers, agents, and admins can only do what their role allows.
@@ -383,6 +385,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - All core screens are available in both languages.
 - Right-to-left layout is correctly supported for Arabic.
 - A user can switch language from their own account settings.
+- **Note:** the i18n library (next-intl) and message-key infrastructure were set up early, during `auth` (see `CLAUDE.md`, "i18n (internationalization)") — every string added by every story since then already lives in `frontend/messages/en.json` behind a translation key, not hardcoded in JSX. This story's actual work is: add `messages/ar.json` (translating every existing key), wire real locale detection/switching (including the account-settings toggle), and replace `app/layout.tsx`'s hardcoded `lang="en"`/`dir="ltr"`. It should not require touching component markup across the app.
 
 ### Story 50: Mobile-responsive design
 **As a** user, **I want to** access the platform from a phone-sized screen as well as desktop, **so that** I can work from anywhere.

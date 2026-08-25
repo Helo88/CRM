@@ -1,0 +1,46 @@
+{
+  "Home": {
+    "title": "AzmSquad Customer Service",
+    "tagline": "Live chat and ticket support, in one place.",
+    "goToSettings": "Go to settings",
+    "logIn": "Log in",
+    "signUp": "Sign up"
+  },
+  "Register": {
+    "heading": "Create your account",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Create account",
+    "submitPending": "Creating account…",
+    "haveAccount": "Already have an account?",
+    "logIn": "Log in",
+    "genericError": "Could not create your account."
+  },
+  "Login": {
+    "heading": "Log in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Log in",
+    "submitPending": "Logging in…",
+    "noAccount": "Don't have an account?",
+    "signUp": "Sign up",
+    "genericError": "Could not log you in."
+  },
+  "Auth": {
+    "logOut": "Log out"
+  },
+  "Settings": {
+    "heading": "Account settings",
+    "phone": "Phone",
+    "email": "Email",
+    "savePhone": "Save phone",
+    "saveEmail": "Save email",
+    "currentEmail": "Current email: {email}",
+    "pendingEmail": "Pending: {email} — awaiting confirmation.",
+    "phoneUpdated": "Phone updated",
+    "emailConfirmationSent": "Confirmation email sent to {email}. Click the link to complete the change.",
+    "phoneUpdateFailed": "Could not update phone.",
+    "emailUpdateFailed": "Could not update email."
+  }
+}
