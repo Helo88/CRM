@@ -1,0 +1,7 @@
+### Story 48: Expose a public REST API
+**As a** developer, **I want to** use a documented API to read/write tickets and customer data, **so that** the platform can be integrated with other tools now or later.
+- API is authenticated (e.g. API keys or the same JWT scheme) and rate-limited.
+- Supports core operations: create/read/update tickets, chats, and customers.
+- API is documented (e.g. OpenAPI/Swagger) so integrators can self-serve.
+
+> **Future enhancement (not built now, kept open):** ERP and other external-system connectors. The API and data model above are designed with stable resource IDs and clean boundaries specifically so an ERP integration can be added later without reworking the core system.

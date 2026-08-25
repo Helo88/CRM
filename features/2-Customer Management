@@ -1,0 +1,23 @@
+### Story 4: View and edit a customer profile
+**As an** agent or admin, **I want to** view and edit a customer's profile details, **so that** I have accurate information about who I'm helping.
+- Profile shows name, email, phone (optional), and account creation date.
+- Agent/admin can edit profile fields; the customer can edit their own basic details from their account settings.
+- Every profile links out to that customer's full ticket/chat history (Story 6).
+
+### Story 5: Maintain contact details
+**As a** customer, **I want to** keep my email and phone number up to date, **so that** support can reach me and my replies go to the right place.
+- Customer can update their own contact details from account settings.
+- Changing the account email requires confirming the new address before it takes effect.
+- Contact detail changes are reflected immediately in any new outbound emails.
+
+### Story 6: View customer interaction history
+**As an** agent, **I want to** see a single timeline of all of a customer's past tickets and chats, **so that** I have full context before responding.
+- Timeline is chronological and shows channel (chat/email-ticket), subject, and status per item.
+- Clicking an item opens the original ticket/conversation.
+- Timeline is visible from the customer's profile and from any of their open tickets/chats.
+
+### Story 7: Add internal notes and attachments to a customer
+**As an** agent or admin, **I want to** add internal notes and attach files to a customer's profile, **so that** the team keeps shared context and supporting documents in one place.
+- Notes are internal-only and never visible to the customer.
+- Attachments show file name, size, uploader, and upload date.
+- Notes/attachments are visible to any agent or admin who opens that customer's profile.

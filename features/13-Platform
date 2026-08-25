@@ -1,0 +1,19 @@
+### Story 49: Bilingual Arabic & English UI
+**As a** user (customer, agent, or admin), **I want to** use the interface in either Arabic or English, **so that** I can work comfortably in my preferred language.
+- All core screens are available in both languages.
+- Right-to-left layout is correctly supported for Arabic.
+- A user can switch language from their own account settings.
+
+### Story 50: Mobile-responsive design
+**As a** user, **I want to** access the platform from a phone-sized screen as well as desktop, **so that** I can work from anywhere.
+- Layout adapts responsively to mobile screen sizes.
+- Core actions (submit/view tickets, use live chat) work fully on mobile.
+- No feature is completely unavailable on mobile without a documented reason.
+
+### Story 51: Custom branding
+**As an** admin, **I want to** set our logo and brand colors for the portal, emails, and chat widget, **so that** the platform looks and feels like it belongs to our company.
+- Admin can upload a logo and set brand colors from Story 47's settings area.
+- Branding applies consistently across portal, emails, and chat widget.
+- Branding changes take effect without requiring a redeploy.
+
+> **Future enhancement (not built now, kept open):** multi-department and multi-branch support. Data models (tickets, agents, customers) avoid hardcoding a single implicit branch/department, so this can be layered on later without a rebuild.
