@@ -1,0 +1,17 @@
+### Story 28: Manage FAQs
+**As an** admin, **I want to** create, edit, and publish FAQs, **so that** customers can find quick answers themselves.
+- FAQs are organized by topic/category.
+- FAQs can be draft or published; only published ones are customer-visible.
+- FAQs support both English and Arabic content.
+
+### Story 29: Write and organize help articles
+**As an** admin, **I want to** write and organize longer help articles/guides, **so that** customers and agents have detailed step-by-step guidance.
+- Articles support rich text, images, and step-by-step formatting.
+- Articles are grouped into categories/collections and show a last-updated date.
+- Articles are available in both English and Arabic.
+
+### Story 30: Search the knowledge base
+**As a** customer or agent, **I want to** search FAQs and articles by keyword, **so that** I can quickly find a relevant answer.
+- Search returns ranked results across FAQs and articles.
+- Search works in both Arabic and English.
+- Searches with no results are logged so content gaps can be identified.
