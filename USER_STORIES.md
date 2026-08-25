@@ -15,6 +15,8 @@ A standalone customer-service web app (Talabat-live-chat style), not attached to
 
 **Planned stack (context, not a story):** Node.js backend, MongoDB, Socket.io for real-time chat, Google Gemini API (free tier) for the AI agent, Nodemailer/SMTP for ticket-reply emails, frontend TBD.
 
+**Frontend session handling (context, not a story):** any story building an authenticated frontend page carries the session via an `httpOnly` cookie set by the frontend's own Backend-for-Frontend proxy routes, never in `localStorage` or a client-readable cookie — see `CLAUDE.md`, "Frontend auth (session handling)".
+
 **Confirmed flow decisions:**
 - Live chat always starts with the AI agent; it escalates to a human agent when it can't help or the customer asks for a person.
 - A submitted ticket is auto-acknowledged immediately, auto-assigned to an agent (same mechanism as live chat), and answered by email — no inbound-email parsing required, since the customer can also log in to see the full thread.
@@ -46,6 +48,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Invalid credentials return a generic error (doesn't reveal which field was wrong).
 - A successful login returns a session/JWT encoding the user's role.
 - Sessions/tokens expire after a configurable time and require re-login.
+- The backend's job here ends at returning the JWT in the response body — the frontend never stores that raw token in browser-readable storage. It's carried only in an `httpOnly` cookie set by the frontend's own auth proxy routes (see `CLAUDE.md`, "Frontend auth (session handling)").
 
 ### Story 3: Role-based access control
 **As the** system, **I want** every API endpoint to check the caller's role, **so that** customers, agents, and admins can only do what their role allows.

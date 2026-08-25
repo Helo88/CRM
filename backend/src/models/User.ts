@@ -29,6 +29,12 @@ export interface IUser extends Document {
   role: UserRole;
   phone?: string;
   preferredLanguage: Language;
+  // Story 5 (customer-management): set while a customer has an unconfirmed
+  // email change in flight. `email` itself only changes once the customer
+  // clicks the confirmation link — see backend/src/routes/me.routes.ts.
+  pendingEmail?: string | null;
+  emailConfirmToken?: string | null;
+  emailConfirmTokenExpiresAt?: Date | null;
   isOnline: boolean;
   internalNotes: IInternalNote[];
   attachments: IAttachment[];
@@ -62,6 +68,11 @@ const userSchema = new Schema<IUser>(
     role: { type: String, enum: ["customer", "agent", "admin"], required: true },
     phone: String,
     preferredLanguage: { type: String, enum: ["en", "ar"], default: "en" },
+
+    // Story 5 (customer-management): confirm-then-apply email change.
+    pendingEmail: { type: String, default: null, lowercase: true, trim: true },
+    emailConfirmToken: { type: String, default: null, index: true },
+    emailConfirmTokenExpiresAt: { type: Date, default: null },
 
     // Agent-specific (agent-workspace feature, Story 21)
     isOnline: { type: Boolean, default: false },

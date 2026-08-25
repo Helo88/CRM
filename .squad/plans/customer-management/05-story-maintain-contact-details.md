@@ -259,16 +259,14 @@ Minimal settings form so the acceptance criterion "from account settings" is tes
 
 ### 5 — Add a settings page
 
-**Create file:** `frontend/app/settings/page.tsx`
+**SUPERSEDED at execution time:** this task originally called for a Client Component reading a client-stored token (localStorage or similar) — that pattern was replaced project-wide with the Backend-for-Frontend (BFF) + `httpOnly` cookie architecture documented in `CLAUDE.md`, "Frontend auth (session handling)", before this story was executed. The raw JWT is never stored in browser-readable storage. What was actually built:
 
-- Client component; behind auth (redirect if no token stored client-side — there is no existing auth-gated page in this codebase to mirror yet, so this is the first; check for a token the same way it's stored after login, per Story 2's plan).
-- On mount, call `GET /api/v1/me/contact` (Task 2) to load `{ phone, email, pendingEmail }` — this is the only source for `pendingEmail`; it cannot be decoded from the JWT (`{ sub, role }` only) or fetched from Story 4's endpoint (which doesn't return `pendingEmail`).
-- Two forms inside a single `Card`:
-  1. **Phone** — one `Input` + submit `Button`. Success: toast "Phone updated".
-  2. **Email** — one `Input` + submit `Button`. Success: toast "Confirmation email sent to <new address>. Click the link to complete the change."
-- Both call `PATCH /api/v1/me/contact` with `{ phone }` or `{ email }`.
-- Display the current confirmed email and, if `pendingEmail` is set, a muted line: "Pending: `<pendingEmail>` — awaiting confirmation."
-- Reuse `Input`, `Label`, `Button`, `Card` from `frontend/components/ui/`.
+- `frontend/app/api/auth/{login,register,logout}/route.ts` — BFF Route Handlers; login/register call the backend, then set the JWT as an `httpOnly` cookie (`SESSION_COOKIE`, `frontend/lib/auth.ts`) instead of returning it to the browser.
+- `frontend/proxy.ts` (Next.js 16's `middleware.ts` rename — file is `proxy.ts`, exported function is `proxy`) — presence-only redirect for unauthenticated requests to `/settings`.
+- `frontend/app/settings/page.tsx` — **Server Component**, not a Client Component: reads the cookie via `await cookies()`, calls `GET /api/v1/me/contact` (Task 2) server-side, passes the result as props.
+- `frontend/app/settings/SettingsForm.tsx` — Client Component, the two forms (`Card`/`Input`/`Label`/`Button` from `frontend/components/ui/`), wired to Server Actions via React 19's `useActionState`, not a client-side `fetch`.
+- `frontend/app/settings/actions.ts` — Server Actions (`updatePhone`, `updateEmail`), each reading the cookie server-side and calling `PATCH /api/v1/me/contact` — this is where the "Phone updated" / "Confirmation email sent to..." messages are produced, returned as action state rather than a toast.
+- Behavior is otherwise unchanged from the original task: `pendingEmail` still can't be decoded from the JWT or fetched from Story 4's endpoint, so `GET /api/v1/me/contact` (Task 2) remains the only source for it.
 
 ---
 
@@ -343,7 +341,7 @@ This project's test runner is **Vitest** (introduced by `.squad/plans/auth/03-st
 - [ ] Phone updates are immediate; email updates require clicking the link before `User.email` changes.
 - [ ] Expired / unknown / replayed tokens are rejected; a confirmation race (`E11000` on the final save) returns 409, not an uncaught 500.
 - [ ] After confirmation, a follow-up call to `sendEmail` for that user reaches the **new** address (verified by manual test in step 3).
-- [ ] Minimal `frontend/app/settings/page.tsx` loads current contact info via `GET /api/v1/me/contact`, renders both forms, and surfaces the pending-email state.
+- [ ] `frontend/app/settings/page.tsx` (Server Component) loads current contact info via `GET /api/v1/me/contact` server-side, renders both forms via `SettingsForm`, and surfaces the pending-email state. The session JWT is never stored in browser-readable storage — it lives only in the `httpOnly` cookie set by `frontend/app/api/auth/*`.
 - [ ] Route tests in the Test Plan added and green.
 - [ ] No new direct `nodemailer` imports outside `backend/src/services/email.service.ts`.
 
