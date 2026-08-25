@@ -41,6 +41,12 @@ The frontend uses **shadcn/ui** (Radix primitives + Tailwind v4) — don't intro
 - **RTL:** `frontend/components.json` has `"rtl": true`, and `RootLayout` wraps the app in Radix's `Direction.Provider` (from the unified `radix-ui` package) so direction-aware components (select, dropdown-menu, etc.) open correctly once the real `dir` value is wired up in Story 49. The `dir`/`lang` values in `app/layout.tsx` are still hardcoded to `"ltr"`/`"en"` pending that story — don't remove the `Direction.Provider` wiring, just replace the hardcoded value with the real locale when Story 49 is implemented.
 - Two style directions (this shadcn one vs. an Ant Design-style alternative) were mocked up and compared before deciding — shadcn/ui was the chosen direction. Don't reintroduce the Ant Design-style density/table-heavy pattern without discussion.
 
+## Testing
+
+The backend's test runner is **Vitest**, not Jest — introduced by the `auth` feature's Story 3 (role-based access control) plan. `ts-jest` does not work with this project's `typescript@^7.0.2`: it fails to install (peer-dependency range doesn't cover TS 7.x) and, even forced past that, cannot invoke TS7's compiler API at all, so no test would ever run. Vitest transforms TypeScript via `esbuild` — the same tool this project's dev server (`tsx`) already uses — so it has no dependency on TypeScript's compiler API and isn't affected. Config: `backend/vitest.config.ts` (`globals: true`, so `describe`/`it`/`expect` don't need per-file imports), tests under `backend/tests/`, run via `npm test` (`vitest run`). `backend/tsconfig.json`'s `include` covers `tests/**/*.ts` alongside `src/**/*.ts` so `npm run typecheck` actually checks test files. Use `supertest` for HTTP-level route tests against `createApp()` from `backend/src/app.ts`.
+
+No test runner exists in `frontend/` yet — cross that bridge with the same reasoning (esbuild-based tools, matching Next.js's own Turbopack/esbuild toolchain) rather than defaulting to Jest there either.
+
 ## Repo layout
 
 ```
