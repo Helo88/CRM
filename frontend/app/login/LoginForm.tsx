@@ -1,62 +1,63 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { login, type AuthActionState } from "./actions";
+
+const INITIAL_STATE: AuthActionState = { error: null };
 
 export function LoginForm() {
-  const router = useRouter();
   const t = useTranslations("Login");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setPending(true);
-
-    const formData = new FormData(event.currentTarget);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: formData.get("email"),
-        password: formData.get("password"),
-      }),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error ?? t("genericError"));
-      setPending(false);
-      return;
-    }
-
-    router.push("/settings");
-    router.refresh();
-  }
+  const [state, formAction, pending] = useActionState(login, INITIAL_STATE);
+  // Controlled inputs: React resets uncontrolled <input>s to empty after every
+  // Server Action submission (success or error) — without this, a failed
+  // attempt silently blanks the email field, so a retry with just the
+  // password fixed ends up submitting an empty email (see CLAUDE.md, "Forms
+  // backed by Server Actions").
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
         <CardTitle>{t("heading")}</CardTitle>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
+      <form action={formAction}>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">{t("email")}</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={Boolean(state.fieldErrors?.email)}
+              required
+            />
+            {state.fieldErrors?.email && <p className="text-sm text-destructive">{state.fieldErrors.email}</p>}
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="password">{t("password")}</Label>
-            <Input id="password" name="password" type="password" autoComplete="current-password" required />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={Boolean(state.fieldErrors?.password)}
+              required
+            />
+            {state.fieldErrors?.password && <p className="text-sm text-destructive">{state.fieldErrors.password}</p>}
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {state.error && <p className="text-sm text-destructive">{state.error}</p>}
         </CardContent>
         <CardFooter className="flex flex-col items-stretch gap-3">
           <Button type="submit" disabled={pending}>

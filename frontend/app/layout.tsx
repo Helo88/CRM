@@ -5,6 +5,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { Direction } from "radix-ui";
 import { NextIntlClientProvider } from "next-intl";
 import { cn } from "@/lib/utils";
+import { SiteHeader } from "@/components/SiteHeader";
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -21,7 +22,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" dir={dir} className={cn("dark font-sans", plusJakartaSans.variable)}>
       <body>
         <NextIntlClientProvider>
-          <Direction.Provider dir={dir}>{children}</Direction.Provider>
+          <Direction.Provider dir={dir}>
+            <SiteHeader />
+            {children}
+          </Direction.Provider>
         </NextIntlClientProvider>
       </body>
     </html>

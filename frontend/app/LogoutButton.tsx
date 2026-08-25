@@ -1,22 +1,15 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
+import { logout } from "./actions";
 
-export function LogoutButton() {
-  const router = useRouter();
-  const t = useTranslations("Auth");
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-    router.refresh();
-  }
+export async function LogoutButton() {
+  const t = await getTranslations("Auth");
 
   return (
-    <Button variant="outline" onClick={handleLogout}>
-      {t("logOut")}
-    </Button>
+    <form action={logout}>
+      <Button type="submit" variant="outline">
+        {t("logOut")}
+      </Button>
+    </form>
   );
 }

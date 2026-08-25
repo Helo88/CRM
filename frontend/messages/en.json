@@ -1,10 +1,13 @@
 {
-  "Home": {
-    "title": "AzmSquad Customer Service",
-    "tagline": "Live chat and ticket support, in one place.",
-    "goToSettings": "Go to settings",
+  "Nav": {
+    "brand": "AzmSquad",
+    "settings": "Settings",
     "logIn": "Log in",
     "signUp": "Sign up"
+  },
+  "Home": {
+    "title": "AzmSquad Customer Service",
+    "tagline": "Live chat and ticket support, in one place."
   },
   "Register": {
     "heading": "Create your account",
@@ -15,7 +18,10 @@
     "submitPending": "Creating account…",
     "haveAccount": "Already have an account?",
     "logIn": "Log in",
-    "genericError": "Could not create your account."
+    "genericError": "Could not create your account.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordTooShort": "Password must be at least 8 characters."
   },
   "Login": {
     "heading": "Log in",
@@ -25,7 +31,9 @@
     "submitPending": "Logging in…",
     "noAccount": "Don't have an account?",
     "signUp": "Sign up",
-    "genericError": "Could not log you in."
+    "genericError": "Could not log you in.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordRequired": "Password is required."
   },
   "Auth": {
     "logOut": "Log out"
