@@ -145,7 +145,17 @@ Inside `customer.routes.ts`, add a private `toProfileResponse(user: IUser)` that
 
 ## Frontend Tasks
 
-No frontend changes required. This story is backend-only per the "Out of scope" section of the intake. Story 4's UI surface (a profile page + edit form) will be added by a follow-up frontend story once the customer-management API set stabilizes.
+**AMENDED 2026-08-25:** same mistake as auth Stories 1-2 — "backend-only, UI is a follow-up story" was written before that follow-up story existed anywhere in the backlog. `CLAUDE.md`'s Conventions now require the UI in the same story. Amending here rather than leaving the backend-only plan as the record of what shipped.
+
+### 4 — Customer profile page
+
+**Files:** `frontend/app/customers/[id]/page.tsx` (Server Component), `frontend/app/customers/[id]/CustomerProfileForm.tsx` (Client Component), `frontend/app/customers/[id]/actions.ts` (Server Action).
+
+- `page.tsx`: `await cookies()` for the session token, redirect to `/` if absent (mirrors `frontend/app/settings/page.tsx`). Server-side `GET /api/v1/customers/[id]` with the bearer token. On 403/404, render a simple "not found or no access" message rather than crashing — a customer hitting another customer's URL gets this legitimately per the backend's own authorization. On 200, render `<CustomerProfileForm profile={...} />`.
+- `actions.ts`: one `updateProfile` Server Action, following `frontend/app/login/actions.ts`'s shape — zod schema for `{ name, email, phone, preferredLanguage }` (the backend's full `EDITABLE_FIELDS` set, `backend/src/routes/customer.routes.ts:11`), `PATCH /api/v1/customers/[id]` with the bearer token, return `{ error, fieldErrors }` on failure, `revalidatePath` on success. Email stays in the form — the backend itself allows staff to edit a customer's email immediately (only a customer editing their *own* email is redirected to the confirm-then-apply flow, `customer.routes.ts:106-111`); let the backend's existing 400 surface verbatim rather than duplicating that self/staff distinction client-side.
+- `CustomerProfileForm.tsx`: `useActionState` + controlled inputs (see `CLAUDE.md`, "Forms backed by Server Actions" — do not repeat the uncontrolled-input bug found in Stories 1-2). Shows `name`, `email`, `phone`, `preferredLanguage` as editable fields, plus `createdAt` (read-only) and a link built from `ticketHistoryUrl` (renders as a plain link for now — Story 6 doesn't exist yet, so it 404s until then; do not build Story 6's page here).
+
+**Known gap, not this story's job to fix:** there is no `GET /api/v1/customers` list/search endpint and no story anywhere in the 52-story backlog that adds one — an agent can only reach this page via a known customer id (e.g. pasted from a ticket once ticket-management exists, or from `/api/v1/customers` directly via API tooling today). Flagged for the user; do not invent a list/search endpoint speculatively as part of this amendment.
 
 ---
 

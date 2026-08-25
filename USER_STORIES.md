@@ -31,7 +31,7 @@ squad new-story <feature-slug> --title "<Story Title>"
 
 then paste that story's **User Story** + **Acceptance Criteria** into the generated `intake.md`.
 
-**Recommended build order:** `auth` → `customer-management` → `ticket-management` + `live-chat` (parallel) → `sla-automation` → `agent-workspace` → `knowledge-base` → `ai-features` → `customer-portal` → `security-admin` → `reports-management` → `integrations` → `platform`. Later features assume earlier ones' models/endpoints exist — in particular, `knowledge-base` is built before `ai-features` because Story 34 (AI-suggested KB solutions) needs real KB content to suggest from. Note this order doesn't match the physical order of the `## Feature:` sections below (e.g. `agent-workspace` is listed before `sla-automation`, `ai-features` before `knowledge-base`) — the list above is the one to follow, not reading order.
+**Recommended build order:** `auth` → `customer-management` → `ticket-management` + `live-chat` (parallel) → `sla-automation` → `agent-workspace` → `knowledge-base` → `ai-features` → `customer-portal` → `security-admin` → `reports-management` → `integrations` → `platform`. Later features assume earlier ones' models/endpoints exist — in particular, `knowledge-base` is built before `ai-features` because Story 35 (AI-suggested KB solutions) needs real KB content to suggest from. Note this order doesn't match the physical order of the `## Feature:` sections below (e.g. `agent-workspace` is listed before `sla-automation`, `ai-features` before `knowledge-base`) — the list above is the one to follow, not reading order.
 
 ---
 
@@ -98,7 +98,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ### Story 9: Categorize and prioritize a ticket
 **As an** agent, **I want to** assign a category and priority level to a ticket, **so that** urgent or relevant issues are handled with the right level of attention.
-- Categories and priority levels are configurable by an admin (Story 47).
+- Categories and priority levels are configurable by an admin (Story 48).
 - Category/priority can be changed at any time and is logged.
 - Tickets can be filtered and sorted by category and priority.
 
@@ -106,17 +106,17 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 **As the** system, **I want to** automatically assign a new ticket to the first available (online) agent, **so that** every ticket has an owner without manual dispatching.
 - Assignment happens as soon as the ticket is created.
 - The assigned agent is notified (in-app and/or email).
-- Ticket ownership is visible to the assigned agent and the admin, and can be manually reassigned (Story 41).
+- Ticket ownership is visible to the assigned agent and the admin, and can be manually reassigned (Story 25).
 
 ### Story 11: Update ticket status
 **As an** agent, **I want to** move a ticket through statuses (New → In Progress → Answered → Closed), **so that** everyone can see where it stands.
 - Status changes are logged with who made the change and when.
-- Customers see the current status when viewing their ticket (Story 35).
+- Customers see the current status when viewing their ticket (Story 36).
 - Closing a ticket doesn't delete it — it remains viewable read-only.
 
 ### Story 12: Escalate a ticket
 **As an** agent, **I want to** escalate a ticket to a senior agent or admin when I can't resolve it myself, **so that** stuck issues still get resolved.
-- Escalation can be triggered manually by the agent, or automatically on an SLA breach (feeds from `sla-automation` Story 27).
+- Escalation can be triggered manually by the agent, or automatically on an SLA breach (feeds from `sla-automation` Story 28).
 - Escalating notifies the target person and visibly flags the ticket in lists/dashboards.
 - The full ticket history travels with the escalation, so context isn't lost.
 
@@ -153,6 +153,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Assignment happens within seconds of escalation.
 - If no agent is online, the customer is told to expect a delay and offered the email/ticket path instead.
 - Two escalations at the same instant don't get double-assigned to the same agent.
+- Chat ownership, like ticket ownership, can be manually reassigned later (Story 25).
 
 ### Story 18: Agent replies to a live chat in real time
 **As a** human agent, **I want to** see my assigned live chats and reply in real time, **so that** I can resolve the customer's issue directly.
@@ -200,23 +201,30 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Tagging a colleague sends them a notification.
 - Internal comments are included in the ticket/chat's audit history.
 
+### Story 25: Manually reassign a ticket or chat
+**As an** agent or admin, **I want to** manually reassign a ticket or chat to a different agent, **so that** work can be rebalanced when an agent is overloaded, goes offline mid-item, or the wrong specialist ended up with it.
+- Reassignment is available from the ticket/chat detail view and from the agent dashboard (Story 20).
+- Reassignment is logged (previous assignee, new assignee, who made the change, when) and appears in the item's history (Story 13 / Story 24's audit trail).
+- An admin can reassign to any agent regardless of availability status; an agent can only reassign to another agent currently marked online (Story 21).
+- Both the previous and new assignee are notified.
+
 ---
 
 ## Feature: sla-automation
 
-### Story 25: Define SLA targets
+### Story 26: Define SLA targets
 **As an** admin, **I want to** set response-time and resolution-time targets per priority level and category, **so that** service quality is measurable and consistent.
 - Targets can differ by priority and/or category.
 - Changes to SLA targets are logged with date and who made the change.
 - Default targets apply to categories/priorities that don't have a custom target.
 
-### Story 26: Track SLA timers on tickets and chats
+### Story 27: Track SLA timers on tickets and chats
 **As the** system, **I want to** track elapsed time against the applicable SLA target on every open ticket/chat, **so that** agents and managers always know how much time is left.
 - Each ticket/chat shows a visible countdown or elapsed-time indicator against its SLA target.
 - Timers pause appropriately when waiting on the customer (e.g. ticket status "Answered," awaiting reply) if that logic is enabled.
 - SLA status (on-track / at-risk / breached) is visible in list views and reports.
 
-### Story 27: SLA breach alerts and auto-escalation
+### Story 28: SLA breach alerts and auto-escalation
 **As a** human agent, **I want to** get an alert when one of my items is close to or has breached its SLA, **so that** I can act before — or immediately after — it's too late.
 - Alerts trigger at configurable thresholds (e.g. 75% of time elapsed) and again on breach.
 - A breach can automatically trigger the escalation flow (Story 12 / Story 16).
@@ -226,19 +234,19 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: knowledge-base
 
-### Story 28: Manage FAQs
+### Story 29: Manage FAQs
 **As an** admin, **I want to** create, edit, and publish FAQs, **so that** customers can find quick answers themselves.
 - FAQs are organized by topic/category.
 - FAQs can be draft or published; only published ones are customer-visible.
 - FAQs support both English and Arabic content.
 
-### Story 29: Write and organize help articles
+### Story 30: Write and organize help articles
 **As an** admin, **I want to** write and organize longer help articles/guides, **so that** customers and agents have detailed step-by-step guidance.
 - Articles support rich text, images, and step-by-step formatting.
 - Articles are grouped into categories/collections and show a last-updated date.
 - Articles are available in both English and Arabic.
 
-### Story 30: Search the knowledge base
+### Story 31: Search the knowledge base
 **As a** customer or agent, **I want to** search FAQs and articles by keyword, **so that** I can quickly find a relevant answer.
 - Search returns ranked results across FAQs and articles.
 - Search works in both Arabic and English.
@@ -250,25 +258,25 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 *(The customer-facing AI chatbot is Story 15, under `live-chat`. The stories below are the remaining AI Features from the PDF — all agent-facing, all powered by the Gemini integration.)*
 
-### Story 31: Summarize a ticket or chat
+### Story 32: Summarize a ticket or chat
 **As an** agent, **I want** AI to generate a short summary of a long conversation, **so that** I can get up to speed in seconds.
 - A one-click "summarize" action is available on any ticket/chat with multiple messages.
 - Summary highlights the customer's issue, what's been tried, and current status.
 - Agent can regenerate the summary if it's inaccurate.
 
-### Story 32: AI-suggested replies for agents
+### Story 33: AI-suggested replies for agents
 **As an** agent, **I want** AI to draft a suggested reply based on the conversation, **so that** I can respond faster while still reviewing before sending.
 - Suggestion appears as an editable draft, never sent automatically.
 - Suggestion accounts for the customer's history and ticket category.
 - Agent can accept, edit, or discard the suggestion.
 
-### Story 33: Automatic categorization
+### Story 34: Automatic categorization
 **As the** system, **I want** AI to automatically suggest or apply a category/priority to a new ticket or chat, **so that** agents don't have to manually tag every one.
 - New items receive an AI-suggested (or auto-applied, per admin config) category on creation.
 - An agent can override the AI-assigned category at any time.
 - Categorization accuracy is reviewable by an admin over time.
 
-### Story 34: AI-suggested knowledge-base solutions
+### Story 35: AI-suggested knowledge-base solutions
 **As an** agent, **I want** AI to suggest relevant knowledge-base articles for the ticket/chat I'm working on, **so that** I can resolve it faster without searching manually.
 - Suggestions are ranked by relevance to the conversation's content.
 - Agent can insert a suggested article/excerpt directly into a reply.
@@ -278,25 +286,25 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: customer-portal
 
-### Story 35: Track ticket status from the portal
+### Story 36: Track ticket status from the portal
 **As a** customer, **I want to** see the live status of tickets I've submitted, **so that** I know what's happening without asking an agent.
 - Portal lists the customer's tickets with current status and last-updated time.
 - Status updates reflect agent changes in real time (or on refresh).
 - Customer can open a ticket to see the conversation so far.
 
-### Story 36: View full support history
+### Story 37: View full support history
 **As a** customer, **I want to** view my past tickets and chats and their outcomes, **so that** I have a record of previous support interactions.
 - Resolved/closed items remain visible and searchable in the portal.
 - Customer can reopen a resolved ticket if the issue recurs.
 - History includes attachments and replies exchanged.
 
-### Story 37: Browse FAQs from the portal
+### Story 38: Browse FAQs from the portal
 **As a** customer, **I want to** browse or search FAQs/articles from within the portal, **so that** I can try to solve my own issue before submitting a ticket.
 - Knowledge base is accessible directly from the portal home screen.
 - Portal suggests relevant articles before the customer finishes submitting a new ticket.
 - FAQs display in the customer's selected language (English/Arabic).
 
-### Story 38: Submit feedback after resolution
+### Story 39: Submit feedback after resolution
 **As a** customer, **I want to** rate my experience and leave feedback once a ticket or chat is resolved, **so that** the company knows how well it was handled.
 - A feedback/rating prompt appears once an item is marked resolved.
 - Feedback includes a rating scale (e.g. 1-5 / CSAT) plus an optional comment.
@@ -306,31 +314,31 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: reports-management
 
-### Story 39: Ticket reports
+### Story 40: Ticket reports
 **As a** manager/admin, **I want to** see reports on ticket volume, type, and trends over time, **so that** I understand the team's overall workload.
 - Filterable by date range, category, and channel (chat/ticket).
 - Exportable (CSV/PDF).
 - Trends shown visually as well as in tables.
 
-### Story 40: SLA performance report
+### Story 41: SLA performance report
 **As a** manager/admin, **I want to** see how well the team meets its SLA targets, **so that** I can track whether service promises are being kept.
 - Shows percentage of items meeting vs. breaching targets.
 - Breakdown by agent and by category/priority.
 - Breach trends trackable over time.
 
-### Story 41: Agent performance report
+### Story 42: Agent performance report
 **As a** manager/admin, **I want to** see per-agent metrics (volume handled, average response/resolution time, CSAT), **so that** I can manage the team fairly with real data.
 - Metrics comparable across agents or over a selected period.
 - Individual agents can view their own performance metrics.
-- Admin can reassign work directly from this view if one agent is overloaded (ties to Story 10/17).
+- This view links directly to reassignment (Story 25) so an admin can act immediately if one agent is overloaded.
 
-### Story 42: Customer satisfaction (CSAT) report
+### Story 43: Customer satisfaction (CSAT) report
 **As a** manager/admin, **I want to** see aggregated customer satisfaction scores, **so that** I can measure and improve service quality.
-- Aggregates feedback submitted in Story 38.
+- Aggregates feedback submitted in Story 39.
 - Filterable by agent, category, and time period.
 - Low scores can be drilled into to see the related ticket/chat and comment.
 
-### Story 43: Management dashboard
+### Story 44: Management dashboard
 **As a** manager or executive, **I want** one high-level dashboard combining ticket volume, SLA performance, agent performance, and CSAT, **so that** I can make decisions at a glance.
 - Dashboard is configurable per role.
 - Data refreshes automatically or on a defined schedule.
@@ -340,35 +348,35 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: security-admin
 
-### Story 44: Manage user accounts
+### Story 45: Manage user accounts
 **As an** admin, **I want to** create, view, and deactivate agent and admin accounts, **so that** I control who is allowed to work on the platform.
 - Admin can create a new account with a role (agent/admin) and an initial password or invite flow.
 - Deactivating a user immediately revokes access and excludes agents from auto-assignment.
 - Account list shows each user's role and current online/offline status.
 
-### Story 45: Configure roles and permissions
+### Story 46: Configure roles and permissions
 **As an** admin, **I want to** review and adjust what each role is allowed to do, **so that** sensitive data/actions stay limited to the right people.
 - Permissions are viewable/editable per role (view reports, manage users, delete tickets, etc.).
 - Permission changes take effect immediately for affected users.
 - Default roles ship with sensible out-of-the-box permissions.
 
-### Story 46: Review audit logs
+### Story 47: Review audit logs
 **As an** admin, **I want to** see a log of key actions (logins, edits, deletions, reassignments), **so that** I can investigate issues and stay accountable.
 - Log entries include who did what, when, and (where available) from where.
 - Audit log is read-only and cannot be edited or deleted by regular users.
 - Log is filterable by user, action type, and date range.
 
-### Story 47: System configuration
+### Story 48: System configuration
 **As an** admin, **I want to** configure system-wide settings (ticket categories, SLA defaults, quick-reply library, branding), **so that** the platform matches how the business actually operates.
 - Settings are centralized in one administration area.
 - Changes to critical settings require admin-level permission.
-- A history of configuration changes is kept for reference (feeds Story 46).
+- A history of configuration changes is kept for reference (feeds Story 47).
 
 ---
 
 ## Feature: integrations
 
-### Story 48: Expose a public REST API
+### Story 49: Expose a public REST API
 **As a** developer, **I want to** use a documented API to read/write tickets and customer data, **so that** the platform can be integrated with other tools now or later.
 - API is authenticated (e.g. API keys or the same JWT scheme) and rate-limited.
 - Supports core operations: create/read/update tickets, chats, and customers.
@@ -380,22 +388,22 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: platform
 
-### Story 49: Bilingual Arabic & English UI
+### Story 50: Bilingual Arabic & English UI
 **As a** user (customer, agent, or admin), **I want to** use the interface in either Arabic or English, **so that** I can work comfortably in my preferred language.
 - All core screens are available in both languages.
 - Right-to-left layout is correctly supported for Arabic.
 - A user can switch language from their own account settings.
 - **Note:** the i18n library (next-intl) and message-key infrastructure were set up early, during `auth` (see `CLAUDE.md`, "i18n (internationalization)") — every string added by every story since then already lives in `frontend/messages/en.json` behind a translation key, not hardcoded in JSX. This story's actual work is: add `messages/ar.json` (translating every existing key), wire real locale detection/switching (including the account-settings toggle), and replace `app/layout.tsx`'s hardcoded `lang="en"`/`dir="ltr"`. It should not require touching component markup across the app.
 
-### Story 50: Mobile-responsive design
+### Story 51: Mobile-responsive design
 **As a** user, **I want to** access the platform from a phone-sized screen as well as desktop, **so that** I can work from anywhere.
 - Layout adapts responsively to mobile screen sizes.
 - Core actions (submit/view tickets, use live chat) work fully on mobile.
 - No feature is completely unavailable on mobile without a documented reason.
 
-### Story 51: Custom branding
+### Story 52: Custom branding
 **As an** admin, **I want to** set our logo and brand colors for the portal, emails, and chat widget, **so that** the platform looks and feels like it belongs to our company.
-- Admin can upload a logo and set brand colors from Story 47's settings area.
+- Admin can upload a logo and set brand colors from Story 48's settings area.
 - Branding applies consistently across portal, emails, and chat widget.
 - Branding changes take effect without requiring a redeploy.
 

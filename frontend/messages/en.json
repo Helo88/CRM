@@ -50,5 +50,23 @@
     "emailConfirmationSent": "Confirmation email sent to {email}. Click the link to complete the change.",
     "phoneUpdateFailed": "Could not update phone.",
     "emailUpdateFailed": "Could not update email."
+  },
+  "CustomerProfile": {
+    "heading": "Customer profile",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "preferredLanguage": "Preferred language",
+    "languageEnglish": "English",
+    "languageArabic": "Arabic",
+    "createdAt": "Customer since {date}",
+    "viewHistory": "View ticket/chat history",
+    "save": "Save changes",
+    "savePending": "Saving…",
+    "saved": "Saved",
+    "genericError": "Could not update this profile.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "notFound": "Customer not found, or you don't have permission to view this profile."
   }
 }
