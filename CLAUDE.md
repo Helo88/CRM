@@ -30,6 +30,17 @@ A standalone customer service web platform (not attached to any product/e-commer
 
 - **mongoose is pinned to the 8.x line (`^8.24.4`), not the 9.x latest.** mongoose 9.x requires Node `>=20.19.0`; the environment's installed Node is `20.15.0`. mongoose 8.24.4 requires only Node `>=16.20.1` and is otherwise the newest available on that line. Revisit once the installed Node is upgraded to `>=20.19.0`.
 
+## Design system
+
+The frontend uses **shadcn/ui** (Radix primitives + Tailwind v4) — don't introduce another component library or hand-roll primitives that already exist here. Base config lives in `frontend/components.json`; installed primitives are in `frontend/components/ui/`.
+
+- **Add a new primitive** with `npx shadcn@latest add <component>` from `frontend/` — don't hand-write a component shadcn already ships (button, card, badge, avatar, input, textarea, switch, tabs, separator, select, dropdown-menu, table, scroll-area, label are already installed).
+- **Theme tokens** live as CSS custom properties in `frontend/app/globals.css` (`:root` / `.dark`), mapped into Tailwind utilities via the `@theme inline` block. Use the token utilities (`bg-primary`, `text-muted-foreground`, `bg-success`, ...) — never hardcode a hex color in a component.
+- **Palette:** primary is a muted violet/indigo (`--primary: #5B4FD6`), neutrals are slate-toned, and there are dedicated semantic status tokens beyond shadcn's defaults — `--success`/`--success-foreground` (green, "on track" / resolved), `--warning`/`--warning-foreground` (amber, SLA at-risk), `--destructive`/`--destructive-foreground` (red, SLA breached). Use these three for any SLA/ticket-status indicator so status color stays consistent across the whole app — don't invent new status colors per feature.
+- **Font:** Plus Jakarta Sans (`next/font/google`, wired in `frontend/app/layout.tsx` as `--font-sans`) — not Inter/Roboto/Geist. One font family, no separate display face needed for this dashboard-style UI.
+- **RTL:** `frontend/components.json` has `"rtl": true`, and `RootLayout` wraps the app in Radix's `Direction.Provider` (from the unified `radix-ui` package) so direction-aware components (select, dropdown-menu, etc.) open correctly once the real `dir` value is wired up in Story 49. The `dir`/`lang` values in `app/layout.tsx` are still hardcoded to `"ltr"`/`"en"` pending that story — don't remove the `Direction.Provider` wiring, just replace the hardcoded value with the real locale when Story 49 is implemented.
+- Two style directions (this shadcn one vs. an Ant Design-style alternative) were mocked up and compared before deciding — shadcn/ui was the chosen direction. Don't reintroduce the Ant Design-style density/table-heavy pattern without discussion.
+
 ## Repo layout
 
 ```
