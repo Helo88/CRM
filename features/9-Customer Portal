@@ -15,6 +15,7 @@
 - Knowledge base is accessible directly from the portal home screen.
 - Portal suggests relevant articles before the customer finishes submitting a new ticket.
 - FAQs display in the customer's selected language (English/Arabic).
+
 ### Story 38: Submit feedback after resolution
 **As a** customer, **I want to** rate my experience and leave feedback once a ticket or chat is resolved, **so that** the company knows how well it was handled.
 - A feedback/rating prompt appears once an item is marked resolved.

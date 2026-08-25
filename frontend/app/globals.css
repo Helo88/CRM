@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+html {
+  /* Placeholder for bilingual/RTL support (platform feature, Story 49):
+     set dir="rtl" on <html> when the active locale is Arabic. */
+}

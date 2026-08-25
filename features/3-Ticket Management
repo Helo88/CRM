@@ -6,7 +6,7 @@
 
 ### Story 9: Categorize and prioritize a ticket
 **As an** agent, **I want to** assign a category and priority level to a ticket, **so that** urgent or relevant issues are handled with the right level of attention.
-- Categories and priority levels are configurable by an admin (Story 27).
+- Categories and priority levels are configurable by an admin (Story 47).
 - Category/priority can be changed at any time and is logged.
 - Tickets can be filtered and sorted by category and priority.
 
@@ -19,7 +19,7 @@
 ### Story 11: Update ticket status
 **As an** agent, **I want to** move a ticket through statuses (New → In Progress → Answered → Closed), **so that** everyone can see where it stands.
 - Status changes are logged with who made the change and when.
-- Customers see the current status when viewing their ticket (Story 37).
+- Customers see the current status when viewing their ticket (Story 35).
 - Closing a ticket doesn't delete it — it remains viewable read-only.
 
 ### Story 12: Escalate a ticket
