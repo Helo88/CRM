@@ -1,0 +1,31 @@
+### Story 20: Unified agent dashboard
+**As a** human agent, **I want** one dashboard listing both my assigned live chats and my assigned tickets, **so that** I don't have to check two separate places.
+- Dashboard clearly separates/labels live chats vs. tickets.
+- Items are sorted with the newest/most urgent surfaced first (e.g. an active chat or a ticket close to SLA breach).
+- Agent can open any item directly from the dashboard to respond.
+
+### Story 21: Agent availability toggle
+**As a** human agent, **I want to** mark myself online/available or offline/away, **so that** the system only auto-assigns new work to me when I can respond.
+- Toggle is visible and changeable at any time from the dashboard.
+- Auto-assignment (chats and tickets) only considers agents currently marked online.
+- The agent's status is visible to the admin.
+
+### Story 22: Tasks and reminders
+**As a** human agent, **I want to** set a task/reminder linked to a ticket or chat, **so that** I don't forget a needed follow-up.
+- A reminder can be set for a specific date/time on any ticket or chat.
+- The agent is notified when a reminder is due.
+- Open reminders are visible in a personal to-do list on the dashboard.
+
+### Story 23: Quick/canned replies
+**As a** human agent, **I want to** insert pre-written reply templates into my responses, **so that** I can answer common questions faster and more consistently.
+- Quick replies are organized by category and searchable.
+- Selecting one inserts it into the reply box for editing before sending.
+- Admins manage the shared library of quick replies (feeds `security-admin`).
+
+### Story 24: Internal team collaboration
+**As a** human agent, **I want to** tag colleagues and leave internal comments on a ticket or chat, **so that** we can collaborate without the customer seeing our internal discussion.
+- Internal comments are clearly separated from customer-facing replies.
+- Tagging a colleague sends them a notification.
+- Internal comments are included in the ticket/chat's audit history.
+
+---
