@@ -1,27 +1,25 @@
-## Feature: customer-management
+### Story 35: Track ticket status from the portal
+**As a** customer, **I want to** see the live status of tickets I've submitted, **so that** I know what's happening without asking an agent.
+- Portal lists the customer's tickets with current status and last-updated time.
+- Status updates reflect agent changes in real time (or on refresh).
+- Customer can open a ticket to see the conversation so far.
 
-### Story 4: View and edit a customer profile
-**As an** agent or admin, **I want to** view and edit a customer's profile details, **so that** I have accurate information about who I'm helping.
-- Profile shows name, email, phone (optional), and account creation date.
-- Agent/admin can edit profile fields; the customer can edit their own basic details from their account settings.
-- Every profile links out to that customer's full ticket/chat history (Story 6).
+### Story 36: View full support history
+**As a** customer, **I want to** view my past tickets and chats and their outcomes, **so that** I have a record of previous support interactions.
+- Resolved/closed items remain visible and searchable in the portal.
+- Customer can reopen a resolved ticket if the issue recurs.
+- History includes attachments and replies exchanged.
 
-### Story 5: Maintain contact details
-**As a** customer, **I want to** keep my email and phone number up to date, **so that** support can reach me and my replies go to the right place.
-- Customer can update their own contact details from account settings.
-- Changing the account email requires confirming the new address before it takes effect.
-- Contact detail changes are reflected immediately in any new outbound emails.
+### Story 37: Browse FAQs from the portal
+**As a** customer, **I want to** browse or search FAQs/articles from within the portal, **so that** I can try to solve my own issue before submitting a ticket.
+- Knowledge base is accessible directly from the portal home screen.
+- Portal suggests relevant articles before the customer finishes submitting a new ticket.
+- FAQs display in the customer's selected language (English/Arabic).
 
-### Story 6: View customer interaction history
-**As an** agent, **I want to** see a single timeline of all of a customer's past tickets and chats, **so that** I have full context before responding.
-- Timeline is chronological and shows channel (chat/email-ticket), subject, and status per item.
-- Clicking an item opens the original ticket/conversation.
-- Timeline is visible from the customer's profile and from any of their open tickets/chats.
-
-### Story 7: Add internal notes and attachments to a customer
-**As an** agent or admin, **I want to** add internal notes and attach files to a customer's profile, **so that** the team keeps shared context and supporting documents in one place.
-- Notes are internal-only and never visible to the customer.
-- Attachments show file name, size, uploader, and upload date.
-- Notes/attachments are visible to any agent or admin who opens that customer's profile.
+### Story 38: Submit feedback after resolution
+**As a** customer, **I want to** rate my experience and leave feedback once a ticket or chat is resolved, **so that** the company knows how well it was handled.
+- A feedback/rating prompt appears once an item is marked resolved.
+- Feedback includes a rating scale (e.g. 1-5 / CSAT) plus an optional comment.
+- Feedback results feed the customer-satisfaction report (`reports-management`).
 
 ---
