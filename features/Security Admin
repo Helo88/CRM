@@ -1,0 +1,25 @@
+### Story 44: Manage user accounts
+**As an** admin, **I want to** create, view, and deactivate agent and admin accounts, **so that** I control who is allowed to work on the platform.
+- Admin can create a new account with a role (agent/admin) and an initial password or invite flow.
+- Deactivating a user immediately revokes access and excludes agents from auto-assignment.
+- Account list shows each user's role and current online/offline status.
+
+### Story 45: Configure roles and permissions
+**As an** admin, **I want to** review and adjust what each role is allowed to do, **so that** sensitive data/actions stay limited to the right people.
+- Permissions are viewable/editable per role (view reports, manage users, delete tickets, etc.).
+- Permission changes take effect immediately for affected users.
+- Default roles ship with sensible out-of-the-box permissions.
+
+### Story 46: Review audit logs
+**As an** admin, **I want to** see a log of key actions (logins, edits, deletions, reassignments), **so that** I can investigate issues and stay accountable.
+- Log entries include who did what, when, and (where available) from where.
+- Audit log is read-only and cannot be edited or deleted by regular users.
+- Log is filterable by user, action type, and date range.
+
+### Story 47: System configuration
+**As an** admin, **I want to** configure system-wide settings (ticket categories, SLA defaults, quick-reply library, branding), **so that** the platform matches how the business actually operates.
+- Settings are centralized in one administration area.
+- Changes to critical settings require admin-level permission.
+- A history of configuration changes is kept for reference (feeds Story 46).
+
+---
