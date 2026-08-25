@@ -1,0 +1,19 @@
+## Feature: auth
+
+### Story 1: Customer sign-up
+**As a** visitor, **I want to** create an account with my name, email, and password, **so that** I can access customer support and have my conversations tied to my identity.
+- Passwords are hashed before storage (e.g. bcrypt); duplicate emails are rejected with a clear error.
+- On success, the customer is logged in automatically (session/JWT issued).
+- A customer profile record is created automatically alongside the account (feeds `customer-management`).
+
+### Story 2: Login (customer, agent, or admin)
+**As a** registered user, **I want to** log in with my email and password, **so that** I can access the features for my role.
+- Invalid credentials return a generic error (doesn't reveal which field was wrong).
+- A successful login returns a session/JWT encoding the user's role.
+- Sessions/tokens expire after a configurable time and require re-login.
+
+### Story 3: Role-based access control
+**As the** system, **I want** every API endpoint to check the caller's role, **so that** customers, agents, and admins can only do what their role allows.
+- Customer-only, agent-only, and admin-only endpoints each reject callers with the wrong role.
+- Unauthorized/forbidden requests return a clear 401/403 response.
+- Role is read from the verified session/JWT, never trusted from client input.
