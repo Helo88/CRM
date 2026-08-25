@@ -1,0 +1,31 @@
+### Story 39: Ticket reports
+**As a** manager/admin, **I want to** see reports on ticket volume, type, and trends over time, **so that** I understand the team's overall workload.
+- Filterable by date range, category, and channel (chat/ticket).
+- Exportable (CSV/PDF).
+- Trends shown visually as well as in tables.
+
+### Story 40: SLA performance report
+**As a** manager/admin, **I want to** see how well the team meets its SLA targets, **so that** I can track whether service promises are being kept.
+- Shows percentage of items meeting vs. breaching targets.
+- Breakdown by agent and by category/priority.
+- Breach trends trackable over time.
+
+### Story 41: Agent performance report
+**As a** manager/admin, **I want to** see per-agent metrics (volume handled, average response/resolution time, CSAT), **so that** I can manage the team fairly with real data.
+- Metrics comparable across agents or over a selected period.
+- Individual agents can view their own performance metrics.
+- Admin can reassign work directly from this view if one agent is overloaded (ties to Story 10/17).
+
+### Story 42: Customer satisfaction (CSAT) report
+**As a** manager/admin, **I want to** see aggregated customer satisfaction scores, **so that** I can measure and improve service quality.
+- Aggregates feedback submitted in Story 38.
+- Filterable by agent, category, and time period.
+- Low scores can be drilled into to see the related ticket/chat and comment.
+
+### Story 43: Management dashboard
+**As a** manager or executive, **I want** one high-level dashboard combining ticket volume, SLA performance, agent performance, and CSAT, **so that** I can make decisions at a glance.
+- Dashboard is configurable per role.
+- Data refreshes automatically or on a defined schedule.
+- Dashboard links out to the detailed reports above for drill-down.
+
+---
