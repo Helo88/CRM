@@ -1,0 +1,19 @@
+### Story 25: Define SLA targets
+**As an** admin, **I want to** set response-time and resolution-time targets per priority level and category, **so that** service quality is measurable and consistent.
+- Targets can differ by priority and/or category.
+- Changes to SLA targets are logged with date and who made the change.
+- Default targets apply to categories/priorities that don't have a custom target.
+
+### Story 26: Track SLA timers on tickets and chats
+**As the** system, **I want to** track elapsed time against the applicable SLA target on every open ticket/chat, **so that** agents and managers always know how much time is left.
+- Each ticket/chat shows a visible countdown or elapsed-time indicator against its SLA target.
+- Timers pause appropriately when waiting on the customer (e.g. ticket status "Answered," awaiting reply) if that logic is enabled.
+- SLA status (on-track / at-risk / breached) is visible in list views and reports.
+
+### Story 27: SLA breach alerts and auto-escalation
+**As a** human agent, **I want to** get an alert when one of my items is close to or has breached its SLA, **so that** I can act before — or immediately after — it's too late.
+- Alerts trigger at configurable thresholds (e.g. 75% of time elapsed) and again on breach.
+- A breach can automatically trigger the escalation flow (Story 12 / Story 16).
+- Breached items are visibly flagged in dashboards and reports (feeds `reports-management`).
+
+---
