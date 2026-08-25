@@ -1,0 +1,25 @@
+*(The customer-facing AI chatbot is Story 15, under `live-chat`. The stories below are the remaining AI Features from the PDF — all agent-facing, all powered by the Gemini integration.)*
+
+### Story 31: Summarize a ticket or chat
+**As an** agent, **I want** AI to generate a short summary of a long conversation, **so that** I can get up to speed in seconds.
+- A one-click "summarize" action is available on any ticket/chat with multiple messages.
+- Summary highlights the customer's issue, what's been tried, and current status.
+- Agent can regenerate the summary if it's inaccurate.
+
+### Story 32: AI-suggested replies for agents
+**As an** agent, **I want** AI to draft a suggested reply based on the conversation, **so that** I can respond faster while still reviewing before sending.
+- Suggestion appears as an editable draft, never sent automatically.
+- Suggestion accounts for the customer's history and ticket category.
+- Agent can accept, edit, or discard the suggestion.
+
+### Story 33: Automatic categorization
+**As the** system, **I want** AI to automatically suggest or apply a category/priority to a new ticket or chat, **so that** agents don't have to manually tag every one.
+- New items receive an AI-suggested (or auto-applied, per admin config) category on creation.
+- An agent can override the AI-assigned category at any time.
+- Categorization accuracy is reviewable by an admin over time.
+
+### Story 34: AI-suggested knowledge-base solutions
+**As an** agent, **I want** AI to suggest relevant knowledge-base articles for the ticket/chat I'm working on, **so that** I can resolve it faster without searching manually.
+- Suggestions are ranked by relevance to the conversation's content.
+- Agent can insert a suggested article/excerpt directly into a reply.
+- Suggestions improve in relevance as agents accept or dismiss them over time.
