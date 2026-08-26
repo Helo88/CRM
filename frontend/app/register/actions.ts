@@ -1,10 +1,10 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
-import { API_URL, SESSION_COOKIE } from "@/lib/auth";
+import { API_URL } from "@/lib/auth";
+import { setSessionCookies } from "@/lib/session";
 
 const registerSchema = z.object({
   name: z.string().trim().min(1),
@@ -51,14 +51,7 @@ export async function register(
     return { error: data.error ?? t("genericError") };
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, data.token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60,
-  });
+  await setSessionCookies(data.token, data.refreshToken);
 
   redirect("/settings");
 }

@@ -334,15 +334,15 @@ This project's test runner is **Vitest** (introduced by `.squad/plans/auth/03-st
 
 ## Done Criteria
 
-- [ ] `IUser` and the Mongoose schema in `backend/src/models/User.ts` expose `pendingEmail`, `emailConfirmToken`, `emailConfirmTokenExpiresAt`, all nullable.
-- [ ] Story 4's `PATCH /api/v1/customers/:id` no longer allows a customer to change their own `email` immediately — Task 0 is done, closing the confirmation-flow bypass.
-- [ ] `backend/src/routes/me.routes.ts` exposes `GET`/`PATCH /api/v1/me/contact` (both behind `requireAuth`) and public `GET /api/v1/me/email/confirm` — logic inlined directly in the route file, no `backend/src/services/me.service.ts`.
-- [ ] Router mounted from `backend/src/app.ts` at `/api/v1/me`.
-- [ ] Phone updates are immediate; email updates require clicking the link before `User.email` changes.
-- [ ] Expired / unknown / replayed tokens are rejected; a confirmation race (`E11000` on the final save) returns 409, not an uncaught 500.
-- [ ] After confirmation, a follow-up call to `sendEmail` for that user reaches the **new** address (verified by manual test in step 3).
-- [ ] `frontend/app/settings/page.tsx` (Server Component) loads current contact info via `GET /api/v1/me/contact` server-side, renders both forms via `SettingsForm`, and surfaces the pending-email state. The session JWT is never stored in browser-readable storage — it lives only in the `httpOnly` cookie set by `frontend/app/api/auth/*`.
-- [ ] Route tests in the Test Plan added and green.
-- [ ] No new direct `nodemailer` imports outside `backend/src/services/email.service.ts`.
+- [x] `IUser` and the Mongoose schema in `backend/src/models/User.ts` expose `pendingEmail`, `emailConfirmToken`, `emailConfirmTokenExpiresAt`, all nullable.
+- [x] Story 4's `PATCH /api/v1/customers/:id` no longer allows a customer to change their own `email` immediately — Task 0 is done, closing the confirmation-flow bypass.
+- [x] `backend/src/routes/me.routes.ts` exposes `GET`/`PATCH /api/v1/me/contact` (both behind `requireAuth`) and public `GET /api/v1/me/email/confirm` — logic inlined directly in the route file, no `backend/src/services/me.service.ts`.
+- [x] Router mounted from `backend/src/app.ts` at `/api/v1/me`.
+- [x] Phone updates are immediate; email updates require clicking the link before `User.email` changes.
+- [x] Expired / unknown / replayed tokens are rejected; a confirmation race (`E11000` on the final save) returns 409, not an uncaught 500.
+- [x] After confirmation, a follow-up call to `sendEmail` for that user reaches the **new** address (verified by manual test in step 3).
+- [x] `frontend/app/settings/page.tsx` (Server Component) loads current contact info via `GET /api/v1/me/contact` server-side, renders both forms via `SettingsForm`, and surfaces the pending-email state. ~~The session JWT is never stored in browser-readable storage — it lives only in the `httpOnly` cookie set by `frontend/app/api/auth/*`.~~ *(That Route Handler architecture was replaced by Server Actions per CLAUDE.md's "Frontend auth" note, and — as of the refresh-token addendum in the auth/02 plan — by `lib/session.ts` for token rotation specifically. The httpOnly, never-client-readable property itself still holds.)*
+- [x] Route tests in the Test Plan added and green.
+- [x] No new direct `nodemailer` imports outside `backend/src/services/email.service.ts`.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 06.**

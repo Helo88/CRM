@@ -11,6 +11,7 @@
   },
   "Register": {
     "heading": "Create your account",
+    "subheading": "Set up in under a minute — we'll be here when you need us.",
     "name": "Name",
     "email": "Email",
     "password": "Password",
@@ -25,6 +26,7 @@
   },
   "Login": {
     "heading": "Log in",
+    "subheading": "Welcome back — pick up right where you left off.",
     "email": "Email",
     "password": "Password",
     "submit": "Log in",
@@ -36,10 +38,14 @@
     "passwordRequired": "Password is required."
   },
   "Auth": {
-    "logOut": "Log out"
+    "logOut": "Log out",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "supportOnline": "Support is online"
   },
   "Settings": {
     "heading": "Account settings",
+    "subheading": "Update the contact details on your account.",
     "phone": "Phone",
     "email": "Email",
     "savePhone": "Save phone",

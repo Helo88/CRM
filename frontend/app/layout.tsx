@@ -10,7 +10,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "AzmSquad Customer Service",
+  title: { default: "AzmSquad Customer Service", template: "%s · AzmSquad" },
   description: "Customer service platform — live chat and ticket support.",
 };
 

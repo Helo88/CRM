@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { LogoutButton } from "@/app/LogoutButton";
 
@@ -10,7 +10,12 @@ import { LogoutButton } from "@/app/LogoutButton";
 // without navigating to "/" first.
 export async function SiteHeader() {
   const cookieStore = await cookies();
-  const isSignedIn = Boolean(cookieStore.get(SESSION_COOKIE)?.value);
+  // Either cookie counts as signed-in, not just the access token — its short
+  // ~15min maxAge means it's routinely absent for an otherwise-valid session
+  // (see proxy.ts). This is a presence-only UI nicety, not a security check.
+  const isSignedIn = Boolean(
+    cookieStore.get(SESSION_COOKIE)?.value || cookieStore.get(REFRESH_COOKIE)?.value
+  );
   const t = await getTranslations("Nav");
 
   return (

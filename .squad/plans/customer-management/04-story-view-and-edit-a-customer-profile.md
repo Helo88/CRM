@@ -219,15 +219,15 @@ Whichever option is chosen, `cd backend && npm run typecheck` (or the repo's equ
 
 ## Done Criteria
 
-- [ ] `backend/src/routes/customer.routes.ts` exists and implements GET `/:id` and PATCH `/:id` per Tasks 2–4.
-- [ ] `backend/src/app.ts` mounts the router at `/api/v1/customers` and the `customers` TODO is removed from lines 22–24.
-- [ ] Response bodies never contain `passwordHash`, `internalNotes`, or `attachments`.
-- [ ] Agent/admin can GET and PATCH any `role === "customer"` user; PATCH against a non-customer target returns 403.
-- [ ] A customer can GET and PATCH **only** their own record (verified by both a self-success and a cross-user 403 test).
-- [ ] `EDITABLE_FIELDS` is exactly `["name", "email", "phone", "preferredLanguage"]`; any other body key returns 400.
-- [ ] Duplicate-email PATCH returns 409, not 500.
-- [ ] Response includes `ticketHistoryUrl: "/api/v1/customers/<id>/history"` with a code comment pointing to Story 6.
-- [ ] `npm run typecheck` in `backend/` passes with no new `any` usages in the new file.
-- [ ] `backend/src/models/User.ts` is unchanged.
+- [x] `backend/src/routes/customer.routes.ts` exists and implements GET `/:id` and PATCH `/:id` per Tasks 2–4.
+- [x] `backend/src/app.ts` mounts the router at `/api/v1/customers` and the `customers` TODO is removed from lines 22–24.
+- [x] Response bodies never contain `passwordHash`, `internalNotes`, or `attachments`.
+- [x] Agent/admin can GET and PATCH any `role === "customer"` user; PATCH against a non-customer target returns 403.
+- [x] A customer can GET and PATCH **only** their own record (verified by both a self-success and a cross-user 403 test).
+- [x] `EDITABLE_FIELDS` is exactly `["name", "email", "phone", "preferredLanguage"]`; any other body key returns 400.
+- [x] Duplicate-email PATCH returns 409, not 500.
+- [x] Response includes `ticketHistoryUrl: "/api/v1/customers/<id>/history"` with a code comment pointing to Story 6.
+- [x] `npm run typecheck` in `backend/` passes with no new `any` usages in the new file.
+- [x] `backend/src/models/User.ts` is unchanged. *(True for Story 4's own scope — Story 5 below is what later extended it with `pendingEmail`/`emailConfirmToken` fields.)*
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 05.**

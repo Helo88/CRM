@@ -1,18 +1,46 @@
 import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { User } from "../models/User";
+import { RefreshFamily } from "../models/RefreshFamily";
 import type { JwtPayload } from "../middleware/auth";
 import jwt from "jsonwebtoken";
+import {
+  generateFamilyId,
+  generateRootToken,
+  parseFamilyId,
+  hashToken,
+  hashesEqual,
+  deriveSuccessor,
+  parseDurationMs,
+} from "../utils/refreshToken";
 
 const router = express.Router();
 
 const BCRYPT_SALT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
+const REFRESH_TOKEN_TTL = process.env.REFRESH_TOKEN_TTL || "30d";
 
 function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, process.env.JWT_SECRET as string, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    expiresIn: process.env.JWT_EXPIRES_IN || "15m",
   } as jwt.SignOptions);
+}
+
+// Mints a new refresh-token family (one per login session) and returns the
+// raw root token — see .squad/plans/auth/02-story-login-customer-agent-or-admin.md,
+// "Addendum: Refresh token mechanism". Called once at login/register; every
+// subsequent token in this family is derived from this root via the
+// deterministic HMAC chain in POST /refresh, never freshly random again.
+async function issueRefreshFamily(userId: string): Promise<string> {
+  const familyId = generateFamilyId();
+  const rootToken = generateRootToken(familyId);
+  await RefreshFamily.create({
+    familyId,
+    userId,
+    currentHeadHash: hashToken(rootToken),
+    sessionExpiresAt: new Date(Date.now() + parseDurationMs(REFRESH_TOKEN_TTL)),
+  });
+  return rootToken;
 }
 
 interface RegisterBody {
@@ -68,8 +96,10 @@ router.post("/register", async (req: Request<unknown, unknown, RegisterBody>, re
   }
 
   const token = signToken({ sub: user.id, role: user.role });
+  const refreshToken = await issueRefreshFamily(user.id);
   res.status(201).json({
     token,
+    refreshToken,
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
 });
@@ -101,10 +131,103 @@ router.post("/login", async (req: Request, res: Response) => {
   }
 
   const token = signToken({ sub: user.id, role: user.role });
+  const refreshToken = await issueRefreshFamily(user.id);
   res.status(200).json({
     token,
+    refreshToken,
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
+});
+
+interface RefreshBody {
+  refreshToken?: string;
+}
+
+// auth feature, refresh-token addendum (see the plan doc): rotates a refresh
+// token via a deterministic HMAC chain — concurrent requests presenting the
+// same token converge on the same successor instead of forking the family
+// (see utils/refreshToken.ts). Presenting an already-superseded token is
+// treated as reuse and revokes the whole family, not just this request.
+router.post("/refresh", async (req: Request<unknown, unknown, RefreshBody>, res: Response) => {
+  const presented = req.body?.refreshToken;
+  if (typeof presented !== "string" || !presented) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+
+  const familyId = parseFamilyId(presented);
+  if (!familyId) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+
+  const family = await RefreshFamily.findOne({ familyId });
+  if (!family || family.revoked || family.sessionExpiresAt.getTime() <= Date.now()) {
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+
+  const presentedHash = hashToken(presented);
+  const successor = deriveSuccessor(presented);
+  const successorHash = hashToken(successor);
+
+  // Deliberately does NOT compare presentedHash against family.currentHeadHash
+  // as a standalone up-front check — that read is a snapshot that a
+  // concurrent sibling request presenting the same token can race past,
+  // which would misfire as "reuse" for a perfectly legitimate concurrent
+  // refresh. The atomic CAS below is the only thing allowed to decide
+  // whether the presented token was current.
+  const advanced = await RefreshFamily.findOneAndUpdate(
+    { familyId, currentHeadHash: presentedHash },
+    { $set: { currentHeadHash: successorHash } }
+  );
+
+  if (!advanced) {
+    // Either a concurrent sibling already advanced the chain to exactly the
+    // successor this request also derived (legitimate — same deterministic
+    // function, same input), or the presented token is genuinely stale
+    // (superseded by an earlier, unrelated rotation). Only the second case
+    // is reuse/theft.
+    const current = await RefreshFamily.findOne({ familyId });
+    if (!current || !hashesEqual(current.currentHeadHash, successorHash)) {
+      if (current && !current.revoked) {
+        current.revoked = true;
+        await current.save();
+        console.warn(`[auth/refresh] refresh token reuse detected, family ${familyId} revoked`);
+      }
+      res.status(401).json({ error: "Invalid or expired refresh token" });
+      return;
+    }
+  }
+
+  const user = await User.findById(family.userId);
+  if (!user || !user.isActive) {
+    await RefreshFamily.updateOne({ familyId }, { $set: { revoked: true } });
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+    return;
+  }
+
+  const token = signToken({ sub: user.id, role: user.role });
+  res.status(200).json({
+    token,
+    refreshToken: successor,
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
+interface LogoutBody {
+  refreshToken?: string;
+}
+
+// Best-effort server-side revocation — the frontend clears its cookies
+// regardless of this call's outcome (see frontend/app/actions.ts logout()).
+router.post("/logout", async (req: Request<unknown, unknown, LogoutBody>, res: Response) => {
+  const presented = req.body?.refreshToken;
+  const familyId = typeof presented === "string" ? parseFamilyId(presented) : null;
+  if (familyId) {
+    await RefreshFamily.updateOne({ familyId }, { $set: { revoked: true } });
+  }
+  res.status(200).json({ message: "Logged out" });
 });
 
 export default router;

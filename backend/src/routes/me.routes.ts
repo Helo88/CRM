@@ -36,11 +36,14 @@ router.patch("/contact", requireAuth, async (req: Request<unknown, unknown, Cont
   }
 
   if (phone !== undefined) {
-    if (typeof phone !== "string" || phone.trim().length === 0) {
-      res.status(400).json({ error: "phone must be a non-empty string" });
+    if (typeof phone !== "string") {
+      res.status(400).json({ error: "phone must be a string" });
       return;
     }
-    user.phone = phone.trim();
+    // Phone is optional on the User model (models/User.ts) — an empty
+    // string clears it, matching customer.routes.ts's PATCH /customers/:id
+    // handling of the same field.
+    user.phone = phone.trim().length === 0 ? undefined : phone.trim();
   }
 
   if (email !== undefined) {
