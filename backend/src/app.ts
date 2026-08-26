@@ -6,6 +6,8 @@ import healthRoutes from "./routes/health.routes";
 import authRoutes from "./routes/auth.routes";
 import ticketRoutes from "./routes/ticket.routes";
 import conversationRoutes from "./routes/conversation.routes";
+import customerRoutes from "./routes/customer.routes";
+import meRoutes from "./routes/me.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export function createApp(): Application {
@@ -19,7 +21,9 @@ export function createApp(): Application {
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/tickets", ticketRoutes);
   app.use("/api/v1/conversations", conversationRoutes);
-  // TODO: mount remaining feature routers as they're implemented — customers,
+  app.use("/api/v1/customers", customerRoutes);
+  app.use("/api/v1/me", meRoutes);
+  // TODO: mount remaining feature routers as they're implemented —
   // agent-workspace, sla-automation, knowledge-base, ai-features, security-admin,
   // reports-management (see USER_STORIES.md for the full feature list).
 

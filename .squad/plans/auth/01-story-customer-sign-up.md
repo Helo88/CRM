@@ -179,7 +179,19 @@ Change line 5 from `interface JwtPayload {` to `export interface JwtPayload {`. 
 
 ## Frontend Tasks
 
-No frontend changes required. A sign-up form/UI will be planned as a separate story once the customer portal work begins.
+**AMENDED 2026-08-25:** the original text here ("no frontend changes required... planned as a separate story once the customer portal work begins") was a scoping mistake — no such story ever got added anywhere in the 51-story backlog, leaving the backend endpoint with no way for a human to reach it. `CLAUDE.md`'s Conventions section now requires every persona-facing story to ship its UI in the same story; `USER_STORIES.md` Story 1 was updated to match. This section is amended, not the backend Tasks above (already implemented and unaffected).
+
+### 5 — `/register` page
+
+**Files:** `frontend/app/register/page.tsx` (Server Component), `frontend/app/register/RegisterForm.tsx` (Client Component).
+
+- `page.tsx`: read the session cookie via `await cookies()` (see `frontend/lib/auth.ts` for `SESSION_COOKIE`); if already present, `redirect("/settings")` — a logged-in visitor shouldn't see the sign-up form. Otherwise render `<RegisterForm />` inside the shared centered-card layout used by `frontend/app/settings/page.tsx`.
+- `RegisterForm.tsx`: `"use client"`. Fields: `name`, `email`, `password` (shadcn `Input`/`Label`/`Button`/`Card`, matching `frontend/app/settings/SettingsForm.tsx`'s structure). On submit, `POST /api/auth/register` (the existing BFF route at `frontend/app/api/auth/register/route.ts` — already implemented, sets the `httpOnly` cookie) with `{ name, email, password }` as JSON. On a non-OK response, show the returned `error` string inline. On success, `router.push("/settings")` then `router.refresh()` so the Server Component re-reads the now-present cookie.
+- Link to `/login` for visitors who already have an account ("Already have an account? Log in").
+
+### 6 — Landing page links to `/register` and `/login`
+
+**File:** `frontend/app/page.tsx` — currently a health-check placeholder (see Task in Story 02's amendment for the full rewrite; both stories touch this file, Story 02 owns the final version since it also needs to render the signed-in state).
 
 ---
 
@@ -238,11 +250,11 @@ No test runner is currently configured in `backend/` (no `jest`/`vitest`/etc. in
 
 ## Done Criteria
 
-- [ ] `POST /api/v1/auth/register` creates a `User` with `role: "customer"`, hashed `passwordHash` (never the raw password), and returns `201` with a JWT + public user fields.
-- [ ] A duplicate email (sequential or racing) returns `409`, never `500` or a raw Mongo error.
-- [ ] The returned JWT's payload shape (`{ sub, role }`) is verified end-to-end by `requireAuth` in `middleware/auth.ts` without modification to that file beyond exporting `JwtPayload`.
-- [ ] `role` in the request body is never trusted — always `"customer"` on this endpoint.
-- [ ] `backend`: `npm run typecheck` and `npm run build` both pass clean.
-- [ ] `POST /api/v1/auth/login` is untouched (still the Story 2 stub).
+- [x] `POST /api/v1/auth/register` creates a `User` with `role: "customer"`, hashed `passwordHash` (never the raw password), and returns `201` with a JWT + public user fields.
+- [x] A duplicate email (sequential or racing) returns `409`, never `500` or a raw Mongo error.
+- [x] The returned JWT's payload shape (`{ sub, role }`) is verified end-to-end by `requireAuth` in `middleware/auth.ts` without modification to that file beyond exporting `JwtPayload`.
+- [x] `role` in the request body is never trusted — always `"customer"` on this endpoint.
+- [x] `backend`: `npm run typecheck` and `npm run build` both pass clean.
+- [x] `POST /api/v1/auth/login` is untouched (still the Story 2 stub). *(true at Story 1 completion — Story 2 and the later refresh-token addendum have since implemented it for real, as always intended.)*
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 02 (customer login).**

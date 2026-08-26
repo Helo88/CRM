@@ -245,12 +245,12 @@ All tests must run with `npm test` from `backend/` after Task 1.
 
 ## Done Criteria
 
-- [ ] Customer-only endpoints (`POST /api/v1/tickets`, `POST /api/v1/conversations`, `POST /api/v1/conversations/:id/escalate`) reject agent and admin callers with **403** and the exact body `{ error: "You do not have permission to perform this action" }`.
-- [ ] The agent-only / admin-only enforcement path (`requireRole("agent","admin")` and `requireRole("admin")`) is covered by unit tests even though no currently mounted route uses those combinations.
-- [ ] Any protected endpoint with no / malformed / expired / wrong-secret token returns **401** with the exact error message from `backend/src/middleware/auth.ts:19` or `:28`.
-- [ ] `req.user.role` is proven (by test) to come from the verified JWT payload only — request body/query/headers cannot influence it.
-- [ ] `backend/src/middleware/README.md` documents the RBAC convention and the copy-paste pattern for future protected routes.
-- [ ] `npm test` and `npm run typecheck` pass in `backend/`.
-- [ ] No changes to `backend/src/middleware/auth.ts`, `backend/src/types/express.d.ts`, or existing route files unless a Task 4 test flagged a genuine gap (documented in the PR).
+- [x] Customer-only endpoints (`POST /api/v1/tickets`, `POST /api/v1/conversations`, `POST /api/v1/conversations/:id/escalate`) reject agent and admin callers with **403** and the exact body `{ error: "You do not have permission to perform this action" }`.
+- [x] The agent-only / admin-only enforcement path (`requireRole("agent","admin")` and `requireRole("admin")`) is covered by unit tests even though no currently mounted route uses those combinations.
+- [x] Any protected endpoint with no / malformed / expired / wrong-secret token returns **401** with the exact error message from `backend/src/middleware/auth.ts:19` or `:28`.
+- [x] `req.user.role` is proven (by test) to come from the verified JWT payload only — request body/query/headers cannot influence it.
+- [x] `backend/src/middleware/README.md` documents the RBAC convention and the copy-paste pattern for future protected routes.
+- [x] `npm test` and `npm run typecheck` pass in `backend/`.
+- [x] No changes to `backend/src/middleware/auth.ts`, `backend/src/types/express.d.ts`, or existing route files unless a Task 4 test flagged a genuine gap (documented in the PR).
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to the next story.**

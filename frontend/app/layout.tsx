@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Direction } from "radix-ui";
+import { NextIntlClientProvider } from "next-intl";
 import { cn } from "@/lib/utils";
+import { SiteHeader } from "@/components/SiteHeader";
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "AzmSquad Customer Service",
+  title: { default: "AzmSquad Customer Service", template: "%s · AzmSquad" },
   description: "Customer service platform — live chat and ticket support.",
 };
 
@@ -17,9 +19,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   const dir = "ltr" as "ltr" | "rtl";
   return (
-    <html lang="en" dir={dir} className={cn("font-sans", plusJakartaSans.variable)}>
+    <html lang="en" dir={dir} className={cn("dark font-sans", plusJakartaSans.variable)}>
       <body>
-        <Direction.Provider dir={dir}>{children}</Direction.Provider>
+        <NextIntlClientProvider>
+          <Direction.Provider dir={dir}>
+            <SiteHeader />
+            {children}
+          </Direction.Provider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -1,0 +1,78 @@
+{
+  "Nav": {
+    "brand": "AzmSquad",
+    "settings": "Settings",
+    "logIn": "Log in",
+    "signUp": "Sign up"
+  },
+  "Home": {
+    "title": "AzmSquad Customer Service",
+    "tagline": "Live chat and ticket support, in one place."
+  },
+  "Register": {
+    "heading": "Create your account",
+    "subheading": "Set up in under a minute — we'll be here when you need us.",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Create account",
+    "submitPending": "Creating account…",
+    "haveAccount": "Already have an account?",
+    "logIn": "Log in",
+    "genericError": "Could not create your account.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordTooShort": "Password must be at least 8 characters."
+  },
+  "Login": {
+    "heading": "Log in",
+    "subheading": "Welcome back — pick up right where you left off.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Log in",
+    "submitPending": "Logging in…",
+    "noAccount": "Don't have an account?",
+    "signUp": "Sign up",
+    "genericError": "Could not log you in.",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordRequired": "Password is required."
+  },
+  "Auth": {
+    "logOut": "Log out",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "supportOnline": "Support is online"
+  },
+  "Settings": {
+    "heading": "Account settings",
+    "subheading": "Update the contact details on your account.",
+    "phone": "Phone",
+    "email": "Email",
+    "savePhone": "Save phone",
+    "saveEmail": "Save email",
+    "currentEmail": "Current email: {email}",
+    "pendingEmail": "Pending: {email} — awaiting confirmation.",
+    "phoneUpdated": "Phone updated",
+    "emailConfirmationSent": "Confirmation email sent to {email}. Click the link to complete the change.",
+    "phoneUpdateFailed": "Could not update phone.",
+    "emailUpdateFailed": "Could not update email."
+  },
+  "CustomerProfile": {
+    "heading": "Customer profile",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "preferredLanguage": "Preferred language",
+    "languageEnglish": "English",
+    "languageArabic": "Arabic",
+    "createdAt": "Customer since {date}",
+    "viewHistory": "View ticket/chat history",
+    "save": "Save changes",
+    "savePending": "Saving…",
+    "saved": "Saved",
+    "genericError": "Could not update this profile.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "notFound": "Customer not found, or you don't have permission to view this profile."
+  }
+}

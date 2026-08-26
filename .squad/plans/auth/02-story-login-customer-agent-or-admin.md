@@ -134,7 +134,13 @@ router.post("/login", async (req: Request, res: Response) => {
 
 ### 2 — Frontend
 
-**No frontend changes required.** This story is backend-only; the frontend login form is a later story.
+**AMENDED 2026-08-25:** as with Story 1, "no frontend changes required... a later story" was a scoping mistake — no later story ever owned it. `CLAUDE.md`'s Conventions now require the UI in the same story; `USER_STORIES.md` Story 2 was updated to match.
+
+**Files:** `frontend/app/login/page.tsx` (Server Component), `frontend/app/login/LoginForm.tsx` (Client Component), `frontend/app/page.tsx` (rewrite).
+
+- `login/page.tsx`: same already-logged-in guard as Story 1's `register/page.tsx` (`await cookies()`, `redirect("/settings")` if present). Otherwise render `<LoginForm />`.
+- `LoginForm.tsx`: `"use client"`. Fields: `email`, `password`. `POST /api/auth/login` (existing BFF route, `frontend/app/api/auth/login/route.ts`) with `{ email, password }`. On non-OK, show the generic error string the backend returned (do not invent a more specific one — Story 2's backend deliberately keeps it generic). On success, `router.push("/settings")` then `router.refresh()`. Link to `/register` ("Don't have an account? Sign up").
+- `frontend/app/page.tsx`: replace the health-check placeholder with a real landing page. Server Component: `await cookies()` for `SESSION_COOKIE`. If present, show a welcome state with a link to `/settings` and a sign-out control (a small Client Component `LogoutButton.tsx` that `POST`s to the existing `/api/auth/logout` route, then `router.push("/")` + `router.refresh()`). If absent, show links to `/login` and `/register`. Drop the `axios` health-check call entirely — it was a scaffold-only placeholder, not a story requirement.
 
 ---
 
@@ -195,13 +201,68 @@ Cases to cover once a runner exists:
 
 ## Done Criteria
 
-- [ ] `POST /api/v1/auth/login` in `backend/src/routes/auth.routes.ts` no longer returns 501.
-- [ ] Successful login returns 200 with `{ token, user: { id, name, email, role } }` and **no** `passwordHash`.
-- [ ] The JWT is signed with `JWT_SECRET`, expires per `JWT_EXPIRES_IN` (default `7d`), and its payload is `{ sub: <userId>, role: <UserRole> }` — verifiable by `requireAuth` in `backend/src/middleware/auth.ts` without changes to that middleware.
-- [ ] Invalid credentials (unknown email, wrong password, deactivated account, malformed input) all return the **same** 401 body.
-- [ ] Email lookup is case- and whitespace-insensitive.
-- [ ] `npm run typecheck` passes in `backend/`.
-- [ ] No new runtime dependencies added to `backend/package.json`.
-- [ ] Frontend is untouched.
+- [x] `POST /api/v1/auth/login` in `backend/src/routes/auth.routes.ts` no longer returns 501.
+- [x] Successful login returns 200 with `{ token, user: { id, name, email, role } }` and **no** `passwordHash`. *(Response now also includes `refreshToken` — see the refresh-token addendum — but the required fields and the passwordHash exclusion still hold.)*
+- [x] The JWT is signed with `JWT_SECRET`, expires per `JWT_EXPIRES_IN` (default `15m`, changed from the original `7d` by the refresh-token addendum below), and its payload is `{ sub: <userId>, role: <UserRole> }` — verifiable by `requireAuth` in `backend/src/middleware/auth.ts` without changes to that middleware.
+- [x] Invalid credentials (unknown email, wrong password, deactivated account, malformed input) all return the **same** 401 body.
+- [x] Email lookup is case- and whitespace-insensitive.
+- [x] `npm run typecheck` passes in `backend/`.
+- [x] No new runtime dependencies added to `backend/package.json`.
+- [x] ~~Frontend is untouched.~~ *(Superseded by the AMENDED 2026-08-25 note above — CLAUDE.md's Conventions were changed to require frontend in the same story, and the frontend task in this plan was carried out. This original criterion no longer applies.)*
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 03 (RBAC / `requireRole` wiring).**
+
+---
+
+## Addendum (2026-08-26): Refresh token mechanism
+
+**Scope change:** the original intake explicitly listed refresh tokens as out of scope ("not in the acceptance criteria, don't add it" — `.squad/stories/auth/login-customer-agent-or-admin/intake.md`, "Out of scope"). The user has since directed this to be added, driven by two real gaps in production use: (1) `JWT_EXPIRES_IN` defaulting to `7d` means either sessions are inconveniently short-lived if tightened for security, or dangerously long-lived if left as-is, with no way to revoke a compromised token before it naturally expires; (2) Next.js 16 Server Components cannot refresh a session themselves (see below), so any real session-renewal story requires this mechanism designed in, not bolted on later. Whoever owns `intake.md`'s prose should update its "Out of scope" line to match — not done here per this repo's convention that intake/story text is user-authored, not agent-authored.
+
+Reached after three rounds of adversarial design review (random-token-with-branching-grace-window → naive-no-branching-with-false-positive-risk → deterministic HMAC chain). Full reasoning trail is in conversation history; this section is the final approved design only.
+
+### Architecture
+
+- **Access token:** JWT `{ sub, role }`, unchanged shape, `JWT_EXPIRES_IN` default drops from `7d` to `15m`.
+- **Refresh token:** opaque to the client, format `<familyId>.<secret>`. Root secret is `crypto.randomBytes(32)` (base64url), minted once at login. `familyId` is `crypto.randomBytes(16)`, a lookup key only, not itself a security boundary.
+- **Rotation is deterministic, not random:** `successor = base64url(HMAC-SHA256(REFRESH_CHAIN_SECRET, fullPresentedToken))`. `REFRESH_CHAIN_SECRET` is a new backend-only env var (same class as `JWT_SECRET`), never transmitted to the client, used only inside the refresh route.
+- **One document per login session, not per rotation.** New Mongoose model `RefreshFamily`: `{ familyId (indexed, unique), userId, currentHeadHash, sessionExpiresAt, revoked, createdAt }`. `sessionExpiresAt` is written once at login (`now + REFRESH_TOKEN_TTL`, new env var, default `30d`) and never touched by any rotation — that's what makes it a real absolute cap.
+- **Storage never contains a plaintext token** — only `currentHeadHash` (SHA-256 of the current valid token string). Compare with `crypto.timingSafeEqual`, not `===`.
+
+### `POST /api/v1/auth/refresh` logic
+
+Given presented token `X` (backend parses `familyId` from its prefix):
+1. Look up `RefreshFamily` by `familyId`. Missing, `revoked`, or `now >= sessionExpiresAt` → reject, no rotation attempted, no state change.
+2. `hash(X) !== currentHeadHash` → the token is stale relative to the current chain state (superseded by at least one legitimate rotation already) → **unconditional reuse/theft**: set `revoked: true` (this also invalidates the *actual* current token — intentional; the only way a superseded token resurfaces is prior leakage, so the conservative response is to kill the whole family, not just this one request). Log the event. 401.
+3. `hash(X) === currentHeadHash` → compute `successor = HMAC(REFRESH_CHAIN_SECRET, X)`. Atomically `findOneAndUpdate({ familyId, currentHeadHash: hash(X) }, { $set: { currentHeadHash: hash(successor) } })`.
+   - Matched → this request advanced the chain. Return `successor` + a fresh access token.
+   - Not matched → a concurrent request already advanced it. Re-read the family doc; `currentHeadHash` will equal `hash(successor)` (the concurrent winner necessarily derived the identical value, since `successor` is a pure function of `X`) — treat as success, return the same `successor` this request already computed itself. Never branches: exactly one document, exactly one state transition, any number of concurrent racers converge on it.
+
+### Frontend (Next.js 16 constraint-driven)
+
+Server Components can only *read* cookies (`cookies().set()` throws outside a Server Action/Route Handler) — this is the hard constraint the whole frontend design routes around:
+
+- New `lib/session.ts`: `refreshSession()` — calls backend `/auth/refresh` with the current refresh cookie, `cookies().set()` both new cookies on success, returns the new access token or `null`. A plain function, not an HTTP endpoint — called in-process by both paths below.
+- **Server Component hits a 401** (e.g. `settings/page.tsx`): cannot self-refresh → `redirect()` to new `app/api/session/refresh/route.ts` (`GET`, `?next=`), which calls `refreshSession()` and redirects back to `next` (with a one-shot marker to prevent an infinite loop if refresh succeeds but the target still 401s).
+- **Server Action hits a 401** (e.g. `settings/actions.ts`): calls `refreshSession()` inline, retries the original backend call once, then proceeds — never redirects, since that would silently drop the mutation (e.g. a save-phone submission).
+- `lib/auth.ts`: add `REFRESH_COOKIE`. Both cookies: `httpOnly`, `secure` in prod, `sameSite: "lax"`, `path: "/"` (a narrow path for the refresh cookie was considered and rejected — it would hide the cookie from Server Actions invoked from arbitrary page paths, which need to read it for inline refresh).
+- `login/actions.ts` / `register/actions.ts`: set both cookies on success (`maxAge` matching each token's real TTL).
+- `app/actions.ts` `logout()`: read refresh cookie, best-effort `POST /api/v1/auth/logout` (sets `revoked: true` on the family — logout is now a one-field update, not per-token bookkeeping), clear both cookies unconditionally (local logout must succeed even if the backend call fails), redirect to `/`.
+- `proxy.ts`: **one-line change only** — treat "either cookie present" as "has a session" instead of only the access cookie. Without this, the access cookie's routine ~15-minute expiry would bounce the user to `/` before the refresh flow ever runs. No verification, no network calls added — stays a thin presence/routing guard, not an authentication source of truth. `requireAuth` on the backend remains the sole authority on whether a request is actually authorized.
+
+### Explicitly not in this pass
+
+Rate-limiting `/auth/refresh`; a user-facing active-sessions/device list (the one-`RefreshFamily`-per-login-session shape makes this easy to add later — nothing requires it now).
+
+### Done Criteria (refresh-token addendum)
+
+- [x] Sequential rotation (`A → B → C`) works; each successor is only accepted once.
+- [x] 8-way concurrent requests presenting the same token all converge on the identical successor — verified via real concurrent `curl` calls, no branching, one DB row.
+- [x] A token superseded by 2+ rotations is unconditionally rejected and revokes the entire family — verified: the legitimately-current token also stopped working immediately after.
+- [x] The absolute `sessionExpiresAt` cap is enforced regardless of the token's own per-rotation validity — verified by forcing a past `sessionExpiresAt` directly in MongoDB and confirming refresh still fails.
+- [x] `POST /auth/logout` revokes server-side — verified the presented refresh token is rejected by `/auth/refresh` immediately after logout, not just cleared client-side.
+- [x] `backend`: `npm run typecheck`, `npm run build`, and `npm test` (58/58, all pre-existing suites) all pass clean.
+- [x] `frontend`: `npm run build` (typecheck + production build) passes clean.
+- [x] End-to-end browser verification (Playwright): login sets both cookies; deleting only the access cookie and reloading `/settings` silently redirects through `/api/session/refresh` and re-renders correctly with both cookies restored; a Server Action mutation (phone save) survives an inline refresh without being dropped; `SiteHeader` still shows signed-in state when only the refresh cookie is present; logout clears both cookies and the backend genuinely revokes; a fully logged-out session is correctly bounced from `/settings`.
+- [x] `customers/[id]/page.tsx` and `customers/[id]/actions.ts` (pre-existing, outside this story's original scope) updated with the same 401/refresh handling — required so the shortened access-token lifetime doesn't regress that page's usability every ~15 minutes.
+
+**STOP HERE. Report to the user and wait for confirmation before proceeding to Story 03 (RBAC) — already implemented and marked done above; next unimplemented work is elsewhere in the backlog.**
