@@ -373,7 +373,7 @@ The page's call-to-action adapts to whether the visitor is currently signed in (
 
 ### Backend error strings, localized
 
-The backend has no i18n of its own (a separate service, plain error strings) — with Story 49 (Arabic) now live, any raw `data.error` string surfaced directly to the user stayed in English regardless of the UI's locale. `frontend/app/settings/actions.ts`'s `updateEmail` now maps this endpoint's actually-reachable error strings (`"valid email is required"`, `"This is already your current email"`, 409 duplicate, 502 send-failure) to translated copy instead of passing them through raw. The same fix was applied at every other call site that surfaces a backend error (login, register, the Story 4 customer-profile form) in the same pass, since leaving this endpoint fixed while the others still leaked English would have been an inconsistent half-fix.
+The backend has no i18n of its own (a separate service, plain error strings) — with Story 50 (Arabic) now live, any raw `data.error` string surfaced directly to the user stayed in English regardless of the UI's locale. `frontend/app/settings/actions.ts`'s `updateEmail` now maps this endpoint's actually-reachable error strings (`"valid email is required"`, `"This is already your current email"`, 409 duplicate, 502 send-failure) to translated copy instead of passing them through raw. The same fix was applied at every other call site that surfaces a backend error (login, register, the Story 4 customer-profile form) in the same pass, since leaving this endpoint fixed while the others still leaked English would have been an inconsistent half-fix.
 
 ### Done Criteria (addendum)
 
