@@ -15,6 +15,12 @@ import { login, type AuthActionState } from "./actions";
 
 const INITIAL_STATE: AuthActionState = { error: null };
 
+// Seeded by `npm run seed:demo` in backend/ (backend/scripts/seed-demo-customer.ts)
+// — a real, always-available account so anyone can explore the live app in
+// one click, no signup required.
+const DEMO_EMAIL = "demo@azmsquad.com";
+const DEMO_PASSWORD = "Demo@12345";
+
 export function LoginForm() {
   const t = useTranslations("Login");
   const tAuth = useTranslations("Auth");
@@ -33,7 +39,7 @@ export function LoginForm() {
       <div className="animate-in fade-in slide-in-from-top-2 duration-500">
         <PresenceBadge label={presenceLabel} />
       </div>
-      <Card className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 [animation-delay:150ms] [animation-fill-mode:both] rounded-[28px] rounded-ss-none border-none shadow-2xl shadow-black/20 ring-1 ring-foreground/10 transition-shadow hover:shadow-primary/10">
+      <Card className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 [animation-delay:150ms] [animation-fill-mode:both] rounded-[28px] rounded-ss-none border-none shadow-pop ring-1 ring-foreground/10 transition-shadow hover:shadow-primary/10">
       <CardHeader className="items-center gap-1 pt-6 text-center">
         <CardTitle className="text-2xl font-bold tracking-tight">{t("heading")}</CardTitle>
         <CardDescription className="text-balance">{t("subheading")}</CardDescription>
@@ -84,6 +90,16 @@ export function LoginForm() {
           <Button type="submit" disabled={pending} className="transition-transform active:scale-[0.98]">
             {pending ? t("submitPending") : t("submit")}
           </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail(DEMO_EMAIL);
+              setPassword(DEMO_PASSWORD);
+            }}
+            className="rounded-xl border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            {t("fillDemo")}
+          </button>
           <p className="text-sm text-muted-foreground text-center">
             {t("noAccount")}{" "}
             <Link href="/register" className="text-primary underline-offset-4 hover:underline">

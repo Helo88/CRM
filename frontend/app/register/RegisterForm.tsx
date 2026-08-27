@@ -31,7 +31,7 @@ export function RegisterForm() {
       <div className="animate-in fade-in slide-in-from-top-2 duration-500">
         <PresenceBadge label={presenceLabel} />
       </div>
-      <Card className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 [animation-delay:150ms] [animation-fill-mode:both] rounded-[28px] rounded-ss-none border-none shadow-2xl shadow-black/20 ring-1 ring-foreground/10 transition-shadow hover:shadow-primary/10">
+      <Card className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500 [animation-delay:150ms] [animation-fill-mode:both] rounded-[28px] rounded-ss-none border-none shadow-pop ring-1 ring-foreground/10 transition-shadow hover:shadow-primary/10">
       <CardHeader className="items-center gap-1 pt-6 text-center">
         <CardTitle className="text-2xl font-bold tracking-tight">{t("heading")}</CardTitle>
         <CardDescription className="text-balance">{t("subheading")}</CardDescription>

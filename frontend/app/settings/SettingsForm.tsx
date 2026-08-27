@@ -32,7 +32,7 @@ export function SettingsForm({ contact }: { contact: ContactInfo }) {
   const emailDirty = email !== contact.email;
 
   return (
-    <Card className="w-full max-w-md rounded-[28px] rounded-ss-none border-none shadow-2xl shadow-black/20 ring-1 ring-foreground/10">
+    <Card className="w-full max-w-md rounded-[28px] rounded-ss-none border-none shadow-pop ring-1 ring-foreground/10">
       <CardHeader className="items-center gap-1 pt-6 text-center">
         <CardTitle className="text-2xl font-bold tracking-tight">{t("heading")}</CardTitle>
         <CardDescription className="text-balance">{t("subheading")}</CardDescription>

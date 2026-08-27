@@ -1,65 +1,68 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
-import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SIDEBAR_COLLAPSED_COOKIE } from "@/lib/sidebar";
-import { SidebarCollapseToggle } from "./SidebarCollapseToggle";
+import { SESSION_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
+import { visibleStaffNavItems, type StaffNavKey } from "@/lib/staffNav";
+import { MobileStaffNav } from "@/components/MobileStaffNav";
 
-// Reuses the --sidebar-* tokens already reserved in globals.css for exactly
-// this kind of section — they'd been unused until now. Only one item today
-// (Customers); more staff-only pages (agent-workspace, security-admin's
-// account management, ...) are expected to land here later per
-// USER_STORIES.md, so this takes an `active` key rather than being
-// hardcoded to a single page.
-const NAV_ITEMS = [{ key: "customers", href: "/customers", icon: Users }] as const;
-
-export async function StaffSidebar({ active }: { active: (typeof NAV_ITEMS)[number]["key"] }) {
+// A pure-CSS hover-to-expand rail (icons only at rest, widens to show
+// labels on hover) — no persisted collapse state, no click target. Fixed
+// below the 57px SiteHeader; the sibling spacer div in the page's own flex
+// row reserves its resting width so content doesn't jump when it expands.
+// Below the md breakpoint the rail is hidden entirely and MobileStaffNav's
+// hamburger + drawer takes over, same split as the reference app.
+export async function StaffSidebar({ active }: { active: StaffNavKey }) {
   const t = await getTranslations("Nav");
-  const tSidebar = await getTranslations("StaffSidebar");
   const cookieStore = await cookies();
-  // Collapsed preference persists via cookie, resolved server-side — same
-  // pattern as theme/locale (lib/theme.ts, lib/locale.ts) — so there's no
-  // flash of the wrong width on load, and SidebarCollapseToggle's
-  // router.refresh() re-reads it correctly on toggle.
-  const collapsed = cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
+  // Unverified peek, same pattern as SiteHeader/customers-new-page — a UI
+  // nicety only; the backend's requireRole/requirePermission is the real boundary.
+  const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
+  const { role } = accessToken ? peekJwtPayload(accessToken) : {};
+  const visibleItems = visibleStaffNavItems(role);
 
   return (
-    <aside
-      className={cn(
-        "shrink-0 border-e border-sidebar-border bg-sidebar p-3 transition-[width] duration-200",
-        collapsed ? "w-16" : "w-56"
-      )}
-    >
-      <div className={cn("mb-2 flex", collapsed ? "justify-center" : "justify-end")}>
-        <SidebarCollapseToggle
-          collapsed={collapsed}
-          expandLabel={tSidebar("expand")}
-          collapseLabel={tSidebar("collapse")}
-        />
+    <>
+      <div className="fixed inset-x-0 top-[57px] z-20 border-b border-border bg-background p-2 md:hidden">
+        <MobileStaffNav active={active} role={role} />
       </div>
-      <nav className="flex flex-col gap-1">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.key}
-              href={item.href}
-              title={collapsed ? t(item.key) : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                collapsed && "justify-center px-0",
-                item.key === active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {!collapsed && <span>{t(item.key)}</span>}
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+      <div className="hidden w-20 shrink-0 md:block" aria-hidden />
+      <aside className="group/rail fixed inset-y-0 start-0 top-[57px] z-30 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
+        <nav className="flex flex-col gap-1">
+          {visibleItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.key === active;
+            return (
+              <Link
+                key={item.key}
+                href={item.href}
+                title={t(item.key)}
+                className="mx-3 flex h-11 items-center gap-3 rounded-xl px-2 transition-colors hover:bg-sidebar-accent"
+              >
+                <span
+                  className={cn(
+                    "grid size-9 shrink-0 place-items-center rounded-lg transition-colors",
+                    isActive
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground"
+                  )}
+                >
+                  <Icon className="size-4.5" strokeWidth={1.8} />
+                </span>
+                <span
+                  className={cn(
+                    "animate-fade-in whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-200 group-hover/rail:opacity-100",
+                    isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/80"
+                  )}
+                >
+                  {t(item.key)}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
   );
 }

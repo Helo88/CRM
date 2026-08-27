@@ -70,10 +70,8 @@ export default async function CustomersListPage({
   if (res.status === 403) {
     return (
       <div className="flex min-h-[calc(100vh-57px)]">
-        <div className="hidden md:block">
-          <StaffSidebar active="customers" />
-        </div>
-        <main className="flex flex-1 items-center justify-center p-8">
+        <StaffSidebar active="customers" />
+        <main className="flex flex-1 items-center justify-center p-8 pt-16 md:pt-8">
           <p className="text-muted-foreground">{t("noAccess")}</p>
         </main>
       </div>
@@ -90,14 +88,8 @@ export default async function CustomersListPage({
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
-      {/* Single nav item today — a persistent sidebar isn't the right mobile
-          pattern for that, and it's already reachable from the top nav. Once
-          agent-workspace/security-admin add more staff pages, a real
-          collapsible drawer belongs here instead of just hiding it. */}
-      <div className="hidden md:block">
-        <StaffSidebar active="customers" />
-      </div>
-      <main className="min-w-0 flex-1 p-4 md:p-8">
+      <StaffSidebar active="customers" />
+      <main className="min-w-0 flex-1 p-4 pt-16 md:p-8">
         <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
           <Button asChild size="sm">
