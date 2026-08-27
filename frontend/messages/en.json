@@ -63,7 +63,7 @@
     "currentEmail": "Current email: {email}",
     "pendingEmail": "Pending: {email} — awaiting confirmation.",
     "phoneUpdated": "Phone updated",
-    "invalidPhone": "Enter a valid phone number.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
     "invalidEmail": "Enter a valid email address.",
     "emailUnchanged": "This is already your current email.",
     "emailInUse": "That email is already in use.",
@@ -81,6 +81,10 @@
     "conflictBody": "This email was just confirmed by another account. If this wasn't you, set a different email from your profile.",
     "goToSettings": "Go to profile",
     "logIn": "Log in"
+  },
+  "StaffSidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar"
   },
   "CustomersList": {
     "heading": "Customers",
@@ -115,7 +119,7 @@
     "emailInUse": "An account with this email already exists.",
     "nameRequired": "Name is required.",
     "invalidEmail": "Enter a valid email address.",
-    "invalidPhone": "Enter a valid phone number.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
     "passwordTooShort": "Password must be at least 8 characters."
   },
   "CustomerProfile": {
@@ -123,7 +127,7 @@
     "name": "Name",
     "email": "Email",
     "phone": "Phone",
-    "invalidPhone": "Enter a valid phone number.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
     "preferredLanguage": "Preferred language",
     "languageEnglish": "English",
     "languageArabic": "Arabic",

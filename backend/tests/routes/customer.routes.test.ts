@@ -58,11 +58,11 @@ describe("POST /api/v1/customers (Story 55)", () => {
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Walk-in", email: "walk-in@example.com", phone: "+15551234567", password: "password123" });
+      .send({ name: "Walk-in", email: "walk-in@example.com", phone: "+201012345678", password: "password123" });
     expect(res.status).toBe(201);
     expect(res.body.role).toBe("customer");
     expect(res.body.name).toBe("Walk-in");
-    expect(res.body.phone).toBe("+15551234567");
+    expect(res.body.phone).toBe("+201012345678");
     expect(res.body).not.toHaveProperty("passwordHash");
 
     const created = await User.findOne({ email: "walk-in@example.com" });
@@ -107,6 +107,32 @@ describe("POST /api/v1/customers (Story 55)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Bad Phone", email: "bad-phone@example.com", phone: "abc", password: "password123" });
     expect(res.status).toBe(400);
+  });
+
+  // Regression: the old generic "7-15 digits" rule accepted this — a local
+  // Egyptian number missing its leading 0, so not actually a real number.
+  it("returns 400 for a 10-digit number missing the leading 0 (was wrongly accepted before)", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "No Leading Zero", email: "no-leading-zero@example.com", phone: "1032017366", password: "password123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a real Egyptian mobile number in local and international format", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const local = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Local Format", email: "local-format@example.com", phone: "01032017366", password: "password123" });
+    expect(local.status).toBe(201);
+
+    const intl = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Intl Format", email: "intl-format@example.com", phone: "+201032017366", password: "password123" });
+    expect(intl.status).toBe(201);
   });
 
   it("returns 409 for a duplicate email", async () => {
@@ -170,10 +196,10 @@ describe("PATCH /api/v1/customers/:id", () => {
     const res = await request(app)
       .patch(`/api/v1/customers/${user.id}`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Updated Name", phone: "+15551234567", preferredLanguage: "ar" });
+      .send({ name: "Updated Name", phone: "+201012345678", preferredLanguage: "ar" });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Updated Name");
-    expect(res.body.phone).toBe("+15551234567");
+    expect(res.body.phone).toBe("+201012345678");
     expect(res.body.preferredLanguage).toBe("ar");
   });
 

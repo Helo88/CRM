@@ -80,5 +80,5 @@ export async function createCustomer(
     return { error: data.error ?? t("genericError") };
   }
 
-  redirect(`/customers/${data.id}`);
+  redirect("/customers");
 }
