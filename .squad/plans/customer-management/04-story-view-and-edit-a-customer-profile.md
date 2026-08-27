@@ -231,3 +231,27 @@ Whichever option is chosen, `cd backend && npm run typecheck` (or the repo's equ
 - [x] `backend/src/models/User.ts` is unchanged. *(True for Story 4's own scope — Story 5 below is what later extended it with `pendingEmail`/`emailConfirmToken` fields.)*
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 05.**
+
+---
+
+## Addendum (2026-08-27): Staff customer roster
+
+This story's plan explicitly flagged, and deliberately did not build, a list/search endpoint:
+
+> **Known gap, not this story's job to fix:** there is no `GET /api/v1/customers` list/search endpoint and no story anywhere in the 52-story backlog that adds one... Flagged for the user; do not invent a list/search endpoint speculatively as part of this amendment.
+
+The user has since directed this to be built. As with the refresh-token addendum in the auth/02 plan, this is net-new scope with no corresponding entry in `USER_STORIES.md` — whoever owns that file's prose should add one if it belongs there; not done here per this repo's convention that story text is user-authored.
+
+### What was built
+
+- **Backend:** `GET /api/v1/customers` (`backend/src/routes/customer.routes.ts`) — `requireAuth` + `requireRole("agent", "admin")`, paginated (`?page=&limit=`, default 20/page, capped at 100), filtered to `role: "customer"` only (this is a customer roster, not the agent/admin account list Story 45 will own separately). Response fields: `id`, `name`, `email`, `phone`, `isActive`, `createdAt` — no `passwordHash`/`internalNotes`/`attachments`, same discipline as the existing GET `/:id`.
+- **Frontend:** `frontend/app/customers/page.tsx` — table (name/email/phone/status/joined/history), Previous/Next pagination, a "no access" state for a non-staff visitor who navigates there directly (rather than a raw 403 or crash). `frontend/components/StaffSidebar.tsx` — a left nav reusing the `--sidebar-*` design tokens that were reserved in `globals.css` but unused until this. A "Customers" link appears in `SiteHeader`'s nav, staff-only (role read from an unverified JWT peek, purely a UI decision — the backend `requireRole` above is the actual authorization boundary).
+- **Deliberately excluded:** per-customer ticket counts / activity summaries. Ticket-management is still unbuilt (501 stubs), so that data doesn't exist yet. Recommended sequencing, discussed with the user: extend *this same* roster page with a ticket-count column once ticket-management ships, rather than building a separate customer-facing list — the "View history" link already on both this table and the single-customer profile page is wired to the same not-yet-real `GET /api/v1/customers/:id/history` shape (Story 6), so it's consistent, if still non-functional, in both places.
+- **Also removed** (2026-08-27, user request): the "Preferred language" field on the single-customer edit form (`CustomerProfileForm.tsx`) — now redundant with the real language switcher in `UserMenu`. The backend still accepts `preferredLanguage` in `EDITABLE_FIELDS` (line 12) and the model field is untouched; only this form's UI was changed. `en.json`'s `languageEnglish`/`languageArabic`/`preferredLanguage` keys are now unused by any component — left in place rather than removed speculatively, in case a future story revives a language-preference field elsewhere.
+
+### Done Criteria (addendum)
+
+- [x] `GET /api/v1/customers` returns 403 for a `role: "customer"` caller, 200 with paginated data for `agent`/`admin` — verified via real login + curl for both roles, not just code inspection.
+- [x] Response never includes `passwordHash`/`internalNotes`/`attachments` (same field allowlist discipline as GET `/:id`).
+- [x] Frontend table renders live data, pagination controls work, "Customers" nav link is staff-only, and a customer navigating to `/customers` directly sees the "no access" state rather than a crash — all verified via Playwright screenshots in both roles.
+- [x] `npm run build` (frontend) and `npm run typecheck` + `npm test` (backend, 58/58) all pass clean.
