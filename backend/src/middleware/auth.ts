@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import type { UserRole } from "../models/User";
+import { hasPermission } from "../services/permissions";
+import type { PermissionKey } from "../constants/permissions";
 
 export interface JwtPayload {
   sub: string;
@@ -41,6 +43,41 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function requireRole(...allowedRoles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+    next();
+  };
+}
+
+/**
+ * Restricts a route to callers holding a specific permission. Use after
+ * requireAuth. `admin` always passes (full/main admin, fixed, never
+ * configurable). `agent`/`subadmin` are checked against a LIVE DB lookup of
+ * THEIR OWN individual account (backend/src/services/permissions.ts's
+ * hasPermission) on every request — no caching, so a permission change
+ * takes effect on the very next request. Permissions are granted per
+ * individual agent/sub-admin account, not per role (security-admin Story
+ * 46) — there is no shared role-level default enforced here. Any other
+ * role (customer, or no req.user) is rejected outright.
+ * Example: router.get('/admin/users', requireAuth, requirePermission('users:manage'), handler)
+ */
+export function requirePermission(key: PermissionKey) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: "Missing or invalid Authorization header" });
+      return;
+    }
+    if (req.user.role === "admin") {
+      next();
+      return;
+    }
+    if (req.user.role !== "agent" && req.user.role !== "subadmin") {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+    const granted = await hasPermission(req.user.id, key);
+    if (!granted) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
       return;
     }

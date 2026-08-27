@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import { PERMISSION_KEYS, PermissionKey } from "../constants/permissions";
 
-export type UserRole = "customer" | "agent" | "admin";
+export type UserRole = "customer" | "agent" | "admin" | "subadmin";
 export type Language = "en" | "ar";
 
 export interface IAttachment {
@@ -39,6 +40,17 @@ export interface IUser extends Document {
   internalNotes: IInternalNote[];
   attachments: IAttachment[];
   isActive: boolean;
+  // security-admin Story 46: permissions are granted PER INDIVIDUAL account,
+  // not per role — only meaningful for role "agent"/"subadmin" ("admin"
+  // always has every permission regardless of this field; "customer" never
+  // has any). See backend/src/constants/permissions.ts and
+  // backend/src/services/permissions.ts's hasPermission().
+  permissions: PermissionKey[];
+  // security-admin Story 45: soft-delete for staff accounts (agent/admin/
+  // subadmin) — a deleted account is hidden from the roster and fully
+  // locked out (isActive is also forced false), but the document is kept
+  // for referential integrity (past ticket assignments, audit log entries).
+  isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -65,7 +77,7 @@ const userSchema = new Schema<IUser>(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["customer", "agent", "admin"], required: true },
+    role: { type: String, enum: ["customer", "agent", "admin", "subadmin"], required: true },
     phone: String,
     preferredLanguage: { type: String, enum: ["en", "ar"], default: "en" },
 
@@ -82,6 +94,12 @@ const userSchema = new Schema<IUser>(
     attachments: [attachmentSchema],
 
     isActive: { type: Boolean, default: true },
+
+    // security-admin Story 46: per-individual-account permissions (agent/subadmin only).
+    permissions: [{ type: String, enum: PERMISSION_KEYS }],
+
+    // security-admin Story 45: soft-delete for staff accounts.
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -26,12 +26,15 @@ function tokenFor(user: { id: string; role: string }) {
   return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET as string);
 }
 
-async function seedUser(overrides: Partial<{ role: string; email: string; name: string }> = {}) {
+async function seedUser(
+  overrides: Partial<{ role: string; email: string; name: string; permissions: string[] }> = {}
+) {
   const user = await User.create({
     name: overrides.name ?? "Test User",
     email: overrides.email ?? `user-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
     passwordHash: "irrelevant-for-these-tests",
     role: overrides.role ?? "customer",
+    permissions: overrides.permissions ?? [],
   });
   return { user, token: tokenFor({ id: user.id, role: user.role }) };
 }
@@ -143,6 +146,60 @@ describe("POST /api/v1/customers (Story 55)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Dup", email: existing.email, password: "password123" });
     expect(res.status).toBe(409);
+  });
+});
+
+// security-admin Story 46: subadmin is newly allowed here, delegable via
+// customers:manage — agent and admin access must stay UNCHANGED from before
+// this story (no regression against Story 55's already-working behavior).
+describe("GET/POST /api/v1/customers — Story 46 permission gating", () => {
+  it("agent passes with no customers:manage grant at all (no regression)", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const resGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${token}`);
+    expect(resGet.status).toBe(200);
+
+    const resPost = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Walk-in", email: "agent-unaffected@example.com", password: "password123" });
+    expect(resPost.status).toBe(201);
+  });
+
+  it("admin passes with no customers:manage grant at all (no regression)", async () => {
+    const { token } = await seedUser({ role: "admin" });
+    const res = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("subadmin is rejected without customers:manage", async () => {
+    const { token } = await seedUser({ role: "subadmin" });
+    const resGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${token}`);
+    expect(resGet.status).toBe(403);
+
+    const resPost = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Nope", email: "subadmin-no-permission@example.com", password: "password123" });
+    expect(resPost.status).toBe(403);
+  });
+
+  it("subadmin is allowed once granted customers:manage on THEIR OWN account", async () => {
+    const { token } = await seedUser({ role: "subadmin", permissions: ["customers:manage"] });
+    const resGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${token}`);
+    expect(resGet.status).toBe(200);
+
+    const resPost = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Delegated", email: "subadmin-granted@example.com", password: "password123" });
+    expect(resPost.status).toBe(201);
+  });
+
+  it("a DIFFERENT subadmin without the grant is unaffected (per-individual, not per-role)", async () => {
+    await seedUser({ role: "subadmin", permissions: ["customers:manage"] });
+    const { token: plainSubadminToken } = await seedUser({ role: "subadmin" });
+    const res = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${plainSubadminToken}`);
+    expect(res.status).toBe(403);
   });
 });
 

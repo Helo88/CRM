@@ -1,9 +1,28 @@
 import express, { Request, Response } from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser } from "../models/User";
 import { isValidPhone } from "../utils/phone";
+
+// security-admin Story 46: agent/admin access to the roster and creation
+// endpoints below is UNCHANGED from before this story — only the
+// newly-added subadmin role is actually gated on a permission, so a
+// delegated sub-admin gets exactly customers:manage, nothing more. This is
+// not `requireRole("agent","admin","subadmin"), requirePermission(...)`
+// composed as two chained middlewares, because that would also gate agent
+// (whose default permission set does not include customers:manage) —
+// see .squad/plans/security-admin/09-story-configure-roles-and-permissions.md
+// Task 4 for why that naive conversion is a regression.
+function staffOrDelegatedSubadmin(key: Parameters<typeof requirePermission>[0]) {
+  return (req: Request, res: Response, next: import("express").NextFunction) => {
+    if (req.user!.role === "subadmin") {
+      requirePermission(key)(req, res, next);
+      return;
+    }
+    next();
+  };
+}
 
 const router = express.Router();
 
@@ -37,7 +56,12 @@ function toProfileResponse(user: IUser) {
 // speculatively") and deferred it. Added at the user's direct request.
 // Staff-only: this is a customer roster, not the agent/admin account list
 // that Story 45 (security-admin) will own separately.
-router.get("/", requireAuth, requireRole("agent", "admin"), async (req: Request, res: Response) => {
+router.get(
+  "/",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin"),
+  staffOrDelegatedSubadmin("customers:manage"),
+  async (req: Request, res: Response) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
   const skip = (page - 1) * limit;
@@ -82,7 +106,8 @@ interface CreateCustomerBody {
 router.post(
   "/",
   requireAuth,
-  requireRole("agent", "admin"),
+  requireRole("agent", "admin", "subadmin"),
+  staffOrDelegatedSubadmin("customers:manage"),
   async (req: Request<unknown, unknown, CreateCustomerBody>, res: Response) => {
     const { name, email, password, phone } = req.body ?? {};
 
