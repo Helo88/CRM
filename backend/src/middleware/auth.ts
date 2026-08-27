@@ -5,6 +5,11 @@ import type { UserRole } from "../models/User";
 export interface JwtPayload {
   sub: string;
   role: UserRole;
+  // Rides along in the access token purely so the frontend nav can show a
+  // display name/avatar-initial without an extra fetch on every page load
+  // (see frontend/lib/jwt.ts) — never used for any authorization decision,
+  // requireRole still only ever looks at `role`.
+  name: string;
 }
 
 /**
@@ -22,7 +27,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-    req.user = { id: payload.sub, role: payload.role };
+    req.user = { id: payload.sub, role: payload.role, name: payload.name };
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });

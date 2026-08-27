@@ -45,6 +45,7 @@ export function SettingsForm({ contact }: { contact: ContactInfo }) {
             <Input
               id="phone"
               name="phone"
+              type="tel"
               className="ps-8 pe-9"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}

@@ -9,13 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { updateProfile, type ProfileActionState } from "./actions";
 
 interface Profile {
@@ -23,7 +16,6 @@ interface Profile {
   name: string;
   email: string;
   phone: string | null;
-  preferredLanguage: "en" | "ar";
   createdAt: string;
   ticketHistoryUrl: string;
 }
@@ -38,7 +30,6 @@ export function CustomerProfileForm({ profile }: { profile: Profile }) {
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email);
   const [phone, setPhone] = useState(profile.phone ?? "");
-  const [preferredLanguage, setPreferredLanguage] = useState(profile.preferredLanguage);
 
   return (
     <Card className="w-full max-w-md rounded-[28px] rounded-ss-none border-none shadow-2xl shadow-black/20 ring-1 ring-foreground/10">
@@ -84,25 +75,17 @@ export function CustomerProfileForm({ profile }: { profile: Profile }) {
             <Label htmlFor="phone">{t("phone")}</Label>
             <div className="relative">
               <Phone className="pointer-events-none absolute top-1/2 start-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input id="phone" name="phone" className="ps-8" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input
+                id="phone"
+                name="phone"
+                type="tel"
+                className="ps-8"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                aria-invalid={Boolean(state.fieldErrors?.phone)}
+              />
             </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="preferredLanguage">{t("preferredLanguage")}</Label>
-            <Select
-              value={preferredLanguage}
-              onValueChange={(value) => setPreferredLanguage(value as "en" | "ar")}
-            >
-              <SelectTrigger id="preferredLanguage">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">{t("languageEnglish")}</SelectItem>
-                <SelectItem value="ar">{t("languageArabic")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {/* Select doesn't submit a native form value on its own — mirror it into a hidden input. */}
-            <input type="hidden" name="preferredLanguage" value={preferredLanguage} />
+            {state.fieldErrors?.phone && <p className="text-sm text-destructive">{state.fieldErrors.phone}</p>}
           </div>
           {state.error && (
             <Alert variant="destructive">

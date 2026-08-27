@@ -2,12 +2,14 @@ import express, { Request, Response } from "express";
 import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
-import { sendEmail } from "../services/email.service";
+import { sendEmail, renderEmailHtml } from "../services/email.service";
+import { isValidPhone } from "../utils/phone";
 
 const router = express.Router();
 
 const CONFIRM_TOKEN_TTL_MS = 24 * 3600 * 1000;
 const APP_BASE_URL = process.env.APP_BASE_URL || "http://localhost:4000";
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
 interface ContactBody {
   phone?: unknown;
@@ -43,7 +45,12 @@ router.patch("/contact", requireAuth, async (req: Request<unknown, unknown, Cont
     // Phone is optional on the User model (models/User.ts) — an empty
     // string clears it, matching customer.routes.ts's PATCH /customers/:id
     // handling of the same field.
-    user.phone = phone.trim().length === 0 ? undefined : phone.trim();
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone !== "" && !isValidPhone(trimmedPhone)) {
+      res.status(400).json({ error: "phone must be a valid phone number" });
+      return;
+    }
+    user.phone = trimmedPhone === "" ? undefined : trimmedPhone;
   }
 
   if (email !== undefined) {
@@ -74,10 +81,18 @@ router.patch("/contact", requireAuth, async (req: Request<unknown, unknown, Cont
     user.emailConfirmTokenExpiresAt = new Date(Date.now() + CONFIRM_TOKEN_TTL_MS);
 
     try {
+      const confirmUrl = `${APP_BASE_URL}/api/v1/me/email/confirm?token=${token}`;
       await sendEmail({
         to: normalizedEmail,
-        subject: "Confirm your new email",
-        text: `Confirm your new email: ${APP_BASE_URL}/api/v1/me/email/confirm?token=${token}`,
+        subject: "Confirm your new email address",
+        text: `Confirm your new email address for AzmSquad.\n\nOpen this link to complete the change:\n${confirmUrl}\n\nThis link expires in 24 hours. If you didn't request this, you can ignore this email — your email address won't change.`,
+        html: renderEmailHtml({
+          heading: "Confirm your new email address",
+          bodyHtml:
+            "You asked to change the email on your AzmSquad account to this address. Confirm it below to finish the change.<br><br>This link expires in 24 hours. If you didn't request this, you can ignore this email — your email address won't change.",
+          ctaText: "Confirm email address",
+          ctaUrl: confirmUrl,
+        }),
       });
     } catch (err) {
       user.pendingEmail = null;
@@ -95,12 +110,18 @@ router.patch("/contact", requireAuth, async (req: Request<unknown, unknown, Cont
   res.status(200).json({ phone: user.phone ?? null, email: user.email, pendingEmail: user.pendingEmail });
 });
 
+// This is a link a human clicks from their email client, not an API call a
+// script makes — it must land somewhere a browser can render, not JSON.
+// Redirects to a public frontend page (frontend/app/email-confirmed/page.tsx)
+// rather than /settings directly: whoever clicks it may not be authenticated
+// in that browser at all (e.g. opening the email on a different device), so
+// a page requiring a session isn't a safe landing target.
 router.get("/email/confirm", async (req: Request, res: Response) => {
   const token = typeof req.query.token === "string" ? req.query.token : "";
   const user = await User.findOne({ emailConfirmToken: token });
 
   if (!user || !user.emailConfirmTokenExpiresAt || user.emailConfirmTokenExpiresAt < new Date()) {
-    res.status(410).json({ error: "Confirmation link is invalid or has expired" });
+    res.redirect(`${CLIENT_ORIGIN}/email-confirmed?status=invalid`);
     return;
   }
 
@@ -110,7 +131,7 @@ router.get("/email/confirm", async (req: Request, res: Response) => {
     user.emailConfirmToken = null;
     user.emailConfirmTokenExpiresAt = null;
     await user.save();
-    res.status(409).json({ error: "That email was just confirmed by another account" });
+    res.redirect(`${CLIENT_ORIGIN}/email-confirmed?status=conflict`);
     return;
   }
 
@@ -126,13 +147,13 @@ router.get("/email/confirm", async (req: Request, res: Response) => {
     // between the findOne check above and this save() — email's unique
     // index throws E11000 rather than letting a silent duplicate through.
     if ((err as { code?: number }).code === 11000) {
-      res.status(409).json({ error: "That email was just confirmed by another account" });
+      res.redirect(`${CLIENT_ORIGIN}/email-confirmed?status=conflict`);
       return;
     }
     throw err;
   }
 
-  res.status(200).json({ message: "Email confirmed", email: user.email });
+  res.redirect(`${CLIENT_ORIGIN}/email-confirmed?status=success&email=${encodeURIComponent(user.email)}`);
 });
 
 export default router;

@@ -1,0 +1,123 @@
+{
+  "Nav": {
+    "brand": "AzmSquad",
+    "customers": "العملاء",
+    "logIn": "تسجيل الدخول",
+    "signUp": "إنشاء حساب"
+  },
+  "UserMenu": {
+    "profile": "الملف الشخصي",
+    "lightMode": "الوضع الفاتح",
+    "darkMode": "الوضع الداكن",
+    "switchToArabic": "العربية",
+    "switchToEnglish": "English"
+  },
+  "Home": {
+    "title": "خدمة عملاء AzmSquad",
+    "tagline": "الدردشة المباشرة ودعم التذاكر، في مكان واحد."
+  },
+  "Register": {
+    "heading": "إنشاء حسابك",
+    "subheading": "أنشئ حسابك خلال أقل من دقيقة — نحن هنا عند الحاجة.",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "submit": "إنشاء الحساب",
+    "submitPending": "جاري إنشاء الحساب…",
+    "haveAccount": "لديك حساب بالفعل؟",
+    "logIn": "تسجيل الدخول",
+    "genericError": "تعذر إنشاء حسابك.",
+    "emailInUse": "يوجد حساب بهذا البريد الإلكتروني بالفعل.",
+    "nameRequired": "الاسم مطلوب.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
+  },
+  "Login": {
+    "heading": "تسجيل الدخول",
+    "subheading": "مرحبًا بعودتك — تابع من حيث توقفت.",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "submit": "تسجيل الدخول",
+    "submitPending": "جاري تسجيل الدخول…",
+    "noAccount": "ليس لديك حساب؟",
+    "signUp": "إنشاء حساب",
+    "genericError": "تعذر تسجيل دخولك.",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "passwordRequired": "كلمة المرور مطلوبة."
+  },
+  "Auth": {
+    "logOut": "تسجيل الخروج",
+    "showPassword": "إظهار كلمة المرور",
+    "hidePassword": "إخفاء كلمة المرور",
+    "supportOnline": "الدعم متاح الآن",
+    "notSignedIn": "لست مسجّلاً الدخول."
+  },
+  "Settings": {
+    "heading": "الملف الشخصي",
+    "subheading": "حدّث بيانات التواصل الخاصة بحسابك.",
+    "phone": "الهاتف",
+    "email": "البريد الإلكتروني",
+    "savePhone": "حفظ الهاتف",
+    "saveEmail": "حفظ البريد الإلكتروني",
+    "currentEmail": "البريد الإلكتروني الحالي: {email}",
+    "pendingEmail": "قيد الانتظار: {email} — بانتظار التأكيد.",
+    "phoneUpdated": "تم تحديث رقم الهاتف",
+    "invalidPhone": "أدخل رقم هاتف صحيحًا.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "emailUnchanged": "هذا هو بريدك الإلكتروني الحالي بالفعل.",
+    "emailInUse": "هذا البريد الإلكتروني مستخدم بالفعل.",
+    "emailSendFailed": "تعذر إرسال رسالة التأكيد. حاول مرة أخرى بعد قليل.",
+    "emailConfirmationSent": "تم إرسال رسالة تأكيد إلى {email}. انقر على الرابط لإتمام التغيير.",
+    "phoneUpdateFailed": "تعذر تحديث رقم الهاتف.",
+    "emailUpdateFailed": "تعذر تحديث البريد الإلكتروني."
+  },
+  "EmailConfirmed": {
+    "successHeading": "تم تأكيد البريد الإلكتروني",
+    "successBody": "أصبح حسابك يستخدم الآن {email} لتسجيل الدخول.",
+    "invalidHeading": "انتهت صلاحية الرابط",
+    "invalidBody": "رابط التأكيد غير صالح أو تم استخدامه من قبل. اطلب رابطًا جديدًا من ملفك الشخصي.",
+    "conflictHeading": "تم التأكيد مسبقًا",
+    "conflictBody": "تم تأكيد هذا البريد الإلكتروني للتو بواسطة حساب آخر. إذا لم يكن هذا أنت، فعيّن بريدًا إلكترونيًا مختلفًا من ملفك الشخصي.",
+    "goToSettings": "الانتقال إلى الملف الشخصي",
+    "logIn": "تسجيل الدخول"
+  },
+  "CustomersList": {
+    "heading": "العملاء",
+    "colName": "الاسم",
+    "colEmail": "البريد الإلكتروني",
+    "colPhone": "الهاتف",
+    "colStatus": "الحالة",
+    "colJoined": "تاريخ الانضمام",
+    "colHistory": "السجل",
+    "history": "عرض السجل",
+    "statusActive": "نشط",
+    "statusInactive": "غير نشط",
+    "empty": "لا يوجد عملاء بعد.",
+    "noAccess": "ليس لديك صلاحية الوصول إلى هذه الصفحة.",
+    "previous": "السابق",
+    "next": "التالي",
+    "pageOf": "صفحة {page} من {totalPages}"
+  },
+  "CustomerProfile": {
+    "heading": "الملف الشخصي للعميل",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "phone": "الهاتف",
+    "invalidPhone": "أدخل رقم هاتف صحيحًا.",
+    "preferredLanguage": "اللغة المفضلة",
+    "languageEnglish": "الإنجليزية",
+    "languageArabic": "العربية",
+    "createdAt": "عميل منذ {date}",
+    "viewHistory": "عرض سجل التذاكر/المحادثات",
+    "save": "حفظ التغييرات",
+    "savePending": "جاري الحفظ…",
+    "saved": "تم الحفظ",
+    "genericError": "تعذر تحديث هذا الملف الشخصي.",
+    "emailInUse": "هذا البريد الإلكتروني مستخدم بالفعل.",
+    "noPermission": "ليس لديك صلاحية للقيام بذلك.",
+    "nameRequired": "الاسم مطلوب.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "notFound": "العميل غير موجود، أو ليس لديك صلاحية لعرض هذا الملف الشخصي."
+  }
+}

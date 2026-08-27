@@ -45,7 +45,11 @@ export async function login(
   const data = await backendRes.json();
 
   if (!backendRes.ok) {
-    return { error: data.error ?? t("genericError") };
+    // Backend has no i18n of its own (separate service, plain error
+    // strings) — it always returns the exact same English string here by
+    // design (anti-enumeration, see auth.routes.ts), so translate it here
+    // rather than ever showing the raw backend text.
+    return { error: backendRes.status === 401 ? t("invalidCredentials") : t("genericError") };
   }
 
   await setSessionCookies(data.token, data.refreshToken);

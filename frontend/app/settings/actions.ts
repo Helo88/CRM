@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE } from "@/lib/auth";
 import { refreshSession } from "@/lib/session";
+import { isValidPhone } from "@/lib/phone";
 
 export interface ContactActionState {
   error: string | null;
@@ -37,11 +38,11 @@ async function callContactApi(body: Record<string, string>) {
   if (res.status === 401) {
     const refreshedToken = await refreshSession();
     if (!refreshedToken) {
-      return { ok: false, data: { error: "Not signed in" } };
+      return { ok: false, status: 401, data: { error: "Not signed in" } };
     }
     res = await doFetch(refreshedToken);
   }
-  return { ok: res.ok, data: await res.json() };
+  return { ok: res.ok, status: res.status, data: await res.json() };
 }
 
 export async function updatePhone(
@@ -49,9 +50,15 @@ export async function updatePhone(
   formData: FormData
 ): Promise<ContactActionState> {
   const t = await getTranslations("Settings");
-  const phone = String(formData.get("phone") ?? "");
+  const phone = String(formData.get("phone") ?? "").trim();
+  if (phone !== "" && !isValidPhone(phone)) {
+    return { error: t("invalidPhone"), message: null };
+  }
   const { ok, data } = await callContactApi({ phone });
-  if (!ok) return { error: data.error ?? t("phoneUpdateFailed"), message: null };
+  // Backend has no i18n of its own — the only realistic failure left here
+  // (phone format is already validated above) is an auth hiccup, so a
+  // generic translated fallback covers it; no need for per-string mapping.
+  if (!ok) return { error: t("phoneUpdateFailed"), message: null };
   revalidatePath("/settings");
   return { error: null, message: t("phoneUpdated") };
 }
@@ -62,8 +69,24 @@ export async function updateEmail(
 ): Promise<ContactActionState> {
   const t = await getTranslations("Settings");
   const email = String(formData.get("email") ?? "");
-  const { ok, data } = await callContactApi({ email });
-  if (!ok) return { error: data.error ?? t("emailUpdateFailed"), message: null };
+  const { ok, status, data } = await callContactApi({ email });
+  if (!ok) {
+    // Backend has no i18n of its own — map its known, reachable error
+    // strings to translated copy rather than showing raw English.
+    if (data.error === "valid email is required") {
+      return { error: t("invalidEmail"), message: null };
+    }
+    if (data.error === "This is already your current email") {
+      return { error: t("emailUnchanged"), message: null };
+    }
+    if (status === 409) {
+      return { error: t("emailInUse"), message: null };
+    }
+    if (status === 502) {
+      return { error: t("emailSendFailed"), message: null };
+    }
+    return { error: t("emailUpdateFailed"), message: null };
+  }
   revalidatePath("/settings");
   return { error: null, message: t("emailConfirmationSent", { email }) };
 }
