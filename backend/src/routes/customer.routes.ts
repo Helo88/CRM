@@ -1,10 +1,14 @@
 import express, { Request, Response } from "express";
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { User, IUser } from "../models/User";
 import { isValidPhone } from "../utils/phone";
 
 const router = express.Router();
+
+const BCRYPT_SALT_ROUNDS = 10;
+const MIN_PASSWORD_LENGTH = 8;
 
 // Fields safely editable via this endpoint (Story 4).
 // role / isActive / passwordHash / internalNotes / attachments are intentionally
@@ -62,6 +66,68 @@ router.get("/", requireAuth, requireRole("agent", "admin"), async (req: Request,
     limit,
   });
 });
+
+interface CreateCustomerBody {
+  name?: string;
+  email?: string;
+  password?: string;
+  phone?: string;
+}
+
+// USER_STORIES.md customer-management Story 55 ("Add a customer account (as
+// staff)") — staff-created customer, initial password set directly (no
+// invite-email flow yet). Mirrors auth.routes.ts's /register validation, but
+// role is always "customer" here too — staff cannot use this to create an
+// agent/admin account (that's Story 45, security-admin, a separate endpoint).
+router.post(
+  "/",
+  requireAuth,
+  requireRole("agent", "admin"),
+  async (req: Request<unknown, unknown, CreateCustomerBody>, res: Response) => {
+    const { name, email, password, phone } = req.body ?? {};
+
+    if (!name || !email || !password) {
+      res.status(400).json({ error: "name, email, and password are required" });
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+      return;
+    }
+    if (phone !== undefined && phone.trim() !== "" && !isValidPhone(phone.trim())) {
+      res.status(400).json({ error: "phone must be a valid phone number" });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      res.status(409).json({ error: "An account with this email already exists" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+
+    let user;
+    try {
+      user = await User.create({
+        name,
+        email: normalizedEmail,
+        passwordHash,
+        role: "customer",
+        phone: phone?.trim() || undefined,
+      });
+    } catch (err) {
+      if ((err as { code?: number }).code === 11000) {
+        res.status(409).json({ error: "An account with this email already exists" });
+        return;
+      }
+      throw err;
+    }
+
+    res.status(201).json(toProfileResponse(user));
+  }
+);
 
 router.get("/:id", requireAuth, async (req: Request, res: Response) => {
   if (!mongoose.isValidObjectId(req.params.id)) {

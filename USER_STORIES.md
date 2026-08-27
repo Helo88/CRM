@@ -62,6 +62,15 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: customer-management
 
+> **Numbering note:** Story 55 below was added after the rest of this backlog was already numbered (see the same note under `ticket-management`) — same reason, same fix: high number, correct position. It comes first in this section since creating an account logically precedes viewing/editing one.
+
+### Story 55: Add a customer account (as staff)
+**As an** agent or admin, **I want to** create a new customer account directly, **so that** I can set someone up who contacted us by phone or in person, without requiring them to self-register first.
+- Requires name, email, and an initial password (staff sets it directly — no invite-email flow for this pass); phone is optional.
+- The created account has role "customer" and behaves identically to a self-registered one — that customer can log in immediately with the email/password given.
+- A duplicate email is rejected the same way self-registration (Story 1) rejects one.
+- **Frontend:** a real page, reachable via a "New customer" action from the staff customer roster — ships in this story, not deferred. **Backend:** a staff-only creation endpoint, same role gating as Story 4's existing customer endpoints.
+
 ### Story 4: View and edit a customer profile
 **As an** agent or admin, **I want to** view and edit a customer's profile details, **so that** I have accurate information about who I'm helping.
 - Profile shows name, email, phone (optional), and account creation date.

@@ -84,6 +84,7 @@
   },
   "CustomersList": {
     "heading": "Customers",
+    "addCustomer": "New customer",
     "colName": "Name",
     "colEmail": "Email",
     "colPhone": "Phone",
@@ -98,6 +99,24 @@
     "previous": "Previous",
     "next": "Next",
     "pageOf": "Page {page} of {totalPages}"
+  },
+  "NewCustomer": {
+    "heading": "New customer",
+    "subheading": "Set up an account for someone who contacted you directly.",
+    "name": "Name",
+    "email": "Email",
+    "phoneOptional": "Phone (optional)",
+    "initialPassword": "Initial password",
+    "passwordHint": "Share this with the customer — they can change it later.",
+    "submit": "Create account",
+    "submitPending": "Creating account…",
+    "genericError": "Could not create this account.",
+    "notSignedIn": "You're not signed in.",
+    "emailInUse": "An account with this email already exists.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "invalidPhone": "Enter a valid phone number.",
+    "passwordTooShort": "Password must be at least 8 characters."
   },
   "CustomerProfile": {
     "heading": "Customer profile",

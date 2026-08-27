@@ -84,6 +84,7 @@
   },
   "CustomersList": {
     "heading": "العملاء",
+    "addCustomer": "عميل جديد",
     "colName": "الاسم",
     "colEmail": "البريد الإلكتروني",
     "colPhone": "الهاتف",
@@ -98,6 +99,24 @@
     "previous": "السابق",
     "next": "التالي",
     "pageOf": "صفحة {page} من {totalPages}"
+  },
+  "NewCustomer": {
+    "heading": "عميل جديد",
+    "subheading": "أنشئ حسابًا لشخص تواصل معك مباشرة.",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "phoneOptional": "الهاتف (اختياري)",
+    "initialPassword": "كلمة المرور الأولية",
+    "passwordHint": "شارك هذه مع العميل — يمكنه تغييرها لاحقًا.",
+    "submit": "إنشاء الحساب",
+    "submitPending": "جاري إنشاء الحساب…",
+    "genericError": "تعذر إنشاء هذا الحساب.",
+    "notSignedIn": "لست مسجّلاً الدخول.",
+    "emailInUse": "يوجد حساب بهذا البريد الإلكتروني بالفعل.",
+    "nameRequired": "الاسم مطلوب.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "invalidPhone": "أدخل رقم هاتف صحيحًا.",
+    "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
   },
   "CustomerProfile": {
     "heading": "الملف الشخصي للعميل",

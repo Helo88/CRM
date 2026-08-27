@@ -90,7 +90,12 @@ export default async function CustomersListPage({
     <div className="flex min-h-[calc(100vh-57px)]">
       <StaffSidebar active="customers" />
       <main className="flex-1 p-8">
-        <h1 className="mb-6 text-2xl font-bold tracking-tight">{t("heading")}</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">{t("heading")}</h1>
+          <Button asChild size="sm">
+            <Link href="/customers/new">{t("addCustomer")}</Link>
+          </Button>
+        </div>
         <div className="overflow-hidden rounded-2xl border border-border">
           <Table>
             <TableHeader>
