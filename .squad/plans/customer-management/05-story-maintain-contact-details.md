@@ -346,3 +346,40 @@ This project's test runner is **Vitest** (introduced by `.squad/plans/auth/03-st
 - [x] No new direct `nodemailer` imports outside `backend/src/services/email.service.ts`.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 06.**
+
+---
+
+## Addendum (2026-08-27): Phone validation, confirmation-link UX, localized errors
+
+Three gaps closed, all owned by this story's endpoints rather than Story 4's.
+
+### Phone number format validation
+
+Neither this story's plan nor Story 4's ever specified a phone format — `backend/src/models/User.ts`'s `phone` field is a bare, unconstrained string, and both PATCH handlers that touch it only checked non-empty. Story 4's plan explicitly named this story as the intended owner of "richer validation" but that validation was never actually written here either — it was simply unspecified everywhere until now.
+
+- `backend/src/utils/phone.ts` — `isValidPhone()`, deliberately permissive (optional leading `+`, 7–15 digits after stripping formatting characters) since neither story nor this platform assumes a single country. Mirrored in `frontend/lib/phone.ts` for client-side feedback; the backend copy is authoritative.
+- Wired into **both** `PATCH /api/v1/me/contact` (this story) and `PATCH /api/v1/customers/:id` (Story 4) — the same field, same rule, both call sites.
+- Also fixed in the same pass: `PATCH /api/v1/me/contact` previously *rejected an empty phone outright* (`"phone must be a non-empty string"`), even though `phone` is optional on the model — you could never clear it once set. Now an empty string clears it, matching Story 4's PATCH behavior for the same field.
+
+### Confirmation link no longer returns JSON
+
+`GET /api/v1/me/email/confirm` is a link a person clicks from their email client, not an API call a script makes — returning raw JSON here was a real gap the previous plan text didn't catch. It now redirects to a new public frontend page, `frontend/app/email-confirmed/page.tsx` (deliberately *not* gated behind auth — whoever clicks the link may not be signed into that browser at all, e.g. opening the email on their phone):
+
+- Success → `/email-confirmed?status=success&email=...`
+- Expired/unknown token → `?status=invalid`
+- Race with another account confirming the same address first → `?status=conflict`
+
+The page's call-to-action adapts to whether the visitor is currently signed in ("Go to profile" vs. "Log in"), read the same unverified-cookie-presence way `proxy.ts` does. The confirmation email itself also went from a single plain-text line with a raw link to a branded HTML template (`renderEmailHtml()`, new export in `backend/src/services/email.service.ts`, reusable by the ticket-acknowledgment/agent-reply emails Stories 8/12 will add later).
+
+### Backend error strings, localized
+
+The backend has no i18n of its own (a separate service, plain error strings) — with Story 49 (Arabic) now live, any raw `data.error` string surfaced directly to the user stayed in English regardless of the UI's locale. `frontend/app/settings/actions.ts`'s `updateEmail` now maps this endpoint's actually-reachable error strings (`"valid email is required"`, `"This is already your current email"`, 409 duplicate, 502 send-failure) to translated copy instead of passing them through raw. The same fix was applied at every other call site that surfaces a backend error (login, register, the Story 4 customer-profile form) in the same pass, since leaving this endpoint fixed while the others still leaked English would have been an inconsistent half-fix.
+
+### Done Criteria (addendum)
+
+- [x] `PATCH /api/v1/me/contact` and `PATCH /api/v1/customers/:id` both reject a malformed phone (`"phone must be a valid phone number"`) and both accept a real international format — verified via curl for both endpoints.
+- [x] `PATCH /api/v1/me/contact` with `{"phone": ""}` clears the field (200), not a 400 — verified; this was a genuine regression from this story's original implementation, not just an enhancement.
+- [x] `GET /api/v1/me/email/confirm` redirects (302) for all three outcomes, never returns JSON — verified by pulling a real token from MongoDB and hitting the exact URL a browser would, for all three states plus the signed-in-vs-signed-out CTA variants, via Playwright screenshots.
+- [x] The confirmation email renders as a branded HTML card (verified via a real send to a live inbox), not a bare text line.
+- [x] `Login`/`Register`/`Settings`/`CustomerProfile` error states all render in Arabic when the locale is switched — verified via a real failed-login screenshot in `dir="rtl"`.
+- [x] `backend`: `npm run typecheck`, `npm test` (58/58, including the 4 tests updated for the new redirect behavior — this addendum caught and fixed a real regression it had itself introduced against the pre-existing test suite). `frontend`: `npm run build` clean.
