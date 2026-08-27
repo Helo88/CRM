@@ -48,7 +48,9 @@ export async function register(
   const data = await backendRes.json();
 
   if (!backendRes.ok) {
-    return { error: data.error ?? t("genericError") };
+    // Backend has no i18n of its own — translate its known, reachable error
+    // strings here rather than showing raw English regardless of locale.
+    return { error: backendRes.status === 409 ? t("emailInUse") : t("genericError") };
   }
 
   await setSessionCookies(data.token, data.refreshToken);

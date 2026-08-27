@@ -1,11 +1,15 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Direction } from "radix-ui";
 import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/SiteHeader";
+import { THEME_COOKIE, type Theme } from "@/lib/theme";
+import { localeDir, type Locale } from "@/lib/locale";
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -14,14 +18,27 @@ export const metadata: Metadata = {
   description: "Customer service platform — live chat and ticket support.",
 };
 
-// TODO (platform feature, Story 49): read the active locale (from user settings or
-// a locale cookie) and derive lang/dir from it instead of the hardcoded "en"/"ltr".
-export default function RootLayout({ children }: { children: ReactNode }) {
-  const dir = "ltr" as "ltr" | "rtl";
+// Locale (Story 49) and theme both resolved server-side from cookies, so the
+// first paint is already correct — no flash of the wrong language or theme.
+// See components/UserMenu.tsx for where these actually get switched.
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const locale = (await getLocale()) as Locale;
+  const messages = await getMessages();
+  const dir = localeDir(locale);
+
+  const cookieStore = await cookies();
+  // Dark is the default per CLAUDE.md's design system, unless explicitly
+  // switched to light.
+  const theme: Theme = cookieStore.get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
+
   return (
-    <html lang="en" dir={dir} className={cn("dark font-sans", plusJakartaSans.variable)}>
+    <html
+      lang={locale}
+      dir={dir}
+      className={cn(theme === "dark" && "dark", "font-sans", plusJakartaSans.variable)}
+    >
       <body>
-        <NextIntlClientProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
           <Direction.Provider dir={dir}>
             <SiteHeader />
             {children}

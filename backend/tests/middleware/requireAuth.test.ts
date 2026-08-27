@@ -53,10 +53,10 @@ describe("requireAuth", () => {
   it.each<UserRole>(["customer", "agent", "admin"])(
     "returns 200 and attaches req.user for a valid %s token",
     async (role) => {
-      const token = signToken({ sub: "user-123", role });
+      const token = signToken({ sub: "user-123", role, name: "Test User" });
       const res = await request(buildApp()).get("/protected").set("Authorization", `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.user).toEqual({ id: "user-123", role });
+      expect(res.body.user).toEqual({ id: "user-123", role, name: "Test User" });
     }
   );
 

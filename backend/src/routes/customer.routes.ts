@@ -1,7 +1,8 @@
 import express, { Request, Response } from "express";
 import mongoose from "mongoose";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 import { User, IUser } from "../models/User";
+import { isValidPhone } from "../utils/phone";
 
 const router = express.Router();
 
@@ -26,6 +27,41 @@ function toProfileResponse(user: IUser) {
     ticketHistoryUrl: `/api/v1/customers/${user.id}/history`,
   };
 }
+
+// Not part of any story in USER_STORIES.md — Story 4's own plan explicitly
+// flagged this as a gap ("no list/search endpoint... do not invent one
+// speculatively") and deferred it. Added at the user's direct request.
+// Staff-only: this is a customer roster, not the agent/admin account list
+// that Story 45 (security-admin) will own separately.
+router.get("/", requireAuth, requireRole("agent", "admin"), async (req: Request, res: Response) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+  const filter = { role: "customer" as const };
+
+  const [customers, total] = await Promise.all([
+    User.find(filter)
+      .select("name email phone isActive createdAt")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    User.countDocuments(filter),
+  ]);
+
+  res.status(200).json({
+    customers: customers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      phone: c.phone ?? null,
+      isActive: c.isActive,
+      createdAt: c.createdAt,
+    })),
+    total,
+    page,
+    limit,
+  });
+});
 
 router.get("/:id", requireAuth, async (req: Request, res: Response) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
@@ -123,7 +159,12 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: "phone must be a string or null" });
       return;
     }
-    updates.phone = phone === null || phone.trim() === "" ? undefined : phone.trim();
+    const trimmed = phone === null ? "" : phone.trim();
+    if (trimmed !== "" && !isValidPhone(trimmed)) {
+      res.status(400).json({ error: "phone must be a valid phone number" });
+      return;
+    }
+    updates.phone = trimmed === "" ? undefined : trimmed;
   }
 
   if ("preferredLanguage" in body) {

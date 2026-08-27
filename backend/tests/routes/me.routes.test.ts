@@ -137,36 +137,45 @@ describe("GET /api/v1/me/email/confirm", () => {
     return { userId: user.id, token: reloaded!.emailConfirmToken as string };
   }
 
-  it("confirms a valid token: swaps email, clears pending fields", async () => {
+  // This is a link a human clicks from an email client, not an API call —
+  // it redirects to the frontend's public /email-confirmed landing page
+  // (with a status query param) rather than returning JSON. See
+  // me.routes.ts's GET /email/confirm handler.
+  it("confirms a valid token: redirects with status=success, swaps email, clears pending fields", async () => {
     const { userId, token } = await requestEmailChange("new@example.com");
     const res = await request(app).get(`/api/v1/me/email/confirm?token=${token}`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("status=success");
+    expect(res.headers.location).toContain(encodeURIComponent("new@example.com"));
     const reloaded = await User.findById(userId);
     expect(reloaded!.email).toBe("new@example.com");
     expect(reloaded!.pendingEmail).toBeNull();
     expect(reloaded!.emailConfirmToken).toBeNull();
   });
 
-  it("returns 410 for an expired token", async () => {
+  it("redirects with status=invalid for an expired token", async () => {
     const { userId } = await requestEmailChange("new@example.com");
     await User.findByIdAndUpdate(userId, { emailConfirmTokenExpiresAt: new Date(Date.now() - 1000) });
     const reloaded = await User.findById(userId);
     const res = await request(app).get(`/api/v1/me/email/confirm?token=${reloaded!.emailConfirmToken}`);
-    expect(res.status).toBe(410);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("status=invalid");
   });
 
-  it("returns 410 for an unknown token", async () => {
+  it("redirects with status=invalid for an unknown token", async () => {
     const res = await request(app).get("/api/v1/me/email/confirm?token=does-not-exist");
-    expect(res.status).toBe(410);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("status=invalid");
   });
 
-  it("returns 409 when the pending email was confirmed by another account first (race)", async () => {
+  it("redirects with status=conflict when the pending email was confirmed by another account first (race)", async () => {
     const { userId, token } = await requestEmailChange("race@example.com");
     // Simulate another account having confirmed the same address in the
     // TOCTOU window between this test's setup and the confirm call.
     await seedUser("race@example.com");
     const res = await request(app).get(`/api/v1/me/email/confirm?token=${token}`);
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain("status=conflict");
     const reloaded = await User.findById(userId);
     expect(reloaded!.pendingEmail).toBeNull();
   });

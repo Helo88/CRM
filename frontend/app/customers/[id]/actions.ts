@@ -6,18 +6,18 @@ import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE } from "@/lib/auth";
 import { refreshSession } from "@/lib/session";
+import { isValidPhone } from "@/lib/phone";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().min(1).email(),
-  phone: z.string().trim(),
-  preferredLanguage: z.enum(["en", "ar"]),
+  phone: z.string().trim().refine((v) => v === "" || isValidPhone(v)),
 });
 
 export interface ProfileActionState {
   error: string | null;
   message: string | null;
-  fieldErrors?: { name?: string; email?: string };
+  fieldErrors?: { name?: string; email?: string; phone?: string };
 }
 
 export async function updateProfile(
@@ -30,7 +30,6 @@ export async function updateProfile(
     name: formData.get("name"),
     email: formData.get("email"),
     phone: formData.get("phone"),
-    preferredLanguage: formData.get("preferredLanguage"),
   });
 
   if (!parsed.success) {
@@ -41,17 +40,19 @@ export async function updateProfile(
       fieldErrors: {
         name: fieldErrors.name ? t("nameRequired") : undefined,
         email: fieldErrors.email ? t("invalidEmail") : undefined,
+        phone: fieldErrors.phone ? t("invalidPhone") : undefined,
       },
     };
   }
 
+  const tAuth = await getTranslations("Auth");
   const cookieStore = await cookies();
   let token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) {
     token = (await refreshSession()) ?? undefined;
   }
   if (!token) {
-    return { error: "Not signed in", message: null };
+    return { error: tAuth("notSignedIn"), message: null };
   }
 
   const { phone, ...rest } = parsed.data;
@@ -70,14 +71,22 @@ export async function updateProfile(
   if (res.status === 401) {
     const refreshedToken = await refreshSession();
     if (!refreshedToken) {
-      return { error: "Not signed in", message: null };
+      return { error: tAuth("notSignedIn"), message: null };
     }
     res = await doFetch(refreshedToken);
   }
   const data = await res.json();
 
   if (!res.ok) {
-    return { error: data.error ?? t("genericError"), message: null };
+    // Backend has no i18n of its own — map its known, reachable error
+    // strings to translated copy rather than showing raw English.
+    if (res.status === 409) {
+      return { error: t("emailInUse"), message: null };
+    }
+    if (res.status === 403) {
+      return { error: t("noPermission"), message: null };
+    }
+    return { error: t("genericError"), message: null };
   }
 
   revalidatePath(`/customers/${id}`);

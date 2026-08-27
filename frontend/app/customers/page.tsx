@@ -1,0 +1,175 @@
+import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { getTranslations } from "next-intl/server";
+import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { StaffSidebar } from "@/components/StaffSidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("CustomersList");
+  return { title: t("heading"), robots: { index: false, follow: false } };
+}
+
+interface CustomerRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+// Staff-only roster (agent/admin) — see backend/src/routes/customer.routes.ts's
+// GET / for why this exists outside the original story backlog. One row per
+// customer; this is deliberately NOT where per-ticket detail lives — that's
+// a separate, ticket-management-owned table/list later (one row per ticket,
+// customer name linking back to /customers/[id]), not merged into this one.
+export default async function CustomersListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; _refreshed?: string }>;
+}) {
+  const { page: pageParam, _refreshed } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+  const t = await getTranslations("CustomersList");
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const hasRefreshToken = Boolean(cookieStore.get(REFRESH_COOKIE)?.value);
+
+  if (!token) {
+    if (hasRefreshToken && !_refreshed) {
+      redirect(`/api/session/refresh?next=/customers${page > 1 ? `?page=${page}` : ""}`);
+    }
+    redirect("/");
+  }
+
+  const res = await fetch(`${API_URL}/api/v1/customers?page=${page}&limit=20`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (res.status === 401) {
+    if (!_refreshed) {
+      redirect(`/api/session/refresh?next=/customers${page > 1 ? `?page=${page}` : ""}`);
+    }
+    redirect("/login");
+  }
+
+  if (res.status === 403) {
+    return (
+      <div className="flex min-h-[calc(100vh-57px)]">
+        <StaffSidebar active="customers" />
+        <main className="flex flex-1 items-center justify-center p-8">
+          <p className="text-muted-foreground">{t("noAccess")}</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!res.ok) {
+    redirect("/");
+  }
+
+  const data: { customers: CustomerRow[]; total: number; page: number; limit: number } =
+    await res.json();
+  const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
+
+  return (
+    <div className="flex min-h-[calc(100vh-57px)]">
+      <StaffSidebar active="customers" />
+      <main className="flex-1 p-8">
+        <h1 className="mb-6 text-2xl font-bold tracking-tight">{t("heading")}</h1>
+        <div className="overflow-hidden rounded-2xl border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("colName")}</TableHead>
+                <TableHead>{t("colEmail")}</TableHead>
+                <TableHead>{t("colPhone")}</TableHead>
+                <TableHead>{t("colStatus")}</TableHead>
+                <TableHead>{t("colJoined")}</TableHead>
+                <TableHead>{t("colHistory")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.customers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    {t("empty")}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.customers.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
+                        {c.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{c.email}</TableCell>
+                    <TableCell>{c.phone ?? "—"}</TableCell>
+                    <TableCell>
+                      {c.isActive ? (
+                        <Badge variant="outline" className="border-success/30 text-success">
+                          {t("statusActive")}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">{t("statusInactive")}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Link
+                        href={`/api/v1/customers/${c.id}/history`}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        {t("history")}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            {page > 1 ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/customers?page=${page - 1}`}>{t("previous")}</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled>
+                {t("previous")}
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">
+              {t("pageOf", { page, totalPages })}
+            </span>
+            {page < totalPages ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/customers?page=${page + 1}`}>{t("next")}</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled>
+                {t("next")}
+              </Button>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
