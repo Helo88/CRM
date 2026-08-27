@@ -63,7 +63,7 @@
     "currentEmail": "Current email: {email}",
     "pendingEmail": "Pending: {email} — awaiting confirmation.",
     "phoneUpdated": "Phone updated",
-    "invalidPhone": "Enter a valid phone number.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
     "invalidEmail": "Enter a valid email address.",
     "emailUnchanged": "This is already your current email.",
     "emailInUse": "That email is already in use.",
@@ -82,8 +82,13 @@
     "goToSettings": "Go to profile",
     "logIn": "Log in"
   },
+  "StaffSidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar"
+  },
   "CustomersList": {
     "heading": "Customers",
+    "addCustomer": "New customer",
     "colName": "Name",
     "colEmail": "Email",
     "colPhone": "Phone",
@@ -99,12 +104,30 @@
     "next": "Next",
     "pageOf": "Page {page} of {totalPages}"
   },
+  "NewCustomer": {
+    "heading": "New customer",
+    "subheading": "Set up an account for someone who contacted you directly.",
+    "name": "Name",
+    "email": "Email",
+    "phoneOptional": "Phone (optional)",
+    "initialPassword": "Initial password",
+    "passwordHint": "Share this with the customer — they can change it later.",
+    "submit": "Create account",
+    "submitPending": "Creating account…",
+    "genericError": "Could not create this account.",
+    "notSignedIn": "You're not signed in.",
+    "emailInUse": "An account with this email already exists.",
+    "nameRequired": "Name is required.",
+    "invalidEmail": "Enter a valid email address.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
+    "passwordTooShort": "Password must be at least 8 characters."
+  },
   "CustomerProfile": {
     "heading": "Customer profile",
     "name": "Name",
     "email": "Email",
     "phone": "Phone",
-    "invalidPhone": "Enter a valid phone number.",
+    "invalidPhone": "Enter a valid Egyptian phone number, e.g. 01012345678.",
     "preferredLanguage": "Preferred language",
     "languageEnglish": "English",
     "languageArabic": "Arabic",

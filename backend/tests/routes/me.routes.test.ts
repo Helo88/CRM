@@ -54,7 +54,7 @@ describe("GET /api/v1/me/contact", () => {
 
 describe("PATCH /api/v1/me/contact", () => {
   it("returns 401 without a token", async () => {
-    const res = await request(app).patch("/api/v1/me/contact").send({ phone: "+15551234567" });
+    const res = await request(app).patch("/api/v1/me/contact").send({ phone: "+201012345678" });
     expect(res.status).toBe(401);
   });
 
@@ -63,11 +63,11 @@ describe("PATCH /api/v1/me/contact", () => {
     const res = await request(app)
       .patch("/api/v1/me/contact")
       .set("Authorization", `Bearer ${token}`)
-      .send({ phone: "+15551234567" });
+      .send({ phone: "+201012345678" });
     expect(res.status).toBe(200);
-    expect(res.body.phone).toBe("+15551234567");
+    expect(res.body.phone).toBe("+201012345678");
     const reloaded = await User.findById(user.id);
-    expect(reloaded!.phone).toBe("+15551234567");
+    expect(reloaded!.phone).toBe("+201012345678");
   });
 
   it("requests an email change: sets pendingEmail, leaves email unchanged, sends confirmation", async () => {

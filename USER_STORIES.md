@@ -62,6 +62,15 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: customer-management
 
+> **Numbering note:** Story 55 below was added after the rest of this backlog was already numbered (see the same note under `ticket-management`) — same reason, same fix: high number, correct position. It comes first in this section since creating an account logically precedes viewing/editing one.
+
+### Story 55: Add a customer account (as staff)
+**As an** agent or admin, **I want to** create a new customer account directly, **so that** I can set someone up who contacted us by phone or in person, without requiring them to self-register first.
+- Requires name, email, and an initial password (staff sets it directly — no invite-email flow for this pass); phone is optional.
+- The created account has role "customer" and behaves identically to a self-registered one — that customer can log in immediately with the email/password given.
+- A duplicate email is rejected the same way self-registration (Story 1) rejects one.
+- **Frontend:** a real page, reachable via a "New customer" action from the staff customer roster — ships in this story, not deferred. **Backend:** a staff-only creation endpoint, same role gating as Story 4's existing customer endpoints.
+
 ### Story 4: View and edit a customer profile
 **As an** agent or admin, **I want to** view and edit a customer's profile details, **so that** I have accurate information about who I'm helping.
 - Profile shows name, email, phone (optional), and account creation date.
@@ -90,6 +99,14 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: ticket-management
 
+> **Numbering note:** Stories 53 and 54 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 54 between Story 9 and Story 10 (it's infrastructure the very next story needs).
+
+### Story 53: Get support — choose a ticket or live chat
+**As a** logged-in customer, **I want to** land on one clear starting point that lets me choose between submitting a ticket or starting a live chat, **so that** I don't have to guess which nav link gets me help.
+- A single "Get support" entry point presents both options clearly, with a one-line description of when each fits (e.g. live chat for something that needs a real-time back-and-forth, a ticket for something that doesn't).
+- Choosing an option takes the customer directly into that flow — Story 8's submit-ticket form, or `live-chat` Story 14's chat widget — no extra intermediate step.
+- **Frontend:** a real page (e.g. `/support`) is this story's actual deliverable, not a design note — linked from the persistent nav for any signed-in customer. Ships in this story per `CLAUDE.md`'s "every persona-facing capability ships its frontend UI in the same story," same convention as auth's Stories 1-2.
+
 ### Story 8: Submit a ticket (comment/problem)
 **As a** logged-in customer, **I want to** submit a written comment or problem through a form, **so that** I can report an issue without needing to be online at the same time as an agent.
 - Form captures at minimum a subject and description; attachments are optional.
@@ -101,6 +118,14 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Categories and priority levels are configurable by an admin (Story 48).
 - Category/priority can be changed at any time and is logged.
 - Tickets can be filtered and sorted by category and priority.
+
+### Story 54: In-app notifications for ticket events
+**As an** agent, **I want to** see an in-app notification when a ticket is assigned or escalated to me, **so that** I don't have to keep refreshing my ticket list to notice new work.
+- A visible notification indicator (e.g. a badge/counter in the persistent nav) appears when there's an unread ticket-assignment or ticket-escalation notification.
+- Clicking a notification opens the relevant ticket directly and marks it read.
+- Notifications are per-agent (an agent only sees notifications for tickets assigned/escalated to them) and persist across sessions until read.
+- This is what actually implements the "assigned agent is notified in-app" bullets already written into Story 10 and Story 12 below — those stories describe the trigger, this story is the mechanism and the UI.
+- **Frontend:** the notification indicator plus a way to view/open notifications ships as part of this story, not deferred. **Backend:** a notification model/endpoint backing it, triggered by Story 10 (assignment) and Story 12 (escalation).
 
 ### Story 10: Auto-assign a ticket to an available agent
 **As the** system, **I want to** automatically assign a new ticket to the first available (online) agent, **so that** every ticket has an owner without manual dispatching.

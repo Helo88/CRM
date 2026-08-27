@@ -36,6 +36,116 @@ async function seedUser(overrides: Partial<{ role: string; email: string; name: 
   return { user, token: tokenFor({ id: user.id, role: user.role }) };
 }
 
+describe("POST /api/v1/customers (Story 55)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .send({ name: "New Customer", email: "new-customer@example.com", password: "password123" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a customer caller", async () => {
+    const { token } = await seedUser({ role: "customer" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "New Customer", email: "new-customer@example.com", password: "password123" });
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an agent create a customer with role always 'customer', never exposing passwordHash", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Walk-in", email: "walk-in@example.com", phone: "+201012345678", password: "password123" });
+    expect(res.status).toBe(201);
+    expect(res.body.role).toBe("customer");
+    expect(res.body.name).toBe("Walk-in");
+    expect(res.body.phone).toBe("+201012345678");
+    expect(res.body).not.toHaveProperty("passwordHash");
+
+    const created = await User.findOne({ email: "walk-in@example.com" });
+    expect(created?.role).toBe("customer");
+  });
+
+  it("the created customer can actually log in with the password given", async () => {
+    const { token } = await seedUser({ role: "admin" });
+    await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Walk-in", email: "loginable@example.com", password: "password123" });
+
+    const loginRes = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email: "loginable@example.com", password: "password123" });
+    expect(loginRes.status).toBe(200);
+  });
+
+  it("returns 400 when name/email/password are missing", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Missing Fields" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for a too-short password", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Short Pw", email: "short-pw@example.com", password: "short" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for an invalid phone", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Bad Phone", email: "bad-phone@example.com", phone: "abc", password: "password123" });
+    expect(res.status).toBe(400);
+  });
+
+  // Regression: the old generic "7-15 digits" rule accepted this — a local
+  // Egyptian number missing its leading 0, so not actually a real number.
+  it("returns 400 for a 10-digit number missing the leading 0 (was wrongly accepted before)", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "No Leading Zero", email: "no-leading-zero@example.com", phone: "1032017366", password: "password123" });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a real Egyptian mobile number in local and international format", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const local = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Local Format", email: "local-format@example.com", phone: "01032017366", password: "password123" });
+    expect(local.status).toBe(201);
+
+    const intl = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Intl Format", email: "intl-format@example.com", phone: "+201032017366", password: "password123" });
+    expect(intl.status).toBe(201);
+  });
+
+  it("returns 409 for a duplicate email", async () => {
+    const { user: existing } = await seedUser({ email: "taken-2@example.com" });
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Dup", email: existing.email, password: "password123" });
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("GET /api/v1/customers/:id", () => {
   it("returns 401 without a token", async () => {
     const res = await request(app).get("/api/v1/customers/000000000000000000000000");
@@ -86,10 +196,10 @@ describe("PATCH /api/v1/customers/:id", () => {
     const res = await request(app)
       .patch(`/api/v1/customers/${user.id}`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Updated Name", phone: "+15551234567", preferredLanguage: "ar" });
+      .send({ name: "Updated Name", phone: "+201012345678", preferredLanguage: "ar" });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Updated Name");
-    expect(res.body.phone).toBe("+15551234567");
+    expect(res.body.phone).toBe("+201012345678");
     expect(res.body.preferredLanguage).toBe("ar");
   });
 

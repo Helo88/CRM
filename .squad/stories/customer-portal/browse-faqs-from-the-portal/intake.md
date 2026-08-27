@@ -14,7 +14,7 @@ This is **not** an implementation prompt. It is the input to the plan-generation
 ## Tracker (metadata only)
 
 - **Tracker type:** `none`
-- **Work item id:** `37` *(Story 37 in USER_STORIES.md)*
+- **Work item id:** `38` *(Story 38 in USER_STORIES.md — this file predates a renumbering that shifted several later stories by +1; fixed 2026-08-27)*
 - **Work item type:** `User Story`
 - **Status:** `Not started`
 - **Assignee:** ``
@@ -62,21 +62,21 @@ None.
 
 ## Dependencies
 
-- **Blocked by / related ids:** knowledge-base (Stories 28-30) — nothing to browse without published FAQs/articles and Story 30's search. This is the customer-facing FRONTEND consumer of those already-built backend endpoints.
-- **Depends on code areas or other stories:** `FAQ`/`Article` models and their published-only customer-facing read endpoints (Story 28/29), Story 30's search endpoint.
+- **Blocked by / related ids:** knowledge-base (Stories 29-31) — nothing to browse without published FAQs/articles and Story 31's search. This is the customer-facing FRONTEND consumer of those already-built backend endpoints.
+- **Depends on code areas or other stories:** `FAQ`/`Article` models and their published-only customer-facing read endpoints (Story 29/30), Story 31's search endpoint.
 
 ## Extra notes (optional)
 
-- This story is primarily FRONTEND — the backend read endpoints already exist from Stories 28-30 (customer-visible = published-only, per those stories' own access rules). Build the portal UI (FAQ list/search page) using the shadcn/ui design system already established.
-- "Suggests relevant articles before submitting a ticket" — as the customer types a subject/description in the new-ticket form (Story 8's UI, if built), fire Story 30's search with the in-progress text and show top matches. This is a UI enhancement to the ticket-submission flow, not a new backend endpoint (reuse Story 30's search as-is).
-- "In the customer's selected language" ties to Story 49 (`platform`, bilingual UI) — a much later feature. Until Story 49 wires up real locale switching, default to English and structure the FAQ display component to read from the bilingual `{ en, ar }` content shape Stories 28/29 established, so swapping in real locale detection later is a small change, not a rebuild.
+- This story is primarily FRONTEND — the backend read endpoints already exist from Stories 29-31 (customer-visible = published-only, per those stories' own access rules). Build the portal UI (FAQ list/search page) using the shadcn/ui design system already established.
+- "Suggests relevant articles before submitting a ticket" — as the customer types a subject/description in the new-ticket form (Story 8's UI, if built), fire Story 31's search with the in-progress text and show top matches. This is a UI enhancement to the ticket-submission flow, not a new backend endpoint (reuse Story 31's search as-is).
+- "In the customer's selected language" ties to Story 50 (`platform`, bilingual UI) — a much later feature. Until Story 50 wires up real locale switching, default to English and structure the FAQ display component to read from the bilingual `{ en, ar }` content shape Stories 29/30 established, so swapping in real locale detection later is a small change, not a rebuild.
 
 ## Technical hints (optional)
 
 - Repos/roots: `.`. Primary language: `typescript`.
-- Public or `requireRole("customer")` reads, matching however Stories 28-30 scoped their customer-facing endpoints.
+- Public or `requireRole("customer")` reads, matching however Stories 29-31 scoped their customer-facing endpoints.
 
 ## Out of scope
 
-- FAQ/article authoring (Stories 28-29, separate, already-planned stories) — this story only consumes/displays.
-- Real locale switching (Story 49, separate, much later feature) — structure for it, don't build it.
+- FAQ/article authoring (Stories 29-30, separate, already-planned stories) — this story only consumes/displays.
+- Real locale switching (Story 50, separate, much later feature) — structure for it, don't build it.

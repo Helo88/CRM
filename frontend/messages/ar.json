@@ -63,7 +63,7 @@
     "currentEmail": "البريد الإلكتروني الحالي: {email}",
     "pendingEmail": "قيد الانتظار: {email} — بانتظار التأكيد.",
     "phoneUpdated": "تم تحديث رقم الهاتف",
-    "invalidPhone": "أدخل رقم هاتف صحيحًا.",
+    "invalidPhone": "أدخل رقم هاتف مصري صحيح، مثل 01012345678.",
     "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
     "emailUnchanged": "هذا هو بريدك الإلكتروني الحالي بالفعل.",
     "emailInUse": "هذا البريد الإلكتروني مستخدم بالفعل.",
@@ -82,8 +82,13 @@
     "goToSettings": "الانتقال إلى الملف الشخصي",
     "logIn": "تسجيل الدخول"
   },
+  "StaffSidebar": {
+    "expand": "توسيع الشريط الجانبي",
+    "collapse": "طي الشريط الجانبي"
+  },
   "CustomersList": {
     "heading": "العملاء",
+    "addCustomer": "عميل جديد",
     "colName": "الاسم",
     "colEmail": "البريد الإلكتروني",
     "colPhone": "الهاتف",
@@ -99,12 +104,30 @@
     "next": "التالي",
     "pageOf": "صفحة {page} من {totalPages}"
   },
+  "NewCustomer": {
+    "heading": "عميل جديد",
+    "subheading": "أنشئ حسابًا لشخص تواصل معك مباشرة.",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "phoneOptional": "الهاتف (اختياري)",
+    "initialPassword": "كلمة المرور الأولية",
+    "passwordHint": "شارك هذه مع العميل — يمكنه تغييرها لاحقًا.",
+    "submit": "إنشاء الحساب",
+    "submitPending": "جاري إنشاء الحساب…",
+    "genericError": "تعذر إنشاء هذا الحساب.",
+    "notSignedIn": "لست مسجّلاً الدخول.",
+    "emailInUse": "يوجد حساب بهذا البريد الإلكتروني بالفعل.",
+    "nameRequired": "الاسم مطلوب.",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "invalidPhone": "أدخل رقم هاتف مصري صحيح، مثل 01012345678.",
+    "passwordTooShort": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
+  },
   "CustomerProfile": {
     "heading": "الملف الشخصي للعميل",
     "name": "الاسم",
     "email": "البريد الإلكتروني",
     "phone": "الهاتف",
-    "invalidPhone": "أدخل رقم هاتف صحيحًا.",
+    "invalidPhone": "أدخل رقم هاتف مصري صحيح، مثل 01012345678.",
     "preferredLanguage": "اللغة المفضلة",
     "languageEnglish": "الإنجليزية",
     "languageArabic": "العربية",

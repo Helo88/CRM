@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   description: "Customer service platform — live chat and ticket support.",
 };
 
-// Locale (Story 49) and theme both resolved server-side from cookies, so the
+// Locale (Story 50) and theme both resolved server-side from cookies, so the
 // first paint is already correct — no flash of the wrong language or theme.
 // See components/UserMenu.tsx for where these actually get switched.
 export default async function RootLayout({ children }: { children: ReactNode }) {
