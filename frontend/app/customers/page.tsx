@@ -70,7 +70,9 @@ export default async function CustomersListPage({
   if (res.status === 403) {
     return (
       <div className="flex min-h-[calc(100vh-57px)]">
-        <StaffSidebar active="customers" />
+        <div className="hidden md:block">
+          <StaffSidebar active="customers" />
+        </div>
         <main className="flex flex-1 items-center justify-center p-8">
           <p className="text-muted-foreground">{t("noAccess")}</p>
         </main>
@@ -88,67 +90,109 @@ export default async function CustomersListPage({
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
-      <StaffSidebar active="customers" />
-      <main className="flex-1 p-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">{t("heading")}</h1>
+      {/* Single nav item today — a persistent sidebar isn't the right mobile
+          pattern for that, and it's already reachable from the top nav. Once
+          agent-workspace/security-admin add more staff pages, a real
+          collapsible drawer belongs here instead of just hiding it. */}
+      <div className="hidden md:block">
+        <StaffSidebar active="customers" />
+      </div>
+      <main className="min-w-0 flex-1 p-4 md:p-8">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
           <Button asChild size="sm">
             <Link href="/customers/new">{t("addCustomer")}</Link>
           </Button>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("colName")}</TableHead>
-                <TableHead>{t("colEmail")}</TableHead>
-                <TableHead>{t("colPhone")}</TableHead>
-                <TableHead>{t("colStatus")}</TableHead>
-                <TableHead>{t("colJoined")}</TableHead>
-                <TableHead>{t("colHistory")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.customers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    {t("empty")}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                data.customers.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
-                        {c.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{c.email}</TableCell>
-                    <TableCell>{c.phone ?? "—"}</TableCell>
-                    <TableCell>
-                      {c.isActive ? (
-                        <Badge variant="outline" className="border-success/30 text-success">
-                          {t("statusActive")}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">{t("statusInactive")}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/api/v1/customers/${c.id}/history`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        {t("history")}
-                      </Link>
-                    </TableCell>
+
+        {data.customers.length === 0 ? (
+          <p className="py-8 text-center text-muted-foreground">{t("empty")}</p>
+        ) : (
+          <>
+            {/* Mobile (< md): stacked cards — a wide table forced into a
+                narrow viewport either overflows the page or becomes an
+                unreadable horizontal-scroll strip; a table just isn't the
+                right shape for this data below a certain width. */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {data.customers.map((c) => (
+                <div key={c.id} className="rounded-xl border border-border p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
+                      {c.name}
+                    </Link>
+                    {c.isActive ? (
+                      <Badge variant="outline" className="shrink-0 border-success/30 text-success">
+                        {t("statusActive")}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="shrink-0">
+                        {t("statusInactive")}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{c.email}</p>
+                  <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{c.phone ?? "—"}</span>
+                    <span>{new Date(c.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <Link
+                    href={`/api/v1/customers/${c.id}/history`}
+                    className="mt-3 inline-block text-sm text-primary hover:underline"
+                  >
+                    {t("history")}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            {/* md and up: the real table. */}
+            <div className="hidden overflow-hidden rounded-2xl border border-border md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("colName")}</TableHead>
+                    <TableHead>{t("colEmail")}</TableHead>
+                    <TableHead>{t("colPhone")}</TableHead>
+                    <TableHead>{t("colStatus")}</TableHead>
+                    <TableHead>{t("colJoined")}</TableHead>
+                    <TableHead>{t("colHistory")}</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                </TableHeader>
+                <TableBody>
+                  {data.customers.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell>
+                        <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
+                          {c.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{c.email}</TableCell>
+                      <TableCell>{c.phone ?? "—"}</TableCell>
+                      <TableCell>
+                        {c.isActive ? (
+                          <Badge variant="outline" className="border-success/30 text-success">
+                            {t("statusActive")}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">{t("statusInactive")}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/api/v1/customers/${c.id}/history`}
+                          className="text-sm text-primary hover:underline"
+                        >
+                          {t("history")}
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between">
             {page > 1 ? (
