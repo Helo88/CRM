@@ -24,6 +24,7 @@ interface ConfirmActionButtonProps {
   confirmActionLabel: string;
   cancelLabel: string;
   destructive?: boolean;
+  successful?: boolean;
   onConfirm: () => Promise<{ error: string | null }>;
 }
 
@@ -33,12 +34,13 @@ interface ConfirmActionButtonProps {
 export function ConfirmActionButton({
   icon,
   label,
-  triggerVariant = "outline",
+  triggerVariant = "ghost",
   confirmTitle,
   confirmBody,
   confirmActionLabel,
   cancelLabel,
   destructive,
+  successful,
   onConfirm,
 }: ConfirmActionButtonProps) {
   const [pending, startTransition] = useTransition();
@@ -59,7 +61,13 @@ export function ConfirmActionButton({
           size="icon-sm"
           title={label}
           aria-label={label}
-          className={destructive ? "text-destructive hover:text-destructive" : undefined}
+          className={
+            destructive
+              ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
+              : successful
+                ? "text-success hover:bg-success/10 hover:text-success"
+                : undefined
+          }
         >
           {icon}
         </Button>

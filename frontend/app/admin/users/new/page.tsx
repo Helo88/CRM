@@ -11,12 +11,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("heading"), robots: { index: false, follow: false } };
 }
 
-// USER_STORIES.md security-admin Story 45. Only a full admin ever reaches
-// this UI — narrower than the customer-creation page's agent-or-admin gate,
-// since account creation (agent/sub-admin) is admin-only. Role is checked
-// directly from the access token, same UI-nicety caveat as
-// customers/new/page.tsx: requireRole on the actual POST is what really
-// enforces this.
+// USER_STORIES.md security-admin Story 45. Reachable by a true admin or a
+// sub-admin delegated staff:edit (the same key the POST itself requires) —
+// checked directly from the access token, same UI-nicety caveat as
+// customers/new/page.tsx: requirePermission on the actual POST is what
+// really enforces this.
 export default async function NewStaffAccountPage({
   searchParams,
 }: {
@@ -34,9 +33,9 @@ export default async function NewStaffAccountPage({
     redirect("/");
   }
 
-  const { role } = peekJwtPayload(accessToken);
-  if (role !== "admin") {
-    redirect("/admin/users");
+  const { role, permissions = [] } = peekJwtPayload(accessToken);
+  if (role !== "admin" && !permissions.includes("staff:edit")) {
+    redirect("/dashboard");
   }
 
   return (

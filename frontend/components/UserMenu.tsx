@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LOCALE_COOKIE, type Locale } from "@/lib/locale";
 import { logout } from "@/app/actions";
+import { cn } from "@/lib/utils";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -23,10 +24,14 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 // reference header's separate control cluster.
 export function UserMenu({
   name,
+  email,
+  membershipNumber,
   locale,
   inlineName = false,
 }: {
   name: string;
+  email?: string;
+  membershipNumber?: string;
   locale: Locale;
   inlineName?: boolean;
 }) {
@@ -34,6 +39,10 @@ export function UserMenu({
   const t = useTranslations("UserMenu");
   const tAuth = useTranslations("Auth");
   const initial = name.trim().charAt(0).toUpperCase() || "?";
+  // A customer has a membership number to show off; staff/admin don't, but
+  // do have an email worth surfacing here instead — matching the reference
+  // header's "name / email" pairing.
+  const secondaryLine = membershipNumber ? t("memberNumber", { number: membershipNumber }) : email;
 
   function toggleLocale() {
     const next: Locale = locale === "en" ? "ar" : "en";
@@ -44,20 +53,35 @@ export function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="flex h-10 items-center gap-2 rounded-2xl ps-1 pe-2.5 outline-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+        className={cn(
+          "flex items-center gap-2 rounded-2xl ps-1 pe-2.5 outline-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
+          inlineName ? "h-12" : "h-10"
+        )}
       >
         <Avatar>
           <AvatarFallback className="bg-accent text-accent-foreground">{initial}</AvatarFallback>
         </Avatar>
         {inlineName && (
           <>
-            <span className="hidden max-w-[9rem] truncate text-sm font-semibold sm:inline">{name}</span>
+            <span className="hidden flex-col items-start sm:flex">
+              <span className="max-w-[9rem] truncate text-sm font-semibold leading-tight">{name}</span>
+              {secondaryLine && (
+                <span className="max-w-[9rem] truncate text-xs leading-tight text-muted-foreground">
+                  {secondaryLine}
+                </span>
+              )}
+            </span>
             <ChevronDown className="hidden size-4 text-muted-foreground sm:inline" />
           </>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel className="truncate">{name}</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span className="truncate text-sm font-semibold leading-tight">{name}</span>
+          {secondaryLine && (
+            <span className="truncate text-xs font-normal leading-tight text-muted-foreground">{secondaryLine}</span>
+          )}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/settings">{t("profile")}</Link>

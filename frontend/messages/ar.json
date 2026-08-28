@@ -15,6 +15,7 @@
     "signUp": "إنشاء حساب"
   },
   "UserMenu": {
+    "memberNumber": "عضو رقم {number}",
     "profile": "الملف الشخصي",
     "lightMode": "الوضع الفاتح",
     "darkMode": "الوضع الداكن",
@@ -24,6 +25,12 @@
   "Home": {
     "title": "خدمة عملاء AzmSquad",
     "tagline": "الدردشة المباشرة ودعم التذاكر، في مكان واحد."
+  },
+  "NotFound": {
+    "title": "الصفحة غير موجودة",
+    "heading": "الصفحة غير موجودة",
+    "description": "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+    "backHome": "العودة إلى الرئيسية"
   },
   "Register": {
     "heading": "إنشاء حسابك",
@@ -96,6 +103,7 @@
     "heading": "العملاء",
     "addCustomer": "عميل جديد",
     "colName": "الاسم",
+    "colMembershipNumber": "رقم العضوية",
     "colEmail": "البريد الإلكتروني",
     "colPhone": "الهاتف",
     "colStatus": "الحالة",
@@ -144,6 +152,7 @@
     "heading": "حسابات الفريق",
     "addAccount": "حساب جديد",
     "colName": "الاسم",
+    "colMembershipNumber": "رقم العضوية",
     "colEmail": "البريد الإلكتروني",
     "colRole": "الدور",
     "colOnline": "متصل",
@@ -189,7 +198,7 @@
     "subheading": "أنشئ حساب موظف دعم أو مسؤول فرعي.",
     "stepDetails": "البيانات",
     "stepPermissions": "الصلاحيات",
-    "permissionsSubheading": "تُمنح لهذا الحساب بشكل فردي — لا تُشارك مع غيره من نفس الدور.",
+    "subheadingPermissions": "تُمنح لهذا الحساب بشكل فردي — لا تُشارك مع غيره من نفس الدور.",
     "name": "الاسم",
     "email": "البريد الإلكتروني",
     "role": "الدور",
@@ -210,10 +219,10 @@
   },
   "EditStaffAccount": {
     "heading": "تعديل حساب الفريق",
-    "subheading": "تحديث بيانات هذا الحساب.",
+    "subheading": "تحديث بيانات الحساب.",
+    "subheadingPermissions": "تحديث صلاحيات الحساب.",
     "stepDetails": "البيانات",
     "stepPermissions": "الصلاحيات",
-    "permissionsSubheading": "تُمنح لهذا الحساب بشكل فردي — لا تُشارك مع غيره من نفس الدور.",
     "name": "الاسم",
     "email": "البريد الإلكتروني",
     "role": "الدور",
@@ -232,7 +241,7 @@
   },
   "Permissions": {
     "categories": {
-      "users": "المستخدمون",
+      "staff": "الفريق",
       "audit": "سجل التدقيق",
       "config": "الإعدادات",
       "customers": "العملاء",
@@ -243,8 +252,12 @@
       "ai": "الذكاء الاصطناعي"
     },
     "keys": {
-      "users:manage": "إدارة حسابات موظفي الدعم والمسؤولين الفرعيين",
-      "users:permissions": "تعديل صلاحيات الحساب",
+      "staff:view_list": "عرض قائمة الحسابات",
+      "staff:view_account": "عرض تفاصيل حساب واحد",
+      "staff:edit": "تعديل بيانات حساب الفريق",
+      "staff:toggle_status": "تفعيل / تعطيل الحسابات",
+      "staff:delete": "حذف الحسابات",
+      "staff:permissions": "تعديل صلاحيات الحساب",
       "audit:view": "عرض سجل التدقيق",
       "config:edit": "تعديل إعدادات النظام",
       "customers:manage": "إدارة قائمة العملاء",

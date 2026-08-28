@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
 import { EditStaffAccountForm } from "./EditStaffAccountForm";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -21,9 +22,10 @@ interface StaffAccountDetail {
 // USER_STORIES.md security-admin Story 45/46 addendum: editing an existing
 // agent/sub-admin's data AND permissions together, mirroring the creation
 // stepper's two steps. Reachable by admin or a sub-admin holding
-// users:manage on their own account — the fetch below's 403 handles the
-// "reached the URL but isn't actually delegated" case, same pattern as the
-// roster page.
+// staff:view_account on their own account — the fetch below's 403 redirects
+// to /dashboard for the "reached the URL but isn't actually delegated" case,
+// same pattern as the roster page. Once in, staff:edit/staff:permissions
+// (checked below) decide whether the form is editable or view-only.
 export default async function EditStaffAccountPage({
   params,
   searchParams,
@@ -33,7 +35,6 @@ export default async function EditStaffAccountPage({
 }) {
   const { id } = await params;
   const { _refreshed } = await searchParams;
-  const t = await getTranslations("EditStaffAccount");
 
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
@@ -59,11 +60,9 @@ export default async function EditStaffAccountPage({
   }
 
   if (res.status === 403) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-8">
-        <p className="text-muted-foreground">{t("noAccess")}</p>
-      </main>
-    );
+    // No staff:view_account at all — same reasoning as the roster's 403:
+    // land somewhere useful instead of a dead-end message.
+    redirect("/dashboard");
   }
 
   if (!res.ok) {
@@ -77,9 +76,18 @@ export default async function EditStaffAccountPage({
     redirect("/admin/users");
   }
 
+  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const isViewerAdmin = viewerRole === "admin";
+  const canEditDetails = isViewerAdmin || viewerPermissions.includes("staff:edit");
+  const canEditPermissions = isViewerAdmin || viewerPermissions.includes("staff:permissions");
+
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <EditStaffAccountForm account={{ ...account, role: account.role as "agent" | "subadmin" }} />
+      <EditStaffAccountForm
+        account={{ ...account, role: account.role as "agent" | "subadmin" }}
+        canEditDetails={canEditDetails}
+        canEditPermissions={canEditPermissions}
+      />
     </main>
   );
 }

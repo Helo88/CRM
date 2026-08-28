@@ -15,6 +15,7 @@
     "signUp": "Sign up"
   },
   "UserMenu": {
+    "memberNumber": "Member #{number}",
     "profile": "Profile",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
@@ -24,6 +25,12 @@
   "Home": {
     "title": "AzmSquad Customer Service",
     "tagline": "Live chat and ticket support, in one place."
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "heading": "Page not found",
+    "description": "The page you're looking for doesn't exist or has moved.",
+    "backHome": "Back to home"
   },
   "Register": {
     "heading": "Create your account",
@@ -96,6 +103,7 @@
     "heading": "Customers",
     "addCustomer": "New customer",
     "colName": "Name",
+    "colMembershipNumber": "Membership #",
     "colEmail": "Email",
     "colPhone": "Phone",
     "colStatus": "Status",
@@ -144,6 +152,7 @@
     "heading": "Staff accounts",
     "addAccount": "New account",
     "colName": "Name",
+    "colMembershipNumber": "Membership #",
     "colEmail": "Email",
     "colRole": "Role",
     "colOnline": "Online",
@@ -189,7 +198,7 @@
     "subheading": "Create an agent or sub-admin account.",
     "stepDetails": "Details",
     "stepPermissions": "Permissions",
-    "permissionsSubheading": "Granted to this account individually — not shared with others of the same role.",
+    "subheadingPermissions": "Granted to this account individually — not shared with others of the same role.",
     "name": "Name",
     "email": "Email",
     "role": "Role",
@@ -211,9 +220,9 @@
   "EditStaffAccount": {
     "heading": "Edit staff account",
     "subheading": "Update this account's details.",
+    "subheadingPermissions": "Update this account's permissions.",
     "stepDetails": "Details",
     "stepPermissions": "Permissions",
-    "permissionsSubheading": "Granted to this account individually — not shared with others of the same role.",
     "name": "Name",
     "email": "Email",
     "role": "Role",
@@ -232,7 +241,7 @@
   },
   "Permissions": {
     "categories": {
-      "users": "Users",
+      "staff": "Staff",
       "audit": "Audit",
       "config": "Config",
       "customers": "Customers",
@@ -243,8 +252,12 @@
       "ai": "AI"
     },
     "keys": {
-      "users:manage": "Manage agent & sub-admin accounts",
-      "users:permissions": "Edit account permissions",
+      "staff:view_list": "View the accounts list",
+      "staff:view_account": "View one account's details",
+      "staff:edit": "Edit staff account details",
+      "staff:toggle_status": "Activate / deactivate accounts",
+      "staff:delete": "Delete accounts",
+      "staff:permissions": "Edit account permissions",
       "audit:view": "View audit log",
       "config:edit": "Edit system configuration",
       "customers:manage": "Manage customer roster",

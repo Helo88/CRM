@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StepIndicator } from "@/components/StepIndicator";
+import { stripSubadminOnlyPermissions } from "@/lib/permissions";
 import { PermissionsStep } from "../PermissionsStep";
 import { createStaffAccount, type NewStaffAccountActionState } from "./actions";
 
@@ -36,10 +37,12 @@ export function NewStaffAccountForm() {
   const steps = [{ key: "details", label: t("stepDetails") }, { key: "permissions", label: t("stepPermissions") }];
 
   return (
-    <Card className="w-full max-w-lg rounded-[28px] border-none shadow-pop ring-1 ring-foreground/10">
+    <Card className="w-full max-w-2xl rounded-[28px] border-none shadow-pop ring-1 ring-foreground/10">
       <CardHeader className="pt-6">
         <CardTitle className="text-2xl font-bold tracking-tight">{t("heading")}</CardTitle>
-        <CardDescription className="text-balance">{t("subheading")}</CardDescription>
+        <CardDescription className="text-balance">
+          {t(step === 0 ? "subheading" : "subheadingPermissions")}
+        </CardDescription>
         <div className="pt-4">
           <StepIndicator steps={steps} currentIndex={step} />
         </div>
@@ -81,7 +84,15 @@ export function NewStaffAccountForm() {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="role">{t("role")}</Label>
-            <Select name="role" value={role} onValueChange={(v) => setRole(v as "agent" | "subadmin")}>
+            <Select
+              name="role"
+              value={role}
+              onValueChange={(v) => {
+                const nextRole = v as "agent" | "subadmin";
+                setRole(nextRole);
+                if (nextRole === "agent") setPermissions((prev) => stripSubadminOnlyPermissions(prev));
+              }}
+            >
               <SelectTrigger id="role" className="w-full" aria-invalid={Boolean(state.fieldErrors?.role)}>
                 <SelectValue />
               </SelectTrigger>
@@ -112,8 +123,7 @@ export function NewStaffAccountForm() {
         </CardContent>
 
         <CardContent className={step === 1 ? "flex flex-col gap-3" : "hidden"}>
-          <p className="text-xs text-muted-foreground">{t("permissionsSubheading")}</p>
-          <PermissionsStep value={permissions} onChange={setPermissions} disabled={pending} />
+          <PermissionsStep value={permissions} onChange={setPermissions} disabled={pending} role={role} />
           <input type="hidden" name="permissions" value={JSON.stringify(permissions)} />
         </CardContent>
 
@@ -126,7 +136,11 @@ export function NewStaffAccountForm() {
           </CardContent>
         )}
 
-        <CardFooter className="flex gap-2 border-t-0 bg-transparent pt-1">
+        {/* key={step} forces React to unmount/remount this footer instead of
+            reusing the "Next" button's DOM node for "Create account" — see
+            EditStaffAccountForm.tsx for the full explanation of the bug this
+            avoids. */}
+        <CardFooter className="flex gap-2 border-t-0 bg-transparent pt-1" key={step}>
           {step === 1 && (
             <Button type="button" variant="outline" onClick={() => setStep(0)} disabled={pending}>
               <ArrowLeft className="size-4 rtl:-scale-x-100" />

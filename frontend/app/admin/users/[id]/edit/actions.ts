@@ -18,11 +18,18 @@ const permissionsField = z.string().transform((val, ctx) => {
   }
 });
 
+// name/email/role/permissions are all optional here — a viewer without
+// staff:edit or staff:permissions gets those form fields disabled, so their
+// values are only meaningful (and only sent to the backend at all) when the
+// matching canEditDetails/canEditPermissions flag says so. Without this, a
+// viewer with ONLY staff:edit would have their unrelated, unchanged
+// permissions value re-submitted on every save and get a spurious 403 for a
+// staff:permissions check they never triggered.
 const editStaffAccountSchema = z.object({
-  name: z.string().trim().min(1),
-  email: z.string().trim().min(1).email(),
-  role: z.enum(["agent", "subadmin"]),
-  permissions: permissionsField,
+  name: z.string().trim().min(1).optional(),
+  email: z.string().trim().min(1).email().optional(),
+  role: z.enum(["agent", "subadmin"]).optional(),
+  permissions: permissionsField.optional(),
 });
 
 export interface EditStaffAccountActionState {
@@ -32,15 +39,23 @@ export interface EditStaffAccountActionState {
 
 export async function updateStaffAccount(
   userId: string,
+  canEditDetails: boolean,
+  canEditPermissions: boolean,
   _prevState: EditStaffAccountActionState,
   formData: FormData
 ): Promise<EditStaffAccountActionState> {
   const t = await getTranslations("EditStaffAccount");
+
+  const rawName = formData.get("name");
+  const rawEmail = formData.get("email");
+  const rawRole = formData.get("role");
+  const rawPermissions = formData.get("permissions");
+
   const parsed = editStaffAccountSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-    role: formData.get("role"),
-    permissions: formData.get("permissions") ?? "[]",
+    name: canEditDetails && typeof rawName === "string" ? rawName : undefined,
+    email: canEditDetails && typeof rawEmail === "string" ? rawEmail : undefined,
+    role: canEditDetails && typeof rawRole === "string" ? rawRole : undefined,
+    permissions: canEditPermissions && typeof rawPermissions === "string" ? rawPermissions : undefined,
   });
 
   if (!parsed.success) {
@@ -64,6 +79,9 @@ export async function updateStaffAccount(
     return { error: t("notSignedIn") };
   }
 
+  // parsed.data only carries keys the viewer is actually authorized to
+  // change (see above) — JSON.stringify drops the rest since they're
+  // undefined, so the PATCH body only ever reflects an authorized edit.
   const doFetch = (bearer: string) =>
     fetch(`${API_URL}/api/v1/admin/users/${userId}`, {
       method: "PATCH",

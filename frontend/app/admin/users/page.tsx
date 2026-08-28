@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ interface StaffAccountRow {
   id: string;
   name: string;
   email: string;
+  membershipNumber: string;
   role: "agent" | "admin" | "subadmin";
   isActive: boolean;
   isOnline: boolean;
@@ -68,14 +70,10 @@ export default async function AdminUsersListPage({
   }
 
   if (res.status === 403) {
-    return (
-      <div className="flex min-h-[calc(100vh-57px)]">
-        <StaffSidebar active="accounts" />
-        <main className="flex flex-1 items-center justify-center p-8">
-          <p className="text-muted-foreground">{t("noAccess")}</p>
-        </main>
-      </div>
-    );
+    // A staff persona without staff:view_list at all never gets a working
+    // link to this page (see lib/staffNav.ts), so reaching it and being
+    // turned away belongs on the dashboard, not a dead-end message here.
+    redirect("/dashboard");
   }
 
   if (!res.ok) {
@@ -85,6 +83,13 @@ export default async function AdminUsersListPage({
   const data: { users: StaffAccountRow[]; total: number; page: number; limit: number } =
     await res.json();
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
+
+  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const isViewerAdmin = viewerRole === "admin";
+  const canEdit = isViewerAdmin || viewerPermissions.includes("staff:edit");
+  const canToggleStatus = isViewerAdmin || viewerPermissions.includes("staff:toggle_status");
+  const canDelete = isViewerAdmin || viewerPermissions.includes("staff:delete");
+  const showActionsColumn = canEdit || canToggleStatus || canDelete;
 
   const roleLabel = (role: StaffAccountRow["role"]) =>
     role === "agent" ? t("roleAgent") : role === "admin" ? t("roleAdmin") : t("roleSubadmin");
@@ -114,7 +119,7 @@ export default async function AdminUsersListPage({
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-medium">{u.name}</span>
                     {u.isActive ? (
-                      <Badge variant="outline" className="shrink-0 border-success/30 text-success">
+                      <Badge variant="outline" className="shrink-0 border-transparent bg-success/10 text-success">
                         {t("statusActive")}
                       </Badge>
                     ) : (
@@ -124,13 +129,23 @@ export default async function AdminUsersListPage({
                     )}
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{u.email}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">{u.membershipNumber}</p>
                   <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
                     <span>{roleLabel(u.role)}</span>
                     <span>{onlineLabel(u)}</span>
                   </div>
-                  <div className="mt-3 flex justify-end border-t border-border pt-3">
-                    <RowActions userId={u.id} role={u.role} isActive={u.isActive} />
-                  </div>
+                  {showActionsColumn && (
+                    <div className="mt-3 flex justify-end border-t border-border pt-3">
+                      <RowActions
+                        userId={u.id}
+                        role={u.role}
+                        isActive={u.isActive}
+                        canEdit={canEdit}
+                        canToggleStatus={canToggleStatus}
+                        canDelete={canDelete}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -141,18 +156,20 @@ export default async function AdminUsersListPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("colName")}</TableHead>
+                    <TableHead>{t("colMembershipNumber")}</TableHead>
                     <TableHead>{t("colEmail")}</TableHead>
                     <TableHead>{t("colRole")}</TableHead>
                     <TableHead>{t("colOnline")}</TableHead>
                     <TableHead>{t("colJoined")}</TableHead>
                     <TableHead>{t("colStatus")}</TableHead>
-                    <TableHead className="text-end">{t("colActions")}</TableHead>
+                    {showActionsColumn && <TableHead className="text-end">{t("colActions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.users.map((u) => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{u.membershipNumber}</TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>{roleLabel(u.role)}</TableCell>
                       <TableCell>{onlineLabel(u)}</TableCell>
@@ -166,9 +183,18 @@ export default async function AdminUsersListPage({
                           <Badge variant="secondary">{t("statusInactive")}</Badge>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <RowActions userId={u.id} role={u.role} isActive={u.isActive} />
-                      </TableCell>
+                      {showActionsColumn && (
+                        <TableCell>
+                          <RowActions
+                            userId={u.id}
+                            role={u.role}
+                            isActive={u.isActive}
+                            canEdit={canEdit}
+                            canToggleStatus={canToggleStatus}
+                            canDelete={canDelete}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

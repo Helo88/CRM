@@ -37,7 +37,7 @@ function StepCircle({ status, number }: { status: StepStatus; number: number }) 
 export function StepIndicator({ steps, currentIndex }: { steps: Step[]; currentIndex: number }) {
   return (
     <>
-      <ol className="hidden items-start sm:flex" aria-label="Progress">
+      <ol className="mx-auto hidden w-full max-w-xs items-start sm:flex" aria-label="Progress">
         {steps.map((step, index) => {
           const status = statusOf(index, currentIndex);
           const isLast = index === steps.length - 1;

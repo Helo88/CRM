@@ -38,12 +38,19 @@ export default async function DashboardPage({
     redirect("/");
   }
 
-  const { role, name } = peekJwtPayload(accessToken);
+  const { role, name, permissions = [] } = peekJwtPayload(accessToken);
   const isStaff = role === "agent" || role === "admin" || role === "subadmin";
   if (!isStaff) {
     redirect("/");
   }
-  const isAdminTier = role === "admin" || role === "subadmin";
+  // Mirrors the actual route gates: agent/admin always reach /customers,
+  // a sub-admin only with a customers:manage delegation (see
+  // backend/src/routes/customer.routes.ts's staffOrDelegatedSubadmin);
+  // /admin/users needs staff:view_list, which only admin or a delegated
+  // sub-admin can ever hold (see SUBADMIN_ONLY_PERMISSIONS). Showing a tile
+  // a viewer can't actually use would just bounce them right back here.
+  const canViewCustomers = role === "agent" || role === "admin" || permissions.includes("customers:manage");
+  const canViewAccounts = role === "admin" || permissions.includes("staff:view_list");
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
@@ -57,35 +64,37 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Link
-            href="/customers"
-            className="group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-border p-5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card"
-            style={{ background: "linear-gradient(150deg, color-mix(in oklch, var(--primary) 14%, var(--card)), var(--card))" }}
-          >
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -bottom-8 -end-8 size-36 rounded-full opacity-50"
-              style={{ background: "radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--primary) 55%, transparent), transparent 70%)" }}
-            />
-            <div
-              className="grid size-10 place-items-center rounded-xl"
-              style={{ background: "color-mix(in oklch, var(--primary) 20%, var(--card))", color: "var(--primary)" }}
+          {canViewCustomers && (
+            <Link
+              href="/customers"
+              className="group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-border p-5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card"
+              style={{ background: "linear-gradient(150deg, color-mix(in oklch, var(--primary) 14%, var(--card)), var(--card))" }}
             >
-              <Users className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold">{tNav("customers")}</h2>
-              <p className="mt-0.5 max-w-[30ch] text-sm text-muted-foreground">{t("customersTileBody")}</p>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{t("customersTileNote")}</span>
-              <span className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground transition-transform group-hover/tile:translate-x-0.5 rtl:group-hover/tile:-translate-x-0.5">
-                <ArrowRight className="size-3.5 rtl:-scale-x-100" />
-              </span>
-            </div>
-          </Link>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -bottom-8 -end-8 size-36 rounded-full opacity-50"
+                style={{ background: "radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--primary) 55%, transparent), transparent 70%)" }}
+              />
+              <div
+                className="grid size-10 place-items-center rounded-xl"
+                style={{ background: "color-mix(in oklch, var(--primary) 20%, var(--card))", color: "var(--primary)" }}
+              >
+                <Users className="size-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">{tNav("customers")}</h2>
+                <p className="mt-0.5 max-w-[30ch] text-sm text-muted-foreground">{t("customersTileBody")}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{t("customersTileNote")}</span>
+                <span className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground transition-transform group-hover/tile:translate-x-0.5 rtl:group-hover/tile:-translate-x-0.5">
+                  <ArrowRight className="size-3.5 rtl:-scale-x-100" />
+                </span>
+              </div>
+            </Link>
+          )}
 
-          {isAdminTier && (
+          {canViewAccounts && (
             <Link
               href="/admin/users"
               className="group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-border p-5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card"
