@@ -28,12 +28,18 @@ export function UserMenu({
   membershipNumber,
   locale,
   inlineName = false,
+  viewProfileHref,
 }: {
   name: string;
   email?: string;
   membershipNumber?: string;
   locale: Locale;
   inlineName?: boolean;
+  // Customer-only (Story 7): links to /customers/[id]'s richer profile
+  // (name/email/phone plus the notes/attachments gallery step) — distinct
+  // from "profile" below, which is Story 5's contact-only settings page.
+  // Staff never get this — /customers/[id] is a customer-facing surface.
+  viewProfileHref?: string;
 }) {
   const router = useRouter();
   const t = useTranslations("UserMenu");
@@ -83,6 +89,11 @@ export function UserMenu({
           )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {viewProfileHref && (
+          <DropdownMenuItem asChild>
+            <Link href={viewProfileHref}>{t("myProfile")}</Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link href="/settings">{t("profile")}</Link>
         </DropdownMenuItem>

@@ -17,6 +17,7 @@
   },
   "UserMenu": {
     "memberNumber": "عضو رقم {number}",
+    "myProfile": "ملفي الشخصي",
     "profile": "الملف الشخصي",
     "lightMode": "الوضع الفاتح",
     "darkMode": "الوضع الداكن",

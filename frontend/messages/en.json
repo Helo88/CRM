@@ -17,6 +17,7 @@
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
+    "myProfile": "My profile",
     "profile": "Profile",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",

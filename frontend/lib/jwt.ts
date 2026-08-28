@@ -3,6 +3,7 @@
 // This is NOT a security boundary — the backend's requireRole is what
 // actually authorizes access; this only avoids showing dead-end UI.
 export function peekJwtPayload(token: string): {
+  id?: string;
   role?: string;
   name?: string;
   email?: string;
@@ -14,6 +15,7 @@ export function peekJwtPayload(token: string): {
     const json = Buffer.from(payloadSegment, "base64url").toString("utf8");
     const payload = JSON.parse(json);
     return {
+      id: typeof payload.sub === "string" ? payload.sub : undefined,
       role: typeof payload.role === "string" ? payload.role : undefined,
       name: typeof payload.name === "string" ? payload.name : undefined,
       email: typeof payload.email === "string" ? payload.email : undefined,

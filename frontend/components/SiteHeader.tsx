@@ -29,7 +29,7 @@ export async function SiteHeader() {
   // Only decidable when the access token itself is present — if only the
   // refresh cookie survives, the staff link/avatar name just don't show
   // until the next refresh; not worth a network round-trip to avoid that.
-  const { role, name, email, membershipNumber } = accessToken ? peekJwtPayload(accessToken) : {};
+  const { id, role, name, email, membershipNumber } = accessToken ? peekJwtPayload(accessToken) : {};
   const isStaff = role === "agent" || role === "admin" || role === "subadmin";
   const t = await getTranslations("Nav");
 
@@ -58,7 +58,13 @@ export async function SiteHeader() {
             ) : (
               <>
                 <ThemeToggleButton theme={theme} />
-                <UserMenu name={name || "?"} email={email} membershipNumber={membershipNumber} locale={locale} />
+                <UserMenu
+                  name={name || "?"}
+                  email={email}
+                  membershipNumber={membershipNumber}
+                  locale={locale}
+                  viewProfileHref={id ? `/customers/${id}` : undefined}
+                />
               </>
             )
           ) : (
