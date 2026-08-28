@@ -10,6 +10,7 @@ import { UserMenu } from "@/components/UserMenu";
 import { HeaderSearch } from "@/components/HeaderSearch";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggleButton } from "@/components/ThemeToggleButton";
+import { LocaleToggleButton } from "@/components/LocaleToggleButton";
 import { MobileStaffNav } from "@/components/MobileStaffNav";
 
 // Present on every page (rendered from RootLayout) so there's always a way
@@ -62,6 +63,8 @@ export async function SiteHeader() {
             )
           ) : (
             <>
+              <ThemeToggleButton theme={theme} />
+              <LocaleToggleButton locale={locale} />
               <Button asChild variant="ghost" size="sm">
                 <Link href="/login">{t("logIn")}</Link>
               </Button>
