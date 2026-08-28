@@ -17,9 +17,13 @@
 3. A full admin can deactivate any staff account. Deactivating an **agent or sub-admin** is the same action that creates them (see the permission shape below); deactivating an **existing admin account** is a separate, narrower action that always requires a full admin. Deactivation is enforced at next login and, going forward, on the account's next successful re-authentication; an already-issued JWT for that user remains valid until it naturally expires (documented tradeoff, not fixed here). A deactivated agent is also forced `isOnline: false` so ticket/chat auto-assignment (Stories 10/17) skips them immediately.
 4. Extend the `role` enum from three values to four (`"customer" | "agent" | "admin" | "subadmin"`) — this is the foundational schema change the rest of the `security-admin` feature (Stories 46–48) builds on.
 
-**Access shape:** creating an agent/sub-admin account, deactivating an agent/sub-admin account, and viewing the roster are all conceptually gated by the `users:manage` permission — delegable to a sub-admin once Story 46 builds the permission layer (`admin` always passes). There is **no cap needed on creation** — since `admin` is never a creatable role here, a delegated sub-admin holding `users:manage` can never mint an account more powerful than their own. The cap instead applies to **deactivating an existing admin account**: that always requires a true admin, regardless of `users:manage`, so a delegated sub-admin cannot disable a higher-privileged account. **Story 46's `RolePermissions` model and `requirePermission` middleware don't exist yet when this story executes** (it's Story 46, the very next one) — so every endpoint here is gated with plain `requireRole("admin")` for now, with inline comments marking exactly where Story 46 must convert to `requirePermission("users:manage")`, and marking the one branch (deactivating an `admin` target) that must **stay** `requireRole("admin")` permanently and never be converted.
+**Scope note:** this plan's own Backend/Frontend Tasks below only build create, roster, and deactivate — the three actions this story's acceptance criteria call for. The shipped product's account-management surface grew wider than that, as a natural extension of this same story's territory: viewing a single account's detail (`GET /api/v1/admin/users/:id`), editing its name/email/role (`PATCH /:id`), reactivating it (`PATCH /:id/activate`, alongside the `PATCH /:id/deactivate` this plan does build), and soft-deleting it (`DELETE /:id`, backed by a new `isDeleted` flag on `User` — a deleted account is hidden from the roster and fully locked out, but the document is kept for referential integrity). This plan is left describing only its original three actions rather than being rewritten to also spec the extra endpoints/pages, but note it for anyone reconciling this doc against the real `admin.routes.ts`. What genuinely *is* Story 46's own contribution layered on top of this wider surface is the granular `staff:*` permission gating itself (including the `staff:view_account`/`staff:delete` keys for the two newer actions), the per-account `permissions` field, the subadmin-only restriction, and the permissions-editing step embedded in the account creation/edit flow — see `09-story-configure-roles-and-permissions.md`.
+
+**Access shape:** this story's three actions are conceptually gated by a family of granular `staff:*` permissions, not one shared key — delegable to a sub-admin once Story 46 builds the permission layer (`admin` always passes): viewing the roster maps to `staff:view_list`, creating an account maps to `staff:edit` (the same key that, once the wider surface described in the Scope note above exists, also covers editing an account's name/email/role), and deactivating an account maps to `staff:toggle_status`. All three (plus the `staff:view_account`/`staff:delete` keys for the actions outside this story's own scope) are part of the subadmin-only permission set (see `.squad/plans/security-admin/00-overview.md`) — never assignable to an agent account. There is **no cap needed on creation** — since `admin` is never a creatable role here, a delegated sub-admin holding `staff:edit` can never mint an account more powerful than their own. The cap instead applies to **toggling the status of an existing admin account**: that always requires a true admin, regardless of `staff:toggle_status`, so a delegated sub-admin cannot disable a higher-privileged account. **Story 46's permission model and `requirePermission` middleware don't exist yet when this story executes** (it's Story 46, the very next one) — so every endpoint here is gated with plain `requireRole("admin")` for now, with inline comments marking exactly where Story 46 must convert each action to its matching `requirePermission("staff:...")` key, and marking the one branch (deactivating an `admin` target) that must **stay** `requireRole("admin")` permanently and never be converted.
 
 Out of scope: creating an `admin` account through the app in any form (see above — this is a hard boundary, not just an unbuilt feature), assigning/editing sub-admin permissions (Story 46), reactivating a deactivated account (not in the acceptance criteria), a token blocklist / full session-invalidation infra (documented tradeoff below instead), self-deactivation or last-admin-deactivation guardrails (flagged in Edge Cases, not built — no acceptance criterion asks for it).
+
+**Note on the permission key's name:** the granular permission this story's actions are gated by (once Story 46 exists) is named `staff:toggle_status`, not `staff:deactivate` — the broader name anticipates a later two-way activate/deactivate action even though this story itself only builds one-way deactivation. Reactivation is still not built here; the key name is simply chosen up front so Story 46 (and any later story that adds reactivation) doesn't need to introduce a second permission key or rename this one.
 
 ---
 
@@ -49,7 +53,7 @@ Out of scope: creating an `admin` account through the app in any form (see above
 - `POST /api/v1/admin/users` (create): body `{ name, email, password, role }` where `role` is `"agent" | "subadmin"` **only** — never `"customer"` (that's `POST /register` or `POST /api/v1/customers`) and never `"admin"` (DB-provisioned only, see Prerequisites).
 - `GET /api/v1/admin/users` (roster): staff accounts (`role` in `["agent","admin","subadmin"]`), paginated, never includes `passwordHash`.
 - `PATCH /api/v1/admin/users/:id/deactivate`: sets `isActive: false`; if the target's `role === "agent"`, also sets `isOnline: false`. No special-cased behavior difference for an `admin` target's *fields* — the difference is purely in who's allowed to call it (see below).
-- All three endpoints: `requireAuth`, `requireRole("admin")` for now (see Story Goal). Once Story 46 exists: `GET` and `POST`, and the `PATCH` branch targeting `agent`/`subadmin`, convert to `requirePermission("users:manage")`; the `PATCH` branch targeting an existing `admin` account stays `requireRole("admin")` **permanently** — never converted, never delegable.
+- All three endpoints: `requireAuth`, `requireRole("admin")` for now (see Story Goal). Once Story 46 exists: `GET` converts to `requirePermission("staff:view_list")`, `POST` converts to `requirePermission("staff:edit")`, and the `PATCH` branch targeting `agent`/`subadmin` converts to `requirePermission("staff:toggle_status")`; the `PATCH` branch targeting an existing `admin` account stays `requireRole("admin")` **permanently** — never converted, never delegable.
 
 ---
 
@@ -120,7 +124,7 @@ export default router;
 ### 3 — `GET /` (staff account roster)
 
 ```ts
-// TODO (security-admin Story 46): convert to requirePermission("users:manage")
+// TODO (security-admin Story 46): convert to requirePermission("staff:view_list")
 // once that middleware exists — a sub-admin delegated agent/sub-admin account
 // management needs to see the roster to act on it. requireRole("admin") for
 // now since requirePermission doesn't exist yet.
@@ -163,7 +167,7 @@ interface CreateStaffAccountBody {
 router.post(
   "/",
   requireAuth,
-  // TODO (security-admin Story 46): convert to requirePermission("users:manage")
+  // TODO (security-admin Story 46): convert to requirePermission("staff:edit")
   // once that middleware exists. No admin-target cap needed on this route —
   // CREATABLE_STAFF_ROLES already excludes "admin" entirely, so there is
   // nothing here for a delegated sub-admin to escalate into.
@@ -224,7 +228,7 @@ router.patch(
   requireAuth,
   // requireRole("admin") gates every caller today because requirePermission
   // doesn't exist yet (Story 46). Once it does:
-  //   - target.role === "agent" | "subadmin" → requirePermission("users:manage")
+  //   - target.role === "agent" | "subadmin" → requirePermission("staff:toggle_status")
   //   - target.role === "admin"              → requireRole("admin"), PERMANENTLY
   // The second branch is a hard cap, not a placeholder — do not convert it
   // even after Story 46 lands. Since the target role isn't known until the
@@ -244,9 +248,10 @@ router.patch(
     }
 
     // TODO (security-admin Story 46): once requirePermission exists, the
-    // requireRole("admin") above is replaced for the agent/subadmin case,
-    // and THIS check becomes the only thing standing between a delegated
-    // sub-admin and deactivating a higher-privileged admin account:
+    // requireRole("admin") above is replaced by requirePermission("staff:toggle_status")
+    // for the agent/subadmin case, and THIS check becomes the only thing
+    // standing between a delegated sub-admin and deactivating a
+    // higher-privileged admin account:
     //   if (user.role === "admin" && req.user!.role !== "admin") {
     //     res.status(403).json({ error: "You do not have permission to perform this action" });
     //     return;
@@ -305,15 +310,15 @@ Mirror `frontend/app/customers/page.tsx` structure exactly (imports, `generateMe
 - `searchParams: Promise<{ page?: string; _refreshed?: string }>`, same `page` parsing (line 44 precedent).
 - Session read: `cookies()` → `SESSION_COOKIE`/`REFRESH_COOKIE`, same 401→`/api/session/refresh?next=/admin/users...`→retry-once pattern as `customers/page.tsx` lines 47–68.
 - Fetch `GET ${API_URL}/api/v1/admin/users?page=${page}&limit=20` with the bearer token.
-- On 403 (a signed-in non-admin, e.g. an agent or subadmin without access): render the same `StaffSidebar` + "no access" message pattern as `customers/page.tsx` lines 70–81, translated via a new `AdminUsersList.noAccess` key.
-- Table columns: Name, Email, Role (badge — reuse `Badge` component, one variant per role, including `admin` rows even though they can't be created here), Status (Active/Inactive, same `success`/`secondary` badge pattern as `customers/page.tsx` lines 172–178), Online (only meaningful for `agent` rows — render `—` for `admin`/`subadmin`), Joined, and a Deactivate action (Task 10) — **render the Deactivate action for every row including `admin`**; the backend enforces who's actually allowed to use it (see Task 5's Story-46 note), the frontend does not pre-filter it out.
+- On 403 (a signed-in non-admin, e.g. an agent or subadmin without access): redirect to `/dashboard` — this page, like every other staff page whose access a viewer's role/permissions don't cover (`/admin/users`, `/admin/users/[id]/edit`, `/admin/users/new`, `/customers`), redirects rather than rendering a "you don't have access" message. (Within this story, before Story 46's permission layer exists, the only caller who can ever reach this page at all is a true admin — `requireRole("admin")` gates the endpoint outright — so the redirect is effectively unreachable until Story 46 makes access delegable via `staff:view_list`; it is documented here so Story 46 doesn't have to reinvent the pattern.)
+- Table columns: Name, Email, Role (badge — reuse `Badge` component, one variant per role, including `admin` rows even though they can't be created here), Status (Active/Inactive, same `success`/`secondary` badge pattern as `customers/page.tsx` lines 172–178), Online (only meaningful for `agent` rows — render `—` for `admin`/`subadmin`), Joined, and an Actions column. In this story (before Story 46's granular permissions exist), the only action is Deactivate (Task 10), rendered for every row including `admin` — the backend enforces who's actually allowed to use it (see Task 5's Story-46 note), the frontend does not pre-filter it out. **Once Story 46 lands**, this column's icons are shown individually per viewer permission (edit/toggle-status/delete gated respectively by `staff:edit`/`staff:toggle_status`/`staff:delete`), and the whole Actions column is omitted for a viewer holding none of the three, rather than rendered empty — see Story 46's plan for the follow-on change.
 - Same mobile-card / desktop-table split as `customers/page.tsx` (lines 112–194) and the same Previous/Next pagination (lines 196–220).
 - Add a `"New account"` button (`Button asChild` → `Link href="/admin/users/new"`), same placement as `customers/page.tsx` line 103's `"Add customer"` button.
 
 ### 9 — Staff-account creation page
 
 **Create files:**
-- `frontend/app/admin/users/new/page.tsx` (Server Component) — mirrors `frontend/app/customers/new/page.tsx` exactly: session check, `peekJwtPayload` role gate (`role !== "admin"` → `redirect("/admin/users")`, narrower than the customer-creation page's `agent`-or-`admin` gate since only full admin reaches this UI at all).
+- `frontend/app/admin/users/new/page.tsx` (Server Component) — mirrors `frontend/app/customers/new/page.tsx` exactly: session check, `peekJwtPayload` role gate (`role !== "admin"` → `redirect("/dashboard")`, matching the redirect-to-dashboard pattern used across every staff page a viewer's role/permissions don't cover, rather than bouncing back to the roster; narrower than the customer-creation page's `agent`-or-`admin` gate since only full admin reaches this UI at all).
 - `frontend/app/admin/users/new/NewStaffAccountForm.tsx` (Client Component) — mirrors `NewCustomerForm.tsx` structure (`useActionState`, controlled inputs for `name`/`email`/`password`) plus a **role** field using the already-installed `Select` (`frontend/components/ui/select.tsx`) with **two** options only: Agent / Sub-admin. No `phone` field (not part of this story), no `Admin` option anywhere in this form — there is no way to reach an admin-creation flow from this UI at all.
 - `frontend/app/admin/users/new/actions.ts` (Server Action) — mirrors `frontend/app/customers/new/actions.ts`: `zod` schema `{ name, email, password, role: z.enum(["agent","subadmin"]) }`, token-refresh-and-retry-once (`actions.ts` lines 48–74 pattern), `POST /api/v1/admin/users`, `redirect("/admin/users")` on success, surface the backend's 409 (`emailInUse`) and 400 (`role` invalid — shouldn't happen client-side since the `Select` only offers valid values, but map it to a generic error) distinctly.
 
@@ -346,7 +351,7 @@ Mirror `frontend/app/customers/page.tsx` structure exactly (imports, `generateMe
 
 **File: `frontend/messages/en.json`**
 
-Add two new sections (after `NewCustomer`, matching key-naming precedent from lines 89–124):
+Add two new sections (after `NewCustomer`, matching key-naming precedent from lines 89–124). Note: `AdminUsersList.noAccess` below is superseded by the redirect-to-`/dashboard` pattern (see Task 8) — the shipped page never actually renders this string, but the key is kept for translation completeness / in case a future story reintroduces an inline no-access state.
 
 ```json
 "AdminUsersList": {
@@ -410,12 +415,12 @@ Also add the `"accounts": "Accounts"` key to the existing `"Nav"` section (line 
 
 ## Edge Cases & Failure Modes
 
-- **Non-admin (agent, subadmin, or customer) calls any `/api/v1/admin/users*` endpoint** → 403 via `requireRole("admin")`, exact body `{ error: "You do not have permission to perform this action" }` (`auth.ts` line 44). Includes a `subadmin` caller even after Story 46 exists, unless they hold `users:manage` — but that conversion isn't built in this story, so today a `subadmin` gets a flat 403 regardless of any future-granted permission.
+- **Non-admin (agent, subadmin, or customer) calls any `/api/v1/admin/users*` endpoint** → 403 via `requireRole("admin")`, exact body `{ error: "You do not have permission to perform this action" }` (`auth.ts` line 44). Includes a `subadmin` caller even after Story 46 exists, unless they hold the matching `staff:*` key for that action (`staff:view_list`, `staff:edit`, or `staff:toggle_status`) — but that conversion isn't built in this story, so today a `subadmin` gets a flat 403 regardless of any future-granted permission.
 - **Creating an account with `role: "customer"` or `role: "admin"`** → 400 (`CREATABLE_STAFF_ROLES` rejects both) — customer accounts go through `POST /register` or `POST /api/v1/customers`; admin accounts are DB-provisioned only and have no API path at all, full stop.
 - **Duplicate email on creation** → 409, same `E11000` → `{ error: "An account with this email already exists" }` translation as `customer.routes.ts` lines 120–125.
 - **`PATCH /:id/deactivate` on a customer id** → 404 (`STAFF_ROLES.includes(user.role)` check), not 400/403 — indistinguishable from a nonexistent id, matching `customer.routes.ts`'s existing not-found discipline.
 - **`PATCH /:id/deactivate` on an already-inactive account** → idempotent 200, no special-cased error; `isActive` stays `false`, `isOnline` (if agent) stays `false`.
-- **`PATCH /:id/deactivate` targeting an existing `admin` account** → succeeds today (200) because the whole router is `requireRole("admin")`, so only a true admin can reach it anyway — the target-role split described in Task 5's comment has nothing to enforce yet. This becomes a real, load-bearing check the moment Story 46 converts the agent/subadmin branch to `requirePermission("users:manage")`; **do not let that conversion silently drop the admin-target branch** — it's the only thing preventing a delegated sub-admin from disabling a higher-privileged account once that conversion lands.
+- **`PATCH /:id/deactivate` targeting an existing `admin` account** → succeeds today (200) because the whole router is `requireRole("admin")`, so only a true admin can reach it anyway — the target-role split described in Task 5's comment has nothing to enforce yet. This becomes a real, load-bearing check the moment Story 46 converts the agent/subadmin branch to `requirePermission("staff:toggle_status")`; **do not let that conversion silently drop the admin-target branch** — it's the only thing preventing a delegated sub-admin from disabling a higher-privileged account once that conversion lands.
 - **Deactivating an agent** → `isOnline` forced to `false` alongside `isActive`, so Stories 10/17's `isOnline: true` auto-assignment queries exclude them immediately, not just at their next login.
 - **Deactivated user's existing JWT** — remains cryptographically valid until its ~15-minute expiry; `requireAuth` only checks signature/expiry, not `isActive` (no DB hit). Documented tradeoff, same reasoning as customer-management's deactivation precedent — not fixed here; a currently-logged-in deactivated user keeps working elsewhere in the app for up to the token's remaining lifetime, but cannot obtain a *new* token via `/login` (already enforced by the existing `!user.isActive` check in `auth.routes.ts` line 122) or, once Story 46 exists, pass any *new* permission-gated check that does a fresh DB lookup.
 - **Admin deactivates their own account, or deactivates the last remaining active admin** — no special-case guard is built here (not in this story's acceptance criteria); flagged as a known risk, not mitigated. A locked-out state would require direct DB access to recover (`isActive: true` on at least one admin document) — the same DB-level access already required to create an admin account in the first place, so this isn't introducing a new class of "needs DB access to fix" risk.
@@ -466,7 +471,7 @@ Project test runner is **Vitest** (`backend/vitest.config.ts`, tests under `back
 4. **Backend boots:** `npm run dev`; `curl -i http://localhost:<port>/api/v1/health` still 200.
 5. **Route smoke:** with a hand-issued admin JWT, `POST /api/v1/admin/users` with `{ name, email, password, role: "subadmin" }` → 201; the same call with `role: "admin"` → 400; `GET /api/v1/admin/users` → the new account appears; `PATCH /api/v1/admin/users/<id>/deactivate` → 200 with `isActive: false`.
 6. **Frontend builds:** in `frontend/`, run `npm run build` — no type errors.
-7. **Frontend manual smoke:** `npm run dev`, sign in as an admin, navigate to `/admin/users` — roster renders including any DB-seeded admin account; "New account" only offers Agent/Sub-admin and successfully creates one, redirecting back to the roster; the Deactivate button's confirmation dialog appears and, on confirm, the row updates to Inactive without a full page reload. Sign in as an agent and confirm `/admin/users` shows the "no access" state and the sidebar has no "Accounts" entry.
+7. **Frontend manual smoke:** `npm run dev`, sign in as an admin, navigate to `/admin/users` — roster renders including any DB-seeded admin account; "New account" only offers Agent/Sub-admin and successfully creates one, redirecting back to the roster; the Deactivate button's confirmation dialog appears and, on confirm, the row updates to Inactive without a full page reload. Sign in as an agent and confirm `/admin/users` redirects to `/dashboard` (not a rendered "no access" message) and the sidebar has no "Accounts" entry.
 8. **Regression:** `/customers` roster and `/customers/new` continue to work unchanged; existing `requireRole` behavior on `ticket.routes.ts`/`conversation.routes.ts` is untouched.
 
 ---
@@ -477,7 +482,7 @@ Project test runner is **Vitest** (`backend/vitest.config.ts`, tests under `back
 - [ ] `POST /api/v1/admin/users` creates an agent or sub-admin account with a hashed password; rejects `role: "customer"`, rejects `role: "admin"`, and rejects duplicate emails.
 - [ ] `GET /api/v1/admin/users` returns a paginated roster of all staff accounts (agent, admin, subadmin), never including `passwordHash`.
 - [ ] `PATCH /api/v1/admin/users/:id/deactivate` sets `isActive: false`, and additionally `isOnline: false` when the target is an `agent`; the code carries an explicit, marked comment for the admin-target cap Story 46 must add (not enforced as a distinct behavior yet, since the whole router is admin-only today).
-- [ ] All three endpoints are `requireAuth` + `requireRole("admin")`, each with an inline `TODO (security-admin Story 46)` comment marking the future `requirePermission("users:manage")` conversion point — except the admin-target deactivation branch, which is marked as a **permanent**, non-convertible `requireRole("admin")` check.
+- [ ] All three endpoints are `requireAuth` + `requireRole("admin")`, each with an inline `TODO (security-admin Story 46)` comment marking its future `requirePermission("staff:...")` conversion point (`GET` → `staff:view_list`, `POST` → `staff:edit`, `PATCH` agent/subadmin branch → `staff:toggle_status`) — except the admin-target deactivation branch, which is marked as a **permanent**, non-convertible `requireRole("admin")` check.
 - [ ] `backend/src/middleware/README.md` lists all four roles, notes that `admin` is DB-provisioned only, and points its "fine-grained permissions" reference at Story 46, not Story 45.
 - [ ] `frontend/app/admin/users` (roster + new-account pages) exists, admin-only, following the `customers`/`customers/new` precedent for session handling and controlled forms; the new-account role selector offers only Agent/Sub-admin.
 - [ ] `StaffSidebar` shows "Accounts" only to `role === "admin"` viewers.
