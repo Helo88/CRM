@@ -4,12 +4,7 @@ import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser, UserRole } from "../models/User";
 import { hasPermission } from "../services/permissions";
-import {
-  PERMISSION_KEYS,
-  PermissionKey,
-  CreatableStaffRole,
-  SUBADMIN_ONLY_PERMISSIONS,
-} from "../constants/permissions";
+import { PERMISSION_KEYS, PermissionKey, CreatableStaffRole, permissionKeysAllowedForRole } from "../constants/permissions";
 
 const router = express.Router();
 
@@ -49,7 +44,10 @@ function validatePermissions(input: unknown, targetRole: UserRole): PermissionKe
   if (input === undefined) return [];
   if (!Array.isArray(input) || !input.every((k) => typeof k === "string")) return null;
   if (!input.every((k) => (PERMISSION_KEYS as readonly string[]).includes(k))) return null;
-  if (targetRole === "agent" && input.some((k) => SUBADMIN_ONLY_PERMISSIONS.has(k as PermissionKey))) return null;
+  if (targetRole === "agent") {
+    const allowed = permissionKeysAllowedForRole("agent");
+    if (!input.every((k) => allowed.includes(k as PermissionKey))) return null;
+  }
   return Array.from(new Set(input)) as PermissionKey[];
 }
 

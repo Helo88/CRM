@@ -14,7 +14,7 @@ See `backend/src/middleware/auth.ts:36-44`.
 
 ## The four roles
 
-`"customer" | "agent" | "admin" | "subadmin"` — see `backend/src/models/User.ts:3`. `admin` is the full/main admin, always has every permission, and is only ever provisioned directly in the database (`backend/scripts/seed-admin.ts`) — there is no API that creates one. `subadmin` is a delegated staff tier, created through the app, whose specific permissions are configured in Story 46 (`security-admin` feature) — there is no finer-grained permission system yet for it.
+`"customer" | "agent" | "admin" | "subadmin"` — see `backend/src/models/User.ts:3`. `admin` is the full/main admin, always has every permission, and is only ever provisioned directly in the database (`backend/scripts/seed-admin.ts`) — there is no API that creates one. `agent` and `subadmin` are both delegated staff tiers, created through the app, whose specific permissions are configured per individual account (security-admin Story 46, see `requirePermission` below and `backend/src/constants/permissions.ts`) — an `agent` can hold any permission except the sub-admin-only staff/system-administration tier (`SUBADMIN_ONLY_PERMISSIONS`).
 
 ## Pattern for a new protected route
 
