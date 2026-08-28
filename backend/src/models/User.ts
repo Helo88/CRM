@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 import { PERMISSION_KEYS, PermissionKey } from "../constants/permissions";
+import { nextSequence } from "./Counter";
 
 export type UserRole = "customer" | "agent" | "admin" | "subadmin";
 export type Language = "en" | "ar";
@@ -51,6 +52,11 @@ export interface IUser extends Document {
   // locked out (isActive is also forced false), but the document is kept
   // for referential integrity (past ticket assignments, audit log entries).
   isDeleted: boolean;
+  // Shown in the header user menu and the customer roster instead of email —
+  // a stable, non-sensitive display identifier every account gets (customer
+  // or staff), assigned once and never reused. 10-digit zero-padded sequence,
+  // see Counter.ts's nextSequence() and this schema's pre("validate") hook.
+  membershipNumber: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -100,8 +106,23 @@ const userSchema = new Schema<IUser>(
 
     // security-admin Story 45: soft-delete for staff accounts.
     isDeleted: { type: Boolean, default: false },
+
+    membershipNumber: { type: String, unique: true, required: true },
   },
   { timestamps: true }
 );
+
+// pre("validate"), not pre("save") — required: true above is enforced during
+// validation, which runs BEFORE the "save" middleware phase, so the number
+// has to exist by then. Runs for every creation path (register, admin-
+// created staff, staff-added customer, both seed scripts) since they all
+// go through User.create()/doc.save() — no per-call-site wiring needed.
+userSchema.pre("validate", async function (next) {
+  if (this.isNew && !this.membershipNumber) {
+    const seq = await nextSequence("membershipNumber");
+    this.membershipNumber = String(seq).padStart(10, "0");
+  }
+  next();
+});
 
 export const User = mongoose.model<IUser>("User", userSchema);
