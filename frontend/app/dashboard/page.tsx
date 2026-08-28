@@ -48,7 +48,7 @@ export default async function DashboardPage({
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
       <StaffSidebar active="dashboard" />
-      <main className="min-w-0 flex-1 p-4 pt-16 md:p-8">
+      <main className="min-w-0 flex-1 p-4 md:p-8">
         <div className="mb-7">
           <h1 className="text-2xl font-extrabold tracking-tight text-balance">
             {t("greeting", { name: name?.split(" ")[0] || "" })}

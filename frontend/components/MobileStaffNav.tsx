@@ -2,25 +2,35 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { STAFF_NAV_ITEMS, visibleStaffNavItems, type StaffNavKey } from "@/lib/staffNav";
+import { visibleStaffNavItems, activeStaffNavKey } from "@/lib/staffNav";
 
-// Mobile counterpart to the desktop hover-expand rail (StaffSidebar) — a
-// hamburger trigger + full-height drawer with labeled nav items, same
-// pattern as the reference app's mobile nav.
-export function MobileStaffNav({ active, role }: { active: StaffNavKey; role?: string }) {
+// Mobile counterpart to the desktop hover-expand rail (StaffSidebar) —
+// rendered once from SiteHeader (inline with the other header icons, not a
+// separate bar) so it's a Client Component that works out which nav item is
+// "active" itself, from the URL, instead of needing a per-page prop.
+export function MobileStaffNav({ role }: { role?: string }) {
   const t = useTranslations("Nav");
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const visibleItems = visibleStaffNavItems(role);
+  const active = activeStaffNavKey(pathname);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen(true)} aria-label={t("menu")}>
-        <Menu className="size-5" />
+      <Button
+        variant="outline"
+        size="icon"
+        className="rounded-xl border-border bg-card shadow-soft md:hidden"
+        onClick={() => setOpen(true)}
+        aria-label={t("menu")}
+      >
+        <Menu className="size-[17px]" />
       </Button>
       <SheetContent side="left" className="w-72">
         <SheetHeader className="border-b border-border">
@@ -50,6 +60,3 @@ export function MobileStaffNav({ active, role }: { active: StaffNavKey; role?: s
     </Sheet>
   );
 }
-
-// Re-exported so callers only need one import for the shared nav vocabulary.
-export { STAFF_NAV_ITEMS };

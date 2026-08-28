@@ -71,7 +71,7 @@ export default async function AdminUsersListPage({
     return (
       <div className="flex min-h-[calc(100vh-57px)]">
         <StaffSidebar active="accounts" />
-        <main className="flex flex-1 items-center justify-center p-8 pt-16 md:pt-8">
+        <main className="flex flex-1 items-center justify-center p-8">
           <p className="text-muted-foreground">{t("noAccess")}</p>
         </main>
       </div>
@@ -95,7 +95,7 @@ export default async function AdminUsersListPage({
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
       <StaffSidebar active="accounts" />
-      <main className="min-w-0 flex-1 p-4 pt-16 md:p-8">
+      <main className="min-w-0 flex-1 p-4 md:p-8">
         <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
           <Button asChild size="sm">

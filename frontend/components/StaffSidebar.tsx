@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { visibleStaffNavItems, type StaffNavKey } from "@/lib/staffNav";
-import { MobileStaffNav } from "@/components/MobileStaffNav";
 
 // A pure-CSS hover-to-expand rail (icons only at rest, widens to show
 // labels on hover) — no persisted collapse state, no click target. Fixed
 // below the 57px SiteHeader; the sibling spacer div in the page's own flex
 // row reserves its resting width so content doesn't jump when it expands.
-// Below the md breakpoint the rail is hidden entirely and MobileStaffNav's
-// hamburger + drawer takes over, same split as the reference app.
+// Desktop only — below the md breakpoint this renders nothing at all;
+// SiteHeader's MobileStaffNav (inline with the other header icons) is the
+// mobile equivalent, not a second bar owned by this component.
 export async function StaffSidebar({ active }: { active: StaffNavKey }) {
   const t = await getTranslations("Nav");
   const cookieStore = await cookies();
@@ -24,9 +24,6 @@ export async function StaffSidebar({ active }: { active: StaffNavKey }) {
 
   return (
     <>
-      <div className="fixed inset-x-0 top-[57px] z-20 border-b border-border bg-background p-2 md:hidden">
-        <MobileStaffNav active={active} role={role} />
-      </div>
       <div className="hidden w-20 shrink-0 md:block" aria-hidden />
       <aside className="group/rail fixed inset-y-0 start-0 top-[57px] z-30 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
         <nav className="flex flex-col gap-1">

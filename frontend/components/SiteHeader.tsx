@@ -10,6 +10,7 @@ import { UserMenu } from "@/components/UserMenu";
 import { HeaderSearch } from "@/components/HeaderSearch";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggleButton } from "@/components/ThemeToggleButton";
+import { MobileStaffNav } from "@/components/MobileStaffNav";
 
 // Present on every page (rendered from RootLayout) so there's always a way
 // back home and, for a signed-in user, a way to reach their profile,
@@ -47,6 +48,7 @@ export async function SiteHeader() {
           {isSignedIn ? (
             isStaff ? (
               <>
+                <MobileStaffNav role={role} />
                 <HeaderSearch role={role} />
                 <NotificationBell />
                 <ThemeToggleButton theme={theme} />
