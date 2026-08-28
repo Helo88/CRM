@@ -95,7 +95,14 @@ router.post("/register", async (req: Request<unknown, unknown, RegisterBody>, re
     throw err;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   const refreshToken = await issueRefreshFamily(user.id);
   res.status(201).json({
     token,
@@ -130,7 +137,14 @@ router.post("/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   const refreshToken = await issueRefreshFamily(user.id);
   res.status(200).json({
     token,
@@ -207,7 +221,14 @@ router.post("/refresh", async (req: Request<unknown, unknown, RefreshBody>, res:
     return;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   res.status(200).json({
     token,
     refreshToken: successor,

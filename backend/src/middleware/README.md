@@ -40,7 +40,7 @@ router.get(
   "/",
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
-  requirePermission("users:manage"), // admin short-circuits inside requirePermission itself
+  requirePermission("staff:view_list"), // admin short-circuits inside requirePermission itself
   handler
 );
 ```

@@ -39,7 +39,7 @@ function tokenFor(user: { id: string; role: string }) {
 
 function buildApp() {
   const app = express();
-  app.get("/restricted", requireAuth, requirePermission("users:manage"), (req, res) => {
+  app.get("/restricted", requireAuth, requirePermission("staff:view_list"), (req, res) => {
     res.status(200).json({ ok: true });
   });
   return app;
@@ -78,7 +78,7 @@ describe("requirePermission", () => {
   });
 
   it("agent passes when the key is in THEIR OWN permissions array", async () => {
-    const agent = await seedUser("agent", ["users:manage"]);
+    const agent = await seedUser("agent", ["staff:view_list"]);
     const res = await callAsToken(buildApp(), tokenFor({ id: agent.id, role: agent.role }));
     expect(res.status).toBe(200);
   });
@@ -90,7 +90,7 @@ describe("requirePermission", () => {
   });
 
   it("one agent's grant does not affect another agent (per-individual, not per-role)", async () => {
-    const grantedAgent = await seedUser("agent", ["users:manage"]);
+    const grantedAgent = await seedUser("agent", ["staff:view_list"]);
     const plainAgent = await seedUser("agent", []);
     const resGranted = await callAsToken(buildApp(), tokenFor({ id: grantedAgent.id, role: grantedAgent.role }));
     const resPlain = await callAsToken(buildApp(), tokenFor({ id: plainAgent.id, role: plainAgent.role }));
@@ -105,14 +105,14 @@ describe("requirePermission", () => {
   });
 
   it("subadmin passes once granted the key on their own account", async () => {
-    const subadmin = await seedUser("subadmin", ["users:manage"]);
+    const subadmin = await seedUser("subadmin", ["staff:view_list"]);
     const res = await callAsToken(buildApp(), tokenFor({ id: subadmin.id, role: subadmin.role }));
     expect(res.status).toBe(200);
   });
 
   it("fails closed with 401 when used without a preceding requireAuth", async () => {
     const app = express();
-    app.get("/no-auth-first", requirePermission("users:manage"), (req, res) => {
+    app.get("/no-auth-first", requirePermission("staff:view_list"), (req, res) => {
       res.status(200).json({ ok: true });
     });
     const res = await request(app).get("/no-auth-first");

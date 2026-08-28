@@ -5,9 +5,18 @@
 // (sla:configure, kb:publish, ...) are reserved here, ready for the story
 // that builds that feature to start gating its own routes with
 // requirePermission(key) using one of these.
+//
+// The "staff:*" keys replace what used to be a single coarse "users:manage"
+// key — every staff-account action (view the roster, view one account, edit
+// its details, activate/deactivate, delete, change its granted permissions)
+// is now independently grantable.
 export const PERMISSION_KEYS = [
-  "users:manage",
-  "users:permissions",
+  "staff:view_list",
+  "staff:view_account",
+  "staff:edit",
+  "staff:toggle_status",
+  "staff:delete",
+  "staff:permissions",
   "audit:view",
   "config:edit",
   "customers:manage",
@@ -24,6 +33,29 @@ export const PERMISSION_KEYS = [
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 export type CreatableStaffRole = "agent" | "subadmin";
+
+// Keys that can only ever be granted to a sub-admin account, never an agent
+// — staff/system administration is a sub-admin-tier concern, agents are
+// scoped to customer/ticket-facing work. Enforced server-side in
+// admin.routes.ts's validatePermissions (not just hidden in the UI).
+export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
+  "staff:view_list",
+  "staff:view_account",
+  "staff:edit",
+  "staff:toggle_status",
+  "staff:delete",
+  "staff:permissions",
+  "audit:view",
+  "config:edit",
+  "sla:configure",
+  "kb:publish",
+  "reports:export",
+]);
+
+export function permissionKeysAllowedForRole(role: CreatableStaffRole): readonly PermissionKey[] {
+  if (role === "subadmin") return PERMISSION_KEYS;
+  return PERMISSION_KEYS.filter((key) => !SUBADMIN_ONLY_PERMISSIONS.has(key));
+}
 
 // Suggested starting point when creating a new account via the admin UI's
 // stepper (step 2 pre-fill) — a convenience default, not an enforced

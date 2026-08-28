@@ -12,6 +12,19 @@ export interface JwtPayload {
   // (see frontend/lib/jwt.ts) — never used for any authorization decision,
   // requireRole still only ever looks at `role`.
   name: string;
+  // Same reasoning as `name` — shows in the account menu without a fetch.
+  email: string;
+  // UI-only nicety, same as the two fields above: lets the staff roster
+  // decide which action icons (edit/toggle-status/delete) to render for the
+  // signed-in viewer without a fetch. Stale until the token is next
+  // reissued if permissions change mid-session — acceptable, same
+  // staleness `role` itself already has. NEVER used for authorization —
+  // requirePermission always re-checks the live DB value.
+  permissions: string[];
+  // Same reasoning as `name` — lets the header show it without a fetch.
+  // Never changes once assigned (see User.ts), so no refresh-staleness
+  // concern the way a mutable field would have.
+  membershipNumber: string;
 }
 
 /**
@@ -60,7 +73,7 @@ export function requireRole(...allowedRoles: UserRole[]) {
  * individual agent/sub-admin account, not per role (security-admin Story
  * 46) — there is no shared role-level default enforced here. Any other
  * role (customer, or no req.user) is rejected outright.
- * Example: router.get('/admin/users', requireAuth, requirePermission('users:manage'), handler)
+ * Example: router.get('/admin/users', requireAuth, requirePermission('staff:view_list'), handler)
  */
 export function requirePermission(key: PermissionKey) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {

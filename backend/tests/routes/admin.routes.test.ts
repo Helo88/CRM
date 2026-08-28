@@ -171,6 +171,37 @@ describe("POST /api/v1/admin/users (Story 45)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a subadmin-only permission key when creating an agent account", async () => {
+    const { token } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .post("/api/v1/admin/users")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Bad Agent Perms",
+        email: "bad-agent-perms@example.com",
+        password: "password123",
+        role: "agent",
+        permissions: ["staff:edit"],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it("allows a subadmin-only permission key when creating a sub-admin account", async () => {
+    const { token } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .post("/api/v1/admin/users")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "New Subadmin With Perms",
+        email: "subadmin-with-perms@example.com",
+        password: "password123",
+        role: "subadmin",
+        permissions: ["staff:edit", "config:edit"],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.permissions.sort()).toEqual(["config:edit", "staff:edit"]);
+  });
+
   it("creates a sub-admin account", async () => {
     const { token } = await seedUser({ role: "admin" });
     const res = await request(app)
@@ -229,7 +260,7 @@ describe("POST /api/v1/admin/users (Story 45)", () => {
 });
 
 describe("PATCH /api/v1/admin/users/:id (edit, Story 46 addendum)", () => {
-  it("returns 401 without a token, 403 for a non-admin without users:manage", async () => {
+  it("returns 401 without a token, 403 for a non-admin without staff:edit", async () => {
     const { user: target } = await seedUser({ role: "agent" });
     const res401 = await request(app).patch(`/api/v1/admin/users/${target.id}`).send({ name: "Nope" });
     expect(res401.status).toBe(401);
@@ -252,13 +283,13 @@ describe("PATCH /api/v1/admin/users/:id (edit, Story 46 addendum)", () => {
         name: "Renamed Agent",
         email: "renamed-agent@example.com",
         role: "subadmin",
-        permissions: ["users:manage"],
+        permissions: ["staff:edit"],
       });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Renamed Agent");
     expect(res.body.email).toBe("renamed-agent@example.com");
     expect(res.body.role).toBe("subadmin");
-    expect(res.body.permissions).toEqual(["users:manage"]);
+    expect(res.body.permissions).toEqual(["staff:edit"]);
   });
 
   it("partial update only touches the provided fields", async () => {
@@ -267,10 +298,31 @@ describe("PATCH /api/v1/admin/users/:id (edit, Story 46 addendum)", () => {
     const res = await request(app)
       .patch(`/api/v1/admin/users/${target.id}`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ permissions: ["users:manage"] });
+      .send({ permissions: ["tickets:reassign"] });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Original Name");
-    expect(res.body.permissions).toEqual(["users:manage"]);
+    expect(res.body.permissions).toEqual(["tickets:reassign"]);
+  });
+
+  it("rejects a subadmin-only permission key on an agent target (staff:* is sub-admin only)", async () => {
+    const { user: target } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .patch(`/api/v1/admin/users/${target.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ permissions: ["staff:view_list"] });
+    expect(res.status).toBe(400);
+  });
+
+  it("allows the same subadmin-only key when the edit also changes the target's role to subadmin", async () => {
+    const { user: target } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .patch(`/api/v1/admin/users/${target.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ role: "subadmin", permissions: ["staff:view_list"] });
+    expect(res.status).toBe(200);
+    expect(res.body.permissions).toEqual(["staff:view_list"]);
   });
 
   it("cannot edit an admin account", async () => {
@@ -314,9 +366,9 @@ describe("PATCH /api/v1/admin/users/:id (edit, Story 46 addendum)", () => {
     expect(res.status).toBe(409);
   });
 
-  it("subadmin granted users:manage can edit an agent's permissions", async () => {
+  it("subadmin granted staff:permissions can edit an agent's permissions", async () => {
     const { user: target } = await seedUser({ role: "agent" });
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["staff:permissions"] });
     const res = await request(app)
       .patch(`/api/v1/admin/users/${target.id}`)
       .set("Authorization", `Bearer ${token}`)
@@ -421,7 +473,7 @@ describe("PATCH /api/v1/admin/users/:id/activate (Story 45 addendum)", () => {
     expect(res.body.isActive).toBe(true);
   });
 
-  it("subadmin without users:manage cannot activate", async () => {
+  it("subadmin without staff:toggle_status cannot activate", async () => {
     const { user: target } = await seedUser({ role: "agent", isActive: false });
     const { token } = await seedUser({ role: "subadmin" });
     const res = await request(app)
@@ -430,9 +482,9 @@ describe("PATCH /api/v1/admin/users/:id/activate (Story 45 addendum)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("subadmin with users:manage cannot activate an admin account — same cap as deactivate", async () => {
+  it("subadmin with staff:toggle_status cannot activate an admin account — same cap as deactivate", async () => {
     const { user: target } = await seedUser({ role: "admin", isActive: false });
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["staff:toggle_status"] });
     const res = await request(app)
       .patch(`/api/v1/admin/users/${target.id}/activate`)
       .set("Authorization", `Bearer ${token}`);
@@ -467,9 +519,9 @@ describe("DELETE /api/v1/admin/users/:id (soft delete, Story 45 addendum)", () =
     expect(rosterRes.body.users.map((u: { id: string }) => u.id)).not.toContain(target.id);
   });
 
-  it("subadmin with users:manage CANNOT delete an existing admin account — the load-bearing cap", async () => {
+  it("subadmin with staff:delete CANNOT delete an existing admin account — the load-bearing cap", async () => {
     const { user: adminTarget } = await seedUser({ role: "admin" });
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["staff:delete"] });
     const res = await request(app)
       .delete(`/api/v1/admin/users/${adminTarget.id}`)
       .set("Authorization", `Bearer ${token}`);
@@ -501,7 +553,7 @@ describe("DELETE /api/v1/admin/users/:id (soft delete, Story 45 addendum)", () =
 // account, which stays admin-only forever, regardless of the permission.
 // This is the load-bearing cap the whole delegation design depends on.
 describe("Story 46 permission gating on /api/v1/admin/users* (per-individual)", () => {
-  it("subadmin without users:manage is rejected on GET/POST/PATCH, same as before this story", async () => {
+  it("subadmin without any staff:* grant is rejected on GET/POST/PATCH, same as before this story", async () => {
     const { user: target } = await seedUser({ role: "agent" });
     const { token } = await seedUser({ role: "subadmin" });
 
@@ -520,9 +572,12 @@ describe("Story 46 permission gating on /api/v1/admin/users* (per-individual)", 
     ).toBe(403);
   });
 
-  it("subadmin granted users:manage on THEIR OWN account can view, create, and deactivate", async () => {
+  it("subadmin granted the relevant staff:* keys on THEIR OWN account can view, create, and deactivate", async () => {
     const { user: target } = await seedUser({ role: "agent" });
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    const { token } = await seedUser({
+      role: "subadmin",
+      permissions: ["staff:view_list", "staff:edit", "staff:toggle_status"],
+    });
 
     const resGet = await request(app).get("/api/v1/admin/users").set("Authorization", `Bearer ${token}`);
     expect(resGet.status).toBe(200);
@@ -540,14 +595,14 @@ describe("Story 46 permission gating on /api/v1/admin/users* (per-individual)", 
   });
 
   it("a DIFFERENT subadmin without the grant is unaffected (per-individual, not per-role)", async () => {
-    await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    await seedUser({ role: "subadmin", permissions: ["staff:view_list"] });
     const { token: plainSubadminToken } = await seedUser({ role: "subadmin" });
     const res = await request(app).get("/api/v1/admin/users").set("Authorization", `Bearer ${plainSubadminToken}`);
     expect(res.status).toBe(403);
   });
 
-  it("subadmin with users:manage still CANNOT create role: 'admin' (no cap needed — it's simply not creatable)", async () => {
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+  it("subadmin with staff:edit still CANNOT create role: 'admin' (no cap needed — it's simply not creatable)", async () => {
+    const { token } = await seedUser({ role: "subadmin", permissions: ["staff:edit"] });
     const res = await request(app)
       .post("/api/v1/admin/users")
       .set("Authorization", `Bearer ${token}`)
@@ -555,9 +610,9 @@ describe("Story 46 permission gating on /api/v1/admin/users* (per-individual)", 
     expect(res.status).toBe(400);
   });
 
-  it("subadmin with users:manage CANNOT deactivate an existing admin account — the load-bearing cap", async () => {
+  it("subadmin with staff:toggle_status CANNOT deactivate an existing admin account — the load-bearing cap", async () => {
     const { user: adminTarget } = await seedUser({ role: "admin" });
-    const { token } = await seedUser({ role: "subadmin", permissions: ["users:manage"] });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["staff:toggle_status"] });
     const res = await request(app)
       .patch(`/api/v1/admin/users/${adminTarget.id}/deactivate`)
       .set("Authorization", `Bearer ${token}`);
@@ -576,8 +631,16 @@ describe("Story 46 permission gating on /api/v1/admin/users* (per-individual)", 
     expect(res.status).toBe(200);
   });
 
-  it("agent granted users:manage on their own account can also be delegated (permission is not subadmin-exclusive)", async () => {
-    const { token } = await seedUser({ role: "agent", permissions: ["users:manage"] });
+  it("staff:* keys are sub-admin only — an agent can never hold one, even directly seeded", async () => {
+    // Story 46 addendum: staff/system-administration permissions (staff:*,
+    // config:edit, audit:view, sla:configure, kb:publish, reports:export)
+    // are sub-admin only. requirePermission itself doesn't care WHAT role
+    // holds a key (it just checks the caller's own permissions array), so
+    // this only demonstrates the real boundary: validatePermissions in
+    // admin.routes.ts refuses to ever assign such a key to an agent account
+    // via the API (see the POST/PATCH tests above) — an agent can't reach
+    // this state through the product at all.
+    const { token } = await seedUser({ role: "agent", permissions: ["staff:view_list"] });
     const res = await request(app).get("/api/v1/admin/users").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
   });

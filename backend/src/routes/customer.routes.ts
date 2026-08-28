@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser } from "../models/User";
+import { hasPermission } from "../services/permissions";
 import { isValidPhone } from "../utils/phone";
 
 // security-admin Story 46: agent/admin access to the roster and creation
@@ -40,6 +41,7 @@ function toProfileResponse(user: IUser) {
     id: user.id,
     name: user.name,
     email: user.email,
+    membershipNumber: user.membershipNumber,
     phone: user.phone ?? null,
     role: user.role,
     preferredLanguage: user.preferredLanguage,
@@ -69,7 +71,7 @@ router.get(
 
   const [customers, total] = await Promise.all([
     User.find(filter)
-      .select("name email phone isActive createdAt")
+      .select("name email membershipNumber phone isActive createdAt")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -81,6 +83,7 @@ router.get(
       id: c.id,
       name: c.name,
       email: c.email,
+      membershipNumber: c.membershipNumber,
       phone: c.phone ?? null,
       isActive: c.isActive,
       createdAt: c.createdAt,
@@ -166,7 +169,14 @@ router.get("/:id", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const isStaff = req.user!.role === "agent" || req.user!.role === "admin";
+  // Same access scope as the roster (GET /) — a sub-admin who can see the
+  // list via a customers:manage delegation can also open what's in it; one
+  // couldn't see the list at all without the other, so this was a gap
+  // rather than a deliberate narrower boundary.
+  const isStaff =
+    req.user!.role === "agent" ||
+    req.user!.role === "admin" ||
+    (req.user!.role === "subadmin" && (await hasPermission(req.user!.id, "customers:manage")));
   const isSelf = req.user!.id === String(user._id);
   if (!isStaff && !isSelf) {
     res.status(403).json({ error: "You do not have permission to perform this action" });

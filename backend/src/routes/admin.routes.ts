@@ -4,7 +4,12 @@ import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser, UserRole } from "../models/User";
 import { hasPermission } from "../services/permissions";
-import { PERMISSION_KEYS, PermissionKey, CreatableStaffRole } from "../constants/permissions";
+import {
+  PERMISSION_KEYS,
+  PermissionKey,
+  CreatableStaffRole,
+  SUBADMIN_ONLY_PERMISSIONS,
+} from "../constants/permissions";
 
 const router = express.Router();
 
@@ -27,6 +32,7 @@ function toStaffAccountResponse(user: IUser) {
     id: user.id,
     name: user.name,
     email: user.email,
+    membershipNumber: user.membershipNumber,
     role: user.role,
     isActive: user.isActive,
     isOnline: user.isOnline,
@@ -35,21 +41,32 @@ function toStaffAccountResponse(user: IUser) {
   };
 }
 
-function validatePermissions(input: unknown): PermissionKey[] | null {
+// `targetRole` is the role the account HAS (edit) or WILL HAVE (create,
+// when changing role) — a subadmin-only permission is never valid on an
+// agent, checked here as well as filtered out client-side, since the UI
+// restriction alone isn't a real boundary.
+function validatePermissions(input: unknown, targetRole: UserRole): PermissionKey[] | null {
   if (input === undefined) return [];
   if (!Array.isArray(input) || !input.every((k) => typeof k === "string")) return null;
   if (!input.every((k) => (PERMISSION_KEYS as readonly string[]).includes(k))) return null;
+  if (targetRole === "agent" && input.some((k) => SUBADMIN_ONLY_PERMISSIONS.has(k as PermissionKey))) return null;
   return Array.from(new Set(input)) as PermissionKey[];
 }
 
 // Shared by every action below whose real permission decision depends on
 // the TARGET's role, not just the caller's — the target isn't known until
 // the document loads, so this can't be plain route-level middleware.
-// Returns true if the caller (req.user) is allowed to act on `target`.
-async function canManageTarget(callerId: string, callerRole: UserRole, target: IUser): Promise<boolean> {
+// Returns true if the caller (req.user) is allowed to perform `requiredKey`
+// on `target` — e.g. "staff:edit" for PATCH, "staff:delete" for DELETE.
+async function canManageTarget(
+  callerId: string,
+  callerRole: UserRole,
+  target: IUser,
+  requiredKey: PermissionKey
+): Promise<boolean> {
   if (callerRole === "admin") return true;
   if (target.role === "admin") return false; // hard cap — never delegable, see Story 46
-  return hasPermission(callerId, "users:manage");
+  return hasPermission(callerId, requiredKey);
 }
 
 // security-admin Story 46: a sub-admin delegated agent/sub-admin account
@@ -59,7 +76,7 @@ router.get(
   "/",
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
-  requirePermission("users:manage"),
+  requirePermission("staff:view_list"),
   async (req: Request, res: Response) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
@@ -68,7 +85,7 @@ router.get(
 
     const [users, total] = await Promise.all([
       User.find(filter)
-        .select("name email role isActive isOnline permissions createdAt")
+        .select("name email membershipNumber role isActive isOnline permissions createdAt")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -90,7 +107,7 @@ router.get(
   "/:id",
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
-  requirePermission("users:manage"),
+  requirePermission("staff:view_account"),
   async (req: Request, res: Response) => {
     if (!mongoose.isValidObjectId(req.params.id)) {
       res.status(400).json({ error: "Invalid user id" });
@@ -120,7 +137,7 @@ router.post(
   // No admin-target cap needed on this route — CREATABLE_STAFF_ROLES already
   // excludes "admin" entirely, so there is nothing here for a delegated
   // sub-admin to escalate into.
-  requirePermission("users:manage"),
+  requirePermission("staff:edit"),
   async (req: Request<unknown, unknown, CreateStaffAccountBody>, res: Response) => {
     const { name, email, password, role } = req.body ?? {};
 
@@ -136,7 +153,7 @@ router.post(
       res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
       return;
     }
-    const permissions = validatePermissions(req.body?.permissions);
+    const permissions = validatePermissions(req.body?.permissions, role as UserRole);
     if (permissions === null) {
       res.status(400).json({ error: "permissions must be an array of valid permission keys" });
       return;
@@ -200,18 +217,25 @@ router.patch(
       res.status(400).json({ error: "Admin accounts cannot be edited here" });
       return;
     }
-    if (!(await canManageTarget(req.user!.id, req.user!.role, user))) {
-      res.status(403).json({ error: "You do not have permission to perform this action" });
-      return;
-    }
-
     const { name, email, role, permissions: permissionsInput } = req.body ?? {};
 
     if (role !== undefined && !CREATABLE_STAFF_ROLES.includes(role as CreatableStaffRole)) {
       res.status(400).json({ error: "role must be one of: agent, subadmin" });
       return;
     }
-    const permissions = validatePermissions(permissionsInput);
+
+    const editingDetails = name !== undefined || email !== undefined || role !== undefined;
+    const editingPermissions = permissionsInput !== undefined;
+    if (
+      (editingDetails && !(await canManageTarget(req.user!.id, req.user!.role, user, "staff:edit"))) ||
+      (editingPermissions && !(await canManageTarget(req.user!.id, req.user!.role, user, "staff:permissions")))
+    ) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+
+    const resultingRole = (role as UserRole | undefined) ?? user.role;
+    const permissions = validatePermissions(permissionsInput, resultingRole);
     if (permissions === null) {
       res.status(400).json({ error: "permissions must be an array of valid permission keys" });
       return;
@@ -265,11 +289,11 @@ async function setActiveState(req: Request, res: Response, isActive: boolean) {
   }
 
   // security-admin Story 46's cap: acting on an existing "admin" account
-  // always requires a true admin, regardless of users:manage — a delegated
-  // sub-admin (or a granted agent) can never disable/enable a
+  // always requires a true admin, regardless of staff:toggle_status — a
+  // delegated sub-admin (or a granted agent) can never disable/enable a
   // higher-privileged account. Acting on an agent/subadmin target is
-  // delegable via users:manage, same as create/roster above.
-  if (!(await canManageTarget(req.user!.id, req.user!.role, user))) {
+  // delegable via staff:toggle_status, same as create/roster above.
+  if (!(await canManageTarget(req.user!.id, req.user!.role, user, "staff:toggle_status"))) {
     res.status(403).json({ error: "You do not have permission to perform this action" });
     return;
   }
@@ -319,7 +343,7 @@ router.delete(
       return;
     }
 
-    if (!(await canManageTarget(req.user!.id, req.user!.role, user))) {
+    if (!(await canManageTarget(req.user!.id, req.user!.role, user, "staff:delete"))) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
       return;
     }

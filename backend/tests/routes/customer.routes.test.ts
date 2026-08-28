@@ -245,6 +245,20 @@ describe("GET /api/v1/customers/:id", () => {
     const res = await request(app).get(`/api/v1/customers/${target.id}`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
   });
+
+  it("lets a subadmin delegated customers:manage read a customer — same scope as the roster", async () => {
+    const { user: target } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["customers:manage"] });
+    const res = await request(app).get(`/api/v1/customers/${target.id}`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 403 for a subadmin without customers:manage", async () => {
+    const { user: target } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "subadmin" });
+    const res = await request(app).get(`/api/v1/customers/${target.id}`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("PATCH /api/v1/customers/:id", () => {
