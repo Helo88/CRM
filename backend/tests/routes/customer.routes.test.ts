@@ -635,3 +635,198 @@ describe("ID document (Story 7)", () => {
     expect(res.body.idDocument.fileName).toBe("id.pdf");
   });
 });
+
+describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
+  it("agent can edit a note's text; response has the updated text and hydrated author", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const created = await request(app)
+      .post(`/api/v1/customers/${customer.id}/notes`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Original text" });
+
+    const res = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Corrected text" });
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(created.body.id);
+    expect(res.body.text).toBe("Corrected text");
+    expect(res.body.author).toEqual({ id: agent.id, name: "Agent Smith" });
+  });
+
+  it("the edit is reflected in a subsequent GET /:id", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const created = await request(app)
+      .post(`/api/v1/customers/${customer.id}/notes`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Original text" });
+    await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Corrected text" });
+
+    const res = await request(app).get(`/api/v1/customers/${customer.id}`).set("Authorization", `Bearer ${token}`);
+    expect(res.body.internalNotes[0].text).toBe("Corrected text");
+  });
+
+  it("subadmin holding customers:manage can edit; without it, 403", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token: agentToken } = await seedUser({ role: "agent" });
+    const created = await request(app)
+      .post(`/api/v1/customers/${customer.id}/notes`)
+      .set("Authorization", `Bearer ${agentToken}`)
+      .send({ text: "Original text" });
+
+    const { token: plainToken } = await seedUser({ role: "subadmin" });
+    const denied = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${plainToken}`)
+      .send({ text: "Should be rejected" });
+    expect(denied.status).toBe(403);
+
+    const { token: grantedToken } = await seedUser({ role: "subadmin", permissions: ["customers:manage"] });
+    const granted = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${grantedToken}`)
+      .send({ text: "Delegated edit" });
+    expect(granted.status).toBe(200);
+  });
+
+  it("returns 404 for a note id that doesn't exist on that customer", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/000000000000000000000000`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Nope" });
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects empty text and text over 4000 characters", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const created = await request(app)
+      .post(`/api/v1/customers/${customer.id}/notes`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Original text" });
+
+    const empty = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "   " });
+    expect(empty.status).toBe(400);
+
+    const tooLong = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "a".repeat(4001) });
+    expect(tooLong.status).toBe(400);
+  });
+
+  it("a customer viewer gets 403 (editing is a staff-only write)", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const { token: agentToken } = await seedUser({ role: "agent" });
+    const created = await request(app)
+      .post(`/api/v1/customers/${customer.id}/notes`)
+      .set("Authorization", `Bearer ${agentToken}`)
+      .send({ text: "Original text" });
+
+    const res = await request(app)
+      .patch(`/api/v1/customers/${customer.id}/notes/${created.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ text: "Nope" });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
+  it("agent deletes an attachment; it's gone from the roster and the file is removed from disk", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const uploaded = await request(app)
+      .post(`/api/v1/customers/${customer.id}/attachments`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("files", Buffer.from("contents"), "file.txt");
+    const attachmentId = uploaded.body[0].id;
+    const storedUser = await User.findById(customer.id);
+    const storedPath = customerFilePath(customer.id, storedUser!.attachments[0].storageFileName);
+    expect(fs.existsSync(storedPath)).toBe(true);
+
+    const res = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/${attachmentId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(204);
+
+    const after = await request(app).get(`/api/v1/customers/${customer.id}`).set("Authorization", `Bearer ${token}`);
+    expect(after.body.attachments).toHaveLength(0);
+
+    // Best-effort cleanup is fire-and-forget after the response is sent.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fs.existsSync(storedPath)).toBe(false);
+  });
+
+  it("deleting one of several attachments leaves the others untouched", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const uploaded = await request(app)
+      .post(`/api/v1/customers/${customer.id}/attachments`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("files", Buffer.from("first"), "first.txt")
+      .attach("files", Buffer.from("second"), "second.txt");
+
+    const res = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/${uploaded.body[0].id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(204);
+
+    const after = await request(app).get(`/api/v1/customers/${customer.id}`).set("Authorization", `Bearer ${token}`);
+    expect(after.body.attachments).toHaveLength(1);
+    expect(after.body.attachments[0].id).toBe(uploaded.body[1].id);
+  });
+
+  it("subadmin holding customers:manage can delete; without it, 403", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token: agentToken } = await seedUser({ role: "agent" });
+    const uploaded = await request(app)
+      .post(`/api/v1/customers/${customer.id}/attachments`)
+      .set("Authorization", `Bearer ${agentToken}`)
+      .attach("files", Buffer.from("contents"), "file.txt");
+
+    const { token: plainToken } = await seedUser({ role: "subadmin" });
+    const denied = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/${uploaded.body[0].id}`)
+      .set("Authorization", `Bearer ${plainToken}`);
+    expect(denied.status).toBe(403);
+
+    const { token: grantedToken } = await seedUser({ role: "subadmin", permissions: ["customers:manage"] });
+    const granted = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/${uploaded.body[0].id}`)
+      .set("Authorization", `Bearer ${grantedToken}`);
+    expect(granted.status).toBe(204);
+  });
+
+  it("returns 404 for an attachment id that doesn't exist on that customer", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/000000000000000000000000`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("a customer viewer gets 403 (deleting is a staff-only write)", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const { token: agentToken } = await seedUser({ role: "agent" });
+    const uploaded = await request(app)
+      .post(`/api/v1/customers/${customer.id}/attachments`)
+      .set("Authorization", `Bearer ${agentToken}`)
+      .attach("files", Buffer.from("contents"), "file.txt");
+
+    const res = await request(app)
+      .delete(`/api/v1/customers/${customer.id}/attachments/${uploaded.body[0].id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+});
