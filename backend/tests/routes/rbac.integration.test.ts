@@ -31,11 +31,13 @@ async function call(method: "get" | "post", path: string, tokenKey: keyof typeof
 // see backend/src/services/permissions.ts). This file deliberately has no
 // MongoMemoryServer/mongoose.connect at all, so calling that with no live
 // connection would buffer/hang rather than cleanly 403. Its full 401/403/201
-// coverage now lives in tests/routes/ticket.routes.test.ts.
+// coverage now lives in tests/routes/ticket.routes.test.ts. POST
+// /api/v1/conversations (Story 14) graduated the same way once it started
+// hitting a real Conversation.create() DB call — its full 401/403/201
+// coverage now lives in tests/routes/conversation.routes.test.ts.
 describe("RBAC across mounted routes", () => {
   it.each([
     ["get", "/api/v1/tickets", { none: 401, customer: 501, agent: 501, admin: 501 }],
-    ["post", "/api/v1/conversations", { none: 401, customer: 501, agent: 403, admin: 403 }],
     ["post", "/api/v1/conversations/abc/escalate", { none: 401, customer: 501, agent: 403, admin: 403 }],
   ] as const)("%s %s", async (method, path, expected) => {
     for (const [tokenKey, expectedStatus] of Object.entries(expected) as [keyof typeof AUTH, number][]) {
@@ -51,7 +53,7 @@ describe("RBAC across mounted routes", () => {
   });
 
   it("403 responses carry the requireRole error body", async () => {
-    const res = await call("post", "/api/v1/conversations", "agent");
+    const res = await call("post", "/api/v1/conversations/abc/escalate", "agent");
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: "You do not have permission to perform this action" });
   });

@@ -1,4 +1,10 @@
 import { Server, Socket } from "socket.io";
+import jwt from "jsonwebtoken";
+import type { JwtPayload } from "../middleware/auth";
+import { Conversation } from "../models/Conversation";
+import { Message } from "../models/Message";
+import { objectIdSchema } from "../validation/common";
+import { conversationMessagePayloadSchema } from "../validation/conversation.schema";
 
 /**
  * Socket.io wiring for the live-chat feature (Stories 14, 18: real-time messaging).
@@ -15,22 +21,113 @@ interface ConversationMessagePayload {
   [key: string]: unknown;
 }
 
+const conversationIdSchema = objectIdSchema("Invalid conversation id");
+
+// Whether `userId` may act on `conversation` — the conversation's own customer
+// (this story) or its assignedAgent (inert until Story 17 assigns one, but
+// forward-compatible so Story 18's agent-reply handler needs no change here).
+function isAuthorizedOnConversation(userId: string, conversation: { customer: unknown; assignedAgent: unknown }): boolean {
+  return userId === String(conversation.customer) || userId === String(conversation.assignedAgent);
+}
+
 export function registerChatHandlers(io: Server): void {
+  // Story 14: Socket.io connections carry a JWT in the handshake `auth`
+  // payload, verified once at connect-time — reuses the same JWT_SECRET/
+  // JwtPayload shape requireAuth already uses (middleware/auth.ts), so
+  // there's one auth model across REST and sockets. An alternative
+  // (re-authenticating every conversation:message against the DB) was
+  // rejected: later stories (16 escalate, 18 agent reply) need the caller's
+  // role available at message time, which this way is already on
+  // socket.data.user with no per-event DB lookup.
+  io.use((socket: Socket, next) => {
+    const token =
+      (socket.handshake.auth?.token as string | undefined) ||
+      (socket.handshake.headers.authorization?.startsWith("Bearer ")
+        ? socket.handshake.headers.authorization.slice(7)
+        : undefined);
+
+    if (!token) {
+      next(new Error("Unauthorized"));
+      return;
+    }
+
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+      socket.data.user = { id: payload.sub, role: payload.role };
+      next();
+    } catch {
+      next(new Error("Unauthorized"));
+    }
+  });
+
   io.on("connection", (socket: Socket) => {
     console.log(`[socket] client connected: ${socket.id}`);
 
     // Client joins the room for a specific conversation so messages only broadcast
     // to participants of that conversation.
-    socket.on("conversation:join", (conversationId: string) => {
+    socket.on("conversation:join", async (conversationId: string) => {
+      const parsedId = conversationIdSchema.safeParse(conversationId);
+      if (!parsedId.success) {
+        socket.emit("conversation:error", { error: "Invalid conversation id" });
+        return;
+      }
+
+      const conversation = await Conversation.findById(parsedId.data);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+        socket.emit("conversation:error", { error: "You do not have permission to join this conversation" });
+        return;
+      }
+
       socket.join(`conversation:${conversationId}`);
+      socket.emit("conversation:joined", { conversationId });
     });
 
-    // TODO (live-chat Stories 14-18): validate sender, persist the message via a
-    // Message-service call, invoke the AI agent service on the customer's first
-    // message, then broadcast to the room.
+    // Story 14: validates sender, persists the message, and broadcasts it.
+    // Story 15's insertion point is right after Message.create below,
+    // guarded by senderType === "customer" and "no prior AI/agent message in
+    // this conversation yet" — not implemented here.
     socket.on("conversation:message", async (payload: ConversationMessagePayload) => {
-      const { conversationId } = payload;
-      io.to(`conversation:${conversationId}`).emit("conversation:message", payload);
+      const parsed = conversationMessagePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid message" });
+        return;
+      }
+      const { conversationId, text } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+        socket.emit("conversation:error", {
+          error: "You do not have permission to send messages in this conversation",
+        });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:error", { error: "This conversation is closed" });
+        return;
+      }
+
+      const senderType = socket.data.user.id === String(conversation.customer) ? "customer" : "agent";
+
+      const message = await Message.create({
+        parentType: "conversation",
+        parentId: conversation._id,
+        senderType,
+        senderId: socket.data.user.id,
+        text,
+      });
+
+      io.to(`conversation:${conversationId}`).emit("conversation:message", message);
     });
 
     socket.on("disconnect", () => {
