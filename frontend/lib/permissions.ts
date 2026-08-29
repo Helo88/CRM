@@ -14,7 +14,7 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
   audit: ["audit:view"],
   config: ["config:edit"],
   customers: ["customers:manage"],
-  tickets: ["tickets:delete", "tickets:reassign", "tickets:view_all"],
+  tickets: ["tickets:delete", "tickets:reassign", "tickets:view_all", "tickets:create_for_customer"],
   sla: ["sla:configure"],
   kb: ["kb:publish"],
   reports: ["reports:view", "reports:export"],

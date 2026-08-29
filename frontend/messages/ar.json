@@ -14,7 +14,11 @@
     "toggleLanguage": "تبديل اللغة",
     "logIn": "تسجيل الدخول",
     "signUp": "إنشاء حساب",
-    "getSupport": "الحصول على الدعم"
+    "getSupport": "الحصول على الدعم",
+    "newTicket": "تذكرة جديدة",
+    "newCustomer": "عميل جديد",
+    "newStaffAccount": "حساب موظف جديد",
+    "startLiveChat": "بدء محادثة مباشرة"
   },
   "UserMenu": {
     "memberNumber": "عضو رقم {number}",
@@ -279,6 +283,7 @@
       "tickets:delete": "حذف التذاكر",
       "tickets:reassign": "إعادة تعيين التذاكر",
       "tickets:view_all": "عرض جميع التذاكر",
+      "tickets:create_for_customer": "إنشاء تذكرة نيابة عن عميل",
       "sla:configure": "تكوين أهداف اتفاقية مستوى الخدمة",
       "kb:publish": "نشر مقالات قاعدة المعرفة",
       "reports:view": "عرض التقارير",
@@ -361,5 +366,39 @@
       "description": "الأنسب للحالات التي لا تحتاج ردًا فوريًا.",
       "cta": "إرسال التذكرة"
     }
+  },
+  "NewTicket": {
+    "heading": "إرسال تذكرة",
+    "subheading": "صف مشكلتك وسنتابع معك عبر البريد الإلكتروني.",
+    "subject": "الموضوع",
+    "description": "الوصف",
+    "submit": "إرسال التذكرة",
+    "submitPending": "جارٍ الإرسال…",
+    "subjectRequired": "الموضوع مطلوب",
+    "descriptionRequired": "الوصف مطلوب",
+    "notSignedIn": "يجب تسجيل الدخول لإرسال تذكرة.",
+    "genericError": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    "confirmedHeading": "تم إرسال التذكرة",
+    "confirmedBody": "سنراسلك عبر البريد الإلكتروني عند رد أحد الموظفين.",
+    "referenceLabel": "الرقم المرجعي",
+    "backToSupport": "العودة إلى الدعم",
+    "staffHeading": "إنشاء تذكرة لعميل",
+    "staffSubheading": "سجّل مشكلة تم الإبلاغ عنها عبر الهاتف أو شخصيًا أو عبر قناة أخرى.",
+    "pickCustomer": "العميل",
+    "pickCustomerPlaceholder": "ابحث بالاسم أو البريد الإلكتروني…",
+    "noCustomersFound": "لم يتم العثور على عملاء.",
+    "customerRequired": "اختر عميلاً",
+    "askAdminForCustomersManage": "اطلب من أحد المسؤولين منحك صلاحية الوصول إلى قائمة العملاء لاستخدام هذا الحقل.",
+    "category": "الفئة",
+    "categoryHint": "نص حر في الوقت الحالي — ستتوفر قائمة فئات منظمة لاحقًا.",
+    "priority": "الأولوية",
+    "priorityLow": "منخفضة",
+    "priorityMedium": "متوسطة",
+    "priorityHigh": "عالية",
+    "priorityUrgent": "عاجلة",
+    "notifyCustomer": "إشعار العميل عبر البريد الإلكتروني",
+    "notifyCustomerHint": "يرسل بريدًا إلكترونيًا بسيطًا لإعلامه بأنه تم فتح تذكرة نيابة عنه.",
+    "notPermitted": "ليس لديك صلاحية إنشاء تذاكر نيابة عن عميل.",
+    "staffConfirmedBody": "سيتم إشعار العميل عبر البريد الإلكتروني عند رد أحد الموظفين."
   }
 }

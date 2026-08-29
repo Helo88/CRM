@@ -21,13 +21,19 @@ async function call(method: "get" | "post", path: string, tokenKey: keyof typeof
   return token ? req.set("Authorization", `Bearer ${token}`) : req;
 }
 
-// Routes below are still 501 stubs (ticket-management/live-chat implementation
-// stories haven't executed yet) — RBAC runs before the handler body, so a
-// wrong-role call must see 403, and a right-role call sees 501 (proving RBAC
-// passed through to the stub), not the reverse.
+// Routes below are still 501 stubs (their implementation stories haven't
+// executed yet) — RBAC runs before the handler body, so a wrong-role call
+// must see 403, and a right-role call sees 501 (proving RBAC passed through
+// to the stub), not the reverse. POST /api/v1/tickets (Story 8, then Story
+// 57's staff mode) is intentionally NOT in this matrix — it graduated out of
+// this DB-less suite entirely once its staff branch started routing through
+// requirePermission, a real DB-backed check (hasPermission/isActiveAccount,
+// see backend/src/services/permissions.ts). This file deliberately has no
+// MongoMemoryServer/mongoose.connect at all, so calling that with no live
+// connection would buffer/hang rather than cleanly 403. Its full 401/403/201
+// coverage now lives in tests/routes/ticket.routes.test.ts.
 describe("RBAC across mounted routes", () => {
   it.each([
-    ["post", "/api/v1/tickets", { none: 401, customer: 501, agent: 403, admin: 403 }],
     ["get", "/api/v1/tickets", { none: 401, customer: 501, agent: 501, admin: 501 }],
     ["post", "/api/v1/conversations", { none: 401, customer: 501, agent: 403, admin: 403 }],
     ["post", "/api/v1/conversations/abc/escalate", { none: 401, customer: 501, agent: 403, admin: 403 }],
@@ -45,7 +51,7 @@ describe("RBAC across mounted routes", () => {
   });
 
   it("403 responses carry the requireRole error body", async () => {
-    const res = await call("post", "/api/v1/tickets", "agent");
+    const res = await call("post", "/api/v1/conversations", "agent");
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: "You do not have permission to perform this action" });
   });

@@ -14,7 +14,11 @@
     "toggleLanguage": "Toggle language",
     "logIn": "Log in",
     "signUp": "Sign up",
-    "getSupport": "Get support"
+    "getSupport": "Get support",
+    "newTicket": "New ticket",
+    "newCustomer": "New customer",
+    "newStaffAccount": "New staff account",
+    "startLiveChat": "Start live chat"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -279,6 +283,7 @@
       "tickets:delete": "Delete tickets",
       "tickets:reassign": "Reassign tickets",
       "tickets:view_all": "View all tickets",
+      "tickets:create_for_customer": "Create a ticket on a customer's behalf",
       "sla:configure": "Configure SLA targets",
       "kb:publish": "Publish knowledge base articles",
       "reports:view": "View reports",
@@ -361,5 +366,39 @@
       "description": "Best for something that doesn't need an instant answer.",
       "cta": "Submit ticket"
     }
+  },
+  "NewTicket": {
+    "heading": "Submit a ticket",
+    "subheading": "Describe your issue and we'll follow up by email.",
+    "subject": "Subject",
+    "description": "Description",
+    "submit": "Submit ticket",
+    "submitPending": "Submitting…",
+    "subjectRequired": "Subject is required",
+    "descriptionRequired": "Description is required",
+    "notSignedIn": "You need to be signed in to submit a ticket.",
+    "genericError": "Something went wrong. Please try again.",
+    "confirmedHeading": "Ticket submitted",
+    "confirmedBody": "We'll email you when an agent replies.",
+    "referenceLabel": "Reference number",
+    "backToSupport": "Back to support",
+    "staffHeading": "Create a ticket for a customer",
+    "staffSubheading": "Log an issue reported by phone, in person, or through another channel.",
+    "pickCustomer": "Customer",
+    "pickCustomerPlaceholder": "Search by name or email…",
+    "noCustomersFound": "No customers found.",
+    "customerRequired": "Pick a customer",
+    "askAdminForCustomersManage": "Ask an admin to grant you access to the customer roster to use this picker.",
+    "category": "Category",
+    "categoryHint": "Free-text for now — a managed category list is coming later.",
+    "priority": "Priority",
+    "priorityLow": "Low",
+    "priorityMedium": "Medium",
+    "priorityHigh": "High",
+    "priorityUrgent": "Urgent",
+    "notifyCustomer": "Notify customer by email",
+    "notifyCustomerHint": "Sends a plain email letting them know a ticket was opened on their behalf.",
+    "notPermitted": "You don't have permission to create tickets on behalf of a customer.",
+    "staffConfirmedBody": "The customer will be notified by email when an agent replies."
   }
 }

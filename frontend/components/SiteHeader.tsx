@@ -16,9 +16,11 @@ import { MobileStaffNav } from "@/components/MobileStaffNav";
 // Present on every page (rendered from RootLayout) so there's always a way
 // back home and, for a signed-in user, a way to reach their profile,
 // switch theme/language, or sign out without navigating to "/" first.
-// Staff get the fuller control cluster (search, notifications, standalone
-// theme button) — customers get the plain version, since there's nothing
-// staff-only to search or be notified about from their side.
+// Both personas get HeaderSearch (⌘K) now — staff search over their nav
+// pages plus quick-create actions (staffNav.ts), a customer searches over
+// their own smaller set (customerSearch.ts). Staff additionally get
+// notifications and the mobile nav drawer, which have no customer
+// equivalent yet.
 export async function SiteHeader() {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
@@ -50,13 +52,14 @@ export async function SiteHeader() {
             isStaff ? (
               <>
                 <MobileStaffNav role={role} />
-                <HeaderSearch role={role} />
+                <HeaderSearch variant="staff" role={role} />
                 <NotificationBell />
                 <ThemeToggleButton theme={theme} />
                 <UserMenu name={name || "?"} email={email} membershipNumber={membershipNumber} locale={locale} inlineName />
               </>
             ) : (
               <>
+                <HeaderSearch variant="customer" />
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/support">{t("getSupport")}</Link>
                 </Button>
