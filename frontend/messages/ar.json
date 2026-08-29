@@ -30,7 +30,10 @@
     "lightMode": "الوضع الفاتح",
     "darkMode": "الوضع الداكن",
     "switchToArabic": "العربية",
-    "switchToEnglish": "English"
+    "switchToEnglish": "English",
+    "availabilityOnline": "متاح",
+    "availabilityOffline": "غير متاح",
+    "availabilityUpdateFailed": "تعذّر تحديث حالة التوفر."
   },
   "Home": {
     "title": "خدمة عملاء AzmSquad",

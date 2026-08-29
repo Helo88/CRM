@@ -30,7 +30,10 @@
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
     "switchToArabic": "العربية",
-    "switchToEnglish": "English"
+    "switchToEnglish": "English",
+    "availabilityOnline": "Available",
+    "availabilityOffline": "Away",
+    "availabilityUpdateFailed": "Couldn't update availability."
   },
   "Home": {
     "title": "AzmSquad Customer Service",

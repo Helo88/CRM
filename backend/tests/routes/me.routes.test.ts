@@ -28,15 +28,99 @@ function tokenFor(user: { id: string; role: string }) {
   return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET as string);
 }
 
-async function seedUser(email = "current@example.com") {
+async function seedUser(
+  email = "current@example.com",
+  overrides: Partial<{ role: string; isActive: boolean; isOnline: boolean }> = {}
+) {
   const user = await User.create({
     name: "Test User",
     email,
     passwordHash: "irrelevant-for-these-tests",
-    role: "customer",
+    role: overrides.role ?? "customer",
+    isActive: overrides.isActive ?? true,
+    isOnline: overrides.isOnline ?? false,
   });
   return { user, token: tokenFor({ id: user.id, role: user.role }) };
 }
+
+describe("GET /api/v1/me/status", () => {
+  it("includes isOnline in the response body", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent", isOnline: true });
+    const res = await request(app).get("/api/v1/me/status").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.isOnline).toBe(true);
+  });
+});
+
+describe("PATCH /api/v1/me/availability (Story 21, minimal)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).patch("/api/v1/me/availability").send({ isOnline: true });
+    expect(res.status).toBe(401);
+  });
+
+  it("lets an active agent flip isOnline true and back to false", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+
+    const resOn = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(resOn.status).toBe(200);
+    expect(resOn.body).toEqual({ isOnline: true });
+    expect((await User.findById(user.id))!.isOnline).toBe(true);
+
+    const resOff = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: false });
+    expect(resOff.status).toBe(200);
+    expect(resOff.body).toEqual({ isOnline: false });
+    expect((await User.findById(user.id))!.isOnline).toBe(false);
+  });
+
+  it("returns 403 for an admin", async () => {
+    const { token } = await seedUser("admin@example.com", { role: "admin" });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const { token } = await seedUser("customer@example.com", { role: "customer" });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 and does not flip isOnline when a deactivated agent tries to go online", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent", isActive: false });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+    expect((await User.findById(user.id))!.isOnline).toBe(false);
+  });
+
+  it("returns 400 when isOnline is missing or not a boolean", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const resMissing = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(resMissing.status).toBe(400);
+
+    const resWrongType = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: "yes" });
+    expect(resWrongType.status).toBe(400);
+  });
+});
 
 describe("GET /api/v1/me/contact", () => {
   it("returns 401 without a token", async () => {

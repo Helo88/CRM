@@ -69,7 +69,7 @@ export async function SiteHeader() {
                 <HeaderSearch variant="staff" role={role} />
                 <NotificationBell />
                 <ThemeToggleButton theme={theme} />
-                <UserMenu name={name || "?"} email={email} membershipNumber={membershipNumber} locale={locale} inlineName />
+                <UserMenu name={name || "?"} email={email} membershipNumber={membershipNumber} locale={locale} role={role} inlineName />
               </>
             ) : (
               <>

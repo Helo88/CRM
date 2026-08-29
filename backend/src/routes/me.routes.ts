@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
-import { contactBodySchema } from "../validation/me.schema";
+import { contactBodySchema, availabilityBodySchema } from "../validation/me.schema";
 
 const router = express.Router();
 
@@ -20,12 +20,48 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 // the same staleness problem on the API-enforcement side). Self-scoped, so
 // no permission key needed — same reasoning as GET /contact below.
 router.get("/status", requireAuth, async (req: Request, res: Response) => {
-  const user = await User.findById(req.user!.id).select("role isActive permissions");
+  const user = await User.findById(req.user!.id).select("role isActive permissions isOnline");
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.status(200).json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [] });
+  res
+    .status(200)
+    .json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [], isOnline: user.isOnline });
+});
+
+// PATCH /api/v1/me/availability — agent self-flip of isOnline (Story 21,
+// scoped down to just the flag + a minimal toggle, not the full dashboard —
+// see .squad/stories/agent-workspace/agent-availability-toggle/intake.md).
+// Self-scoped, so requireAuth only (no permission key), matching
+// /me/contact's precedent. Guarded so only role === "agent" can go online:
+// admins/sub-admins/customers are never auto-assigned to tickets or chats,
+// so isOnline is meaningless for them; reject with 403 rather than silently
+// no-op'ing. Deactivated users (isActive === false) also cannot go online —
+// admin.routes.ts already forces isOnline=false on deactivation and this
+// must not let it bounce back on afterwards.
+router.patch("/availability", requireAuth, async (req: Request, res: Response) => {
+  const parsed = availabilityBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (user.role !== "agent") {
+    res.status(403).json({ error: "Only agents can set availability" });
+    return;
+  }
+  if (parsed.data.isOnline && !user.isActive) {
+    res.status(403).json({ error: "Deactivated account cannot go online" });
+    return;
+  }
+  user.isOnline = parsed.data.isOnline;
+  await user.save();
+  res.status(200).json({ isOnline: user.isOnline });
 });
 
 // GET /api/v1/me/contact — self-read, so the settings page (Task 5) has a
