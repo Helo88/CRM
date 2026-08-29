@@ -324,6 +324,7 @@
     "idDocumentHeading": "ID document",
     "noIdDocument": "No ID document uploaded yet.",
     "idDocumentReplaceWarning": "Uploading a new file replaces the current one.",
+    "idDocumentAcceptedTypes": "Accepted: JPG, PNG, or PDF.",
     "uploadingIdDocument": "Uploading…",
     "uploadIdDocument": "Upload ID document",
     "attachmentsHeading": "General attachments",

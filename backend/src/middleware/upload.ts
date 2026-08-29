@@ -13,13 +13,34 @@ function customerUploadDir(customerId: string): string {
   return dir;
 }
 
-// image/PDF only, for the ID-document slot — mirrors ALLOWED_ID_DOCUMENT_MIMES
-// below; both the mimetype AND the extension must agree (see fileFilter).
-const ALLOWED_ID_DOCUMENT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf"];
+// Configurable accepted-types list for the ID-document slot — narrowed (per
+// direct instruction) to exactly these three, not "any image". Each
+// extension is paired with the ONE mimetype it must match (not just "any
+// image/*"), so a mismatched pair (e.g. a .png file whose multipart
+// Content-Type claims image/gif) is rejected too, not just an unlisted
+// extension. To accept another type later, add an entry here — nothing else
+// needs to change. Keep frontend/app/customers/[id]/InternalStep.tsx's file
+// input's `accept` attribute (and its help text) in sync by hand — there's
+// no shared package boundary between frontend/backend to derive it from.
+export interface AcceptedFileType {
+  extension: string;
+  mimeType: string;
+}
+
+export const ID_DOCUMENT_ACCEPTED_TYPES: AcceptedFileType[] = [
+  { extension: ".jpg", mimeType: "image/jpeg" },
+  { extension: ".jpeg", mimeType: "image/jpeg" },
+  { extension: ".png", mimeType: "image/png" },
+  { extension: ".pdf", mimeType: "application/pdf" },
+];
+
+function matchedIdDocumentType(file: Express.Multer.File): AcceptedFileType | undefined {
+  const ext = path.extname(file.originalname).toLowerCase();
+  return ID_DOCUMENT_ACCEPTED_TYPES.find((t) => t.extension === ext && t.mimeType === file.mimetype);
+}
 
 function extensionFor(file: Express.Multer.File): string {
-  const ext = path.extname(file.originalname).toLowerCase();
-  return ALLOWED_ID_DOCUMENT_EXTENSIONS.includes(ext) ? ext : "";
+  return matchedIdDocumentType(file)?.extension ?? "";
 }
 
 // Filename is fully opaque, decoupled from client input: a generated UUID
@@ -48,9 +69,7 @@ const storage = multer.diskStorage({
 // magic-byte content-sniffing would close the remaining gap (spoofing both)
 // but is out of scope for this pass.
 function idDocumentFileFilter(_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void {
-  const mimetypeOk = file.mimetype.startsWith("image/") || file.mimetype === "application/pdf";
-  const extensionOk = ALLOWED_ID_DOCUMENT_EXTENSIONS.includes(path.extname(file.originalname).toLowerCase());
-  if (!mimetypeOk || !extensionOk) {
+  if (!matchedIdDocumentType(file)) {
     cb(new Error("UNSUPPORTED_FILE_TYPE"));
     return;
   }

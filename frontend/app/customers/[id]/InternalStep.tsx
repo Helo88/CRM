@@ -247,8 +247,17 @@ export function InternalStep({
           <p className="text-sm text-muted-foreground">{t("noIdDocument")}</p>
         )}
         <p className="text-xs text-muted-foreground">{t("idDocumentReplaceWarning")}</p>
+        <p className="text-xs text-muted-foreground">{t("idDocumentAcceptedTypes")}</p>
+        {/* Kept in sync by hand with backend/src/middleware/upload.ts's
+            ID_DOCUMENT_ACCEPTED_TYPES — jpg/png/pdf only, not "any image". */}
         <form ref={idFormRef} action={idFormAction} className="flex flex-col gap-2">
-          <Input type="file" name="file" accept="image/*,application/pdf" disabled={idPending} required />
+          <Input
+            type="file"
+            name="file"
+            accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+            disabled={idPending}
+            required
+          />
           {idState.error && (
             <Alert variant="destructive">
               <CircleAlert />

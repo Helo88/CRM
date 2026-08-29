@@ -324,6 +324,7 @@
     "idDocumentHeading": "وثيقة الهوية",
     "noIdDocument": "لم يتم رفع وثيقة هوية بعد.",
     "idDocumentReplaceWarning": "رفع ملف جديد يستبدل الملف الحالي.",
+    "idDocumentAcceptedTypes": "الأنواع المقبولة: JPG أو PNG أو PDF.",
     "uploadingIdDocument": "جاري الرفع…",
     "uploadIdDocument": "رفع وثيقة الهوية",
     "attachmentsHeading": "المرفقات العامة",

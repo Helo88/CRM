@@ -622,6 +622,39 @@ describe("ID document (Story 7)", () => {
     expect(res.body.error).toBe("UNSUPPORTED_FILE_TYPE");
   });
 
+  // Accepted types are deliberately narrow (jpg/png/pdf only, not "any
+  // image" or video) — see backend/src/middleware/upload.ts's
+  // ID_DOCUMENT_ACCEPTED_TYPES.
+  it("uploading a GIF or a video is rejected 400 UNSUPPORTED_FILE_TYPE", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+
+    const gif = await request(app)
+      .put(`/api/v1/customers/${customer.id}/id-document`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", Buffer.from("GIF89a"), "photo.gif");
+    expect(gif.status).toBe(400);
+    expect(gif.body.error).toBe("UNSUPPORTED_FILE_TYPE");
+
+    const video = await request(app)
+      .put(`/api/v1/customers/${customer.id}/id-document`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", Buffer.from("fake mp4 bytes"), "clip.mp4");
+    expect(video.status).toBe(400);
+    expect(video.body.error).toBe("UNSUPPORTED_FILE_TYPE");
+  });
+
+  it("accepts a JPG in addition to PNG and PDF", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .put(`/api/v1/customers/${customer.id}/id-document`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", Buffer.from("fake jpg bytes"), "id.jpg");
+    expect(res.status).toBe(200);
+    expect(res.body.fileName).toBe("id.jpg");
+  });
+
   it("customer's own GET /:id includes their own idDocument", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
     const { token: agentToken } = await seedUser({ role: "agent" });
