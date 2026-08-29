@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
@@ -18,6 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 interface TicketDetailResponse {
   id: string;
+  reference: string;
   subject: string;
   description: string;
   status: "new" | "in_progress" | "answered" | "escalated" | "closed";
@@ -69,6 +71,7 @@ export default async function TicketDetailPage({
   const { id } = await params;
   const { _refreshed } = await searchParams;
   const t = await getTranslations("TicketDetail");
+  const tNav = await getTranslations("Nav");
 
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
@@ -135,66 +138,73 @@ export default async function TicketDetailPage({
     <div className="flex min-h-[calc(100vh-57px)]">
       {isStaffViewer && <StaffSidebar active="tickets" />}
       <main className="min-w-0 flex-1 p-4 md:p-8">
-        <div
-          className={`mx-auto w-full max-w-4xl gap-6 ${isStaffViewer ? "grid md:grid-cols-[1fr_18rem]" : "flex flex-col"}`}
-        >
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <CardTitle className="text-xl">{ticket.subject}</CardTitle>
-                {/* Story 60: customer-facing read-only view shows status inline
-                    here instead of in the staff-only sidebar Card below. */}
-                {!isStaffViewer && (
-                  <Badge variant="outline" className="shrink-0">
-                    {t(STATUS_KEY[ticket.status])}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
-              {isStaffViewer && (
-                <div className="flex flex-col gap-1 border-t border-border pt-4">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("customer")}</span>
-                  <span className="text-sm">
-                    {ticket.customer.name} — {ticket.customer.email}
-                  </span>
-                </div>
-              )}
-              <div className="flex flex-col gap-3 border-t border-border pt-4">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
-                <TicketMessageThread messages={messages} ticketId={ticket.id} />
-                {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
-                {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
-                {canReply && <TicketReplyComposer ticketId={ticket.id} />}
-              </div>
-            </CardContent>
-          </Card>
-
-          {isStaffViewer && (
-            <Card size="sm" className="h-fit">
+        <div className="mx-auto w-full max-w-4xl">
+          <nav className="mb-4 text-sm text-muted-foreground">
+            <Link href="/tickets" className="hover:text-foreground hover:underline">
+              {tNav("tickets")}
+            </Link>
+            <span className="mx-2">/</span>
+            <span className="font-medium text-foreground">{ticket.reference}</span>
+          </nav>
+          <div className={`gap-6 ${isStaffViewer ? "grid md:grid-cols-[1fr_18rem]" : "flex flex-col"}`}>
+            <Card>
               <CardHeader>
-                <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
-                  {t("heading")}
-                </CardTitle>
+                <div className="flex items-start justify-between gap-3">
+                  <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                  {/* Story 60: customer-facing read-only view shows status inline
+                      here instead of in the staff-only sidebar Card below. */}
+                  {!isStaffViewer && (
+                    <Badge variant="outline" className="shrink-0">
+                      {t(STATUS_KEY[ticket.status])}
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">{t("status")}</span>
-                  <Badge variant="outline" className="w-fit">
-                    {t(STATUS_KEY[ticket.status])}
-                  </Badge>
+                <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
+                {isStaffViewer && (
+                  <div className="flex flex-col gap-1 border-t border-border pt-4">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("customer")}</span>
+                    <span className="text-sm">
+                      {ticket.customer.name} — {ticket.customer.email}
+                    </span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-3 border-t border-border pt-4">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
+                  <TicketMessageThread messages={messages} ticketId={ticket.id} />
+                  {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
+                  {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
+                  {canReply && <TicketReplyComposer ticketId={ticket.id} />}
                 </div>
-                <TicketDetailSidebar
-                  ticketId={ticket.id}
-                  category={ticket.category}
-                  priority={ticket.priority}
-                  canCategorize={canCategorize}
-                  canChangePriority={canChangePriority}
-                />
               </CardContent>
             </Card>
-          )}
+
+            {isStaffViewer && (
+              <Card size="sm" className="h-fit">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
+                    {t("heading")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs text-muted-foreground">{t("status")}</span>
+                    <Badge variant="outline" className="w-fit">
+                      {t(STATUS_KEY[ticket.status])}
+                    </Badge>
+                  </div>
+                  <TicketDetailSidebar
+                    ticketId={ticket.id}
+                    category={ticket.category}
+                    priority={ticket.priority}
+                    canCategorize={canCategorize}
+                    canChangePriority={canChangePriority}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </main>
     </div>
