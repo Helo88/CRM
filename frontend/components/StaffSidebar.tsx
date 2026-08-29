@@ -13,7 +13,7 @@ import { visibleStaffNavItems, type StaffNavKey } from "@/lib/staffNav";
 // Desktop only — below the md breakpoint this renders nothing at all;
 // SiteHeader's MobileStaffNav (inline with the other header icons) is the
 // mobile equivalent, not a second bar owned by this component.
-export async function StaffSidebar({ active }: { active: StaffNavKey }) {
+export async function StaffSidebar({ active }: { active?: StaffNavKey }) {
   const t = await getTranslations("Nav");
   const cookieStore = await cookies();
   // Unverified peek, same pattern as SiteHeader/customers-new-page — a UI

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, ShieldUser, TicketPlus, UserPlus, ShieldPlus } from "lucide-react";
+import { LayoutDashboard, Users, ShieldUser, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
 
 // Shared between the desktop hover-expand rail and the mobile drawer
 // (components/StaffSidebar.tsx, components/MobileStaffNav.tsx) so both stay
@@ -36,6 +36,10 @@ export const STAFF_ACTION_ITEMS = [
   { key: "newCustomer", href: "/customers/new", icon: UserPlus, agentOrAdminOnly: true, staffOnly: false },
   // Same visibility as the "accounts" nav item above (admin/subadmin only).
   { key: "newStaffAccount", href: "/admin/users/new", icon: ShieldPlus, agentOrAdminOnly: false, staffOnly: true },
+  // Story 58: admin-editable ticket category list. tickets:manage_categories
+  // is a sub-admin-tier permission (SUBADMIN_ONLY_PERMISSIONS), same tier as
+  // the "accounts"/"newStaffAccount" entries above — admin/subadmin only.
+  { key: "manageTicketCategories", href: "/admin/ticket-categories", icon: Tags, agentOrAdminOnly: false, staffOnly: true },
 ] as const;
 
 export function visibleStaffActionItems(role: string | undefined) {

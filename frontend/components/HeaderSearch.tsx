@@ -49,8 +49,8 @@ export function HeaderSearch({ variant, role }: { variant: "staff" | "customer";
   }
 
   return (
-    <div className="relative hidden sm:block">
-      <div className="flex h-9 w-40 items-center gap-2 rounded-xl border border-input bg-muted/40 px-3 text-sm text-muted-foreground shadow-soft transition-colors focus-within:border-ring focus-within:bg-card sm:w-52 lg:w-64">
+    <div className="relative min-w-0 flex-1 sm:max-w-64 sm:flex-none">
+      <div className="flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-input bg-muted/40 px-3 text-sm text-muted-foreground shadow-soft transition-colors focus-within:border-ring focus-within:bg-card sm:w-52 lg:w-64">
         <Search className="size-4 shrink-0" />
         <input
           ref={inputRef}

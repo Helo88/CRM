@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
+import { cn } from "@/lib/utils";
 import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { THEME_COOKIE, type Theme } from "@/lib/theme";
@@ -44,10 +45,13 @@ export async function SiteHeader() {
   return (
     <header className="relative z-40 border-b border-border bg-background">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
-        <Link href="/" className="text-lg font-semibold">
+        <Link
+          href="/"
+          className={cn("shrink-0 text-lg font-semibold", isSignedIn && isStaff && "hidden sm:block")}
+        >
           {t("brand")}
         </Link>
-        <nav className="ms-auto flex items-center gap-2">
+        <nav className="ms-auto flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
           {isSignedIn ? (
             isStaff ? (
               <>
@@ -60,7 +64,7 @@ export async function SiteHeader() {
             ) : (
               <>
                 <HeaderSearch variant="customer" />
-                <Button asChild variant="ghost" size="sm">
+                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link href="/support">{t("getSupport")}</Link>
                 </Button>
                 <ThemeToggleButton theme={theme} />

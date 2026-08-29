@@ -24,6 +24,7 @@ export const PERMISSION_KEYS = [
   "tickets:reassign",
   "tickets:view_all",
   "tickets:create_for_customer",
+  "tickets:manage_categories",
   "sla:configure",
   "kb:publish",
   "reports:view",
@@ -51,6 +52,7 @@ export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
   "sla:configure",
   "kb:publish",
   "reports:export",
+  "tickets:manage_categories",
 ]);
 
 export function permissionKeysAllowedForRole(role: CreatableStaffRole): readonly PermissionKey[] {
