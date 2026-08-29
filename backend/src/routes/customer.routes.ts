@@ -3,7 +3,7 @@ import mongoose, { Types } from "mongoose";
 import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser, IAttachment } from "../models/User";
-import { hasPermission } from "../services/permissions";
+import { hasPermission, isActiveAccount } from "../services/permissions";
 import { isValidPhone } from "../utils/phone";
 import { uploadIdDocument, uploadGeneralAttachments, customerFilePath } from "../middleware/upload";
 import fs from "fs";
@@ -18,9 +18,16 @@ import fs from "fs";
 // see .squad/plans/security-admin/09-story-configure-roles-and-permissions.md
 // Task 4 for why that naive conversion is a regression.
 function staffOrDelegatedSubadmin(key: Parameters<typeof requirePermission>[0]) {
-  return (req: Request, res: Response, next: import("express").NextFunction) => {
+  return async (req: Request, res: Response, next: import("express").NextFunction): Promise<void> => {
     if (req.user!.role === "subadmin") {
       requirePermission(key)(req, res, next);
+      return;
+    }
+    // agent/admin skip the permission-key check itself, but still need a
+    // live isActive lookup — see isActiveAccount's comment (services/
+    // permissions.ts) for why this can't just rely on the JWT's role claim.
+    if (!(await isActiveAccount(req.user!.id))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
       return;
     }
     next();
@@ -45,11 +52,17 @@ type EditableField = (typeof EDITABLE_FIELDS)[number];
 // sub-admin needs the same customers:manage delegation the list itself
 // requires.
 async function isFullStaffViewer(caller: { id: string; role: string }): Promise<boolean> {
-  return (
-    caller.role === "admin" ||
-    caller.role === "agent" ||
-    (caller.role === "subadmin" && (await hasPermission(caller.id, "customers:manage")))
-  );
+  if (caller.role === "admin" || caller.role === "agent") {
+    // Same isActive re-check as staffOrDelegatedSubadmin above — these two
+    // roles don't need a permission key here, but do still need to be a
+    // currently-active account, not just hold the right role claim in an
+    // old still-unexpired token.
+    return isActiveAccount(caller.id);
+  }
+  if (caller.role === "subadmin") {
+    return hasPermission(caller.id, "customers:manage");
+  }
+  return false;
 }
 
 interface HydratedPerson {

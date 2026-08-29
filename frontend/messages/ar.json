@@ -61,6 +61,7 @@
     "signUp": "إنشاء حساب",
     "genericError": "تعذر تسجيل دخولك.",
     "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+    "accountDeactivated": "تم تعطيل هذا الحساب. تواصل مع أحد المسؤولين للحصول على صلاحية الوصول.",
     "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
     "passwordRequired": "كلمة المرور مطلوبة.",
     "fillDemo": "تعبئة بيانات الدخول التجريبية"
@@ -300,12 +301,15 @@
     "save": "حفظ التغييرات",
     "savePending": "جاري الحفظ…",
     "saved": "تم الحفظ",
+    "savedEmailConfirmationSent": "تم الحفظ. تم إرسال رابط تأكيد إلى {email} لإتمام تغيير بريدك الإلكتروني.",
     "genericError": "تعذر تحديث هذا الملف الشخصي.",
     "emailInUse": "هذا البريد الإلكتروني مستخدم بالفعل.",
     "noPermission": "ليس لديك صلاحية للقيام بذلك.",
     "nameRequired": "الاسم مطلوب.",
     "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
     "notFound": "العميل غير موجود، أو ليس لديك صلاحية لعرض هذا الملف الشخصي.",
+    "statusActive": "نشط",
+    "statusInactive": "غير نشط",
     "stepProfile": "الملف الشخصي",
     "stepInternal": "ملاحظات داخلية",
     "stepDocuments": "المستندات",
@@ -337,7 +341,7 @@
     "deleteAttachmentConfirmAction": "حذف",
     "deleteAttachmentCancel": "إلغاء",
     "unsupportedFileType": "نوع هذا الملف غير مدعوم هنا.",
-    "fileTooLarge": "حجم هذا الملف يتجاوز الحد الأقصى 10 ميجابايت.",
+    "fileTooLarge": "حجم هذا الملف يتجاوز الحد الأقصى 3 ميجابايت.",
     "noDocuments": "لا توجد مستندات بعد.",
     "galleryTileLabel": "{fileName}، تم الرفع في {date}"
   }

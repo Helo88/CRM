@@ -5,7 +5,7 @@ import multer, { FileFilterCallback } from "multer";
 import { NextFunction, Request, RequestHandler, Response } from "express";
 
 const UPLOAD_ROOT = path.join(process.cwd(), "uploads", "customers");
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file, not a total-request cap
+const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3 MB per file, not a total-request cap
 
 function customerUploadDir(customerId: string): string {
   const dir = path.join(UPLOAD_ROOT, customerId);
@@ -105,7 +105,7 @@ function withMulterErrorHandling(middleware: RequestHandler): RequestHandler {
         return;
       }
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-        const httpError: HttpError = new Error("File exceeds the 10MB size limit");
+        const httpError: HttpError = new Error("File exceeds the 3MB size limit");
         httpError.status = 413;
         next(httpError);
         return;

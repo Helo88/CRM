@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import type { UserRole } from "../models/User";
-import { hasPermission } from "../services/permissions";
+import { hasPermission, isActiveAccount } from "../services/permissions";
 import type { PermissionKey } from "../constants/permissions";
 
 export interface JwtPayload {
@@ -30,6 +30,18 @@ export interface JwtPayload {
 /**
  * Verifies the JWT on the Authorization header and attaches { id, role } to req.user.
  * Implements the "Role-based access control" story (auth feature, Story 3).
+ *
+ * Deliberately stateless — no DB lookup here. This whole RBAC layer is
+ * tested without a live MongoDB connection (see
+ * tests/routes/rbac.integration.test.ts's comment on that), so a
+ * just-deactivated agent/sub-admin's isActive is instead re-checked inside
+ * hasPermission (services/permissions.ts) — the one place in the RBAC chain
+ * that already does a live per-request DB lookup for agent/subadmin, so this
+ * adds no new DB dependency. /auth/login and /auth/refresh separately reject
+ * a deactivated account outright. Known gap: a route gated by requireRole
+ * alone (no requirePermission key) won't see this — every route other than
+ * the dashboard's is expected to go through requirePermission for exactly
+ * this reason, not just requireRole.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization || "";
@@ -65,8 +77,11 @@ export function requireRole(...allowedRoles: UserRole[]) {
 
 /**
  * Restricts a route to callers holding a specific permission. Use after
- * requireAuth. `admin` always passes (full/main admin, fixed, never
- * configurable). `agent`/`subadmin` are checked against a LIVE DB lookup of
+ * requireAuth. `admin` always passes the permission check itself
+ * (full/main admin, fixed, never configurable) but still gets a live
+ * isActive lookup first — a deactivated admin's still-unexpired token must
+ * not keep sailing through on the role check alone. `agent`/`subadmin` are
+ * checked against a LIVE DB lookup of
  * THEIR OWN individual account (backend/src/services/permissions.ts's
  * hasPermission) on every request — no caching, so a permission change
  * takes effect on the very next request. Permissions are granted per
@@ -82,6 +97,10 @@ export function requirePermission(key: PermissionKey) {
       return;
     }
     if (req.user.role === "admin") {
+      if (!(await isActiveAccount(req.user.id))) {
+        res.status(403).json({ error: "You do not have permission to perform this action" });
+        return;
+      }
       next();
       return;
     }

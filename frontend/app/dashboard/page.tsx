@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Users, ShieldUser, BarChart3, ArrowRight } from "lucide-react";
 import { getTranslations } from "next-intl/server";
-import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 
@@ -13,11 +13,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("heading"), robots: { index: false, follow: false } };
 }
 
-// Staff landing page — no backend call of its own, just navigation into the
-// two staff areas that exist today. Not shown to customers: there's no
-// natural 403 to lean on here (unlike /customers or /admin/users), so the
-// role check happens directly against the access token, same pattern as
-// customers/new/page.tsx.
+// Staff landing page. Not shown to customers: there's no natural 403 to
+// lean on here (unlike /customers or /admin/users), so the role check
+// happens directly against the access token first, same pattern as
+// customers/new/page.tsx — but which tiles actually render comes from a
+// live GET /api/v1/me/status call, not the token's baked-in role/
+// permissions claims. Those claims are only as fresh as the last login/
+// refresh (~15min access-token lifetime): an admin revoking a permission or
+// deactivating the account mid-session doesn't touch the still-signed
+// token, so a tile driven by the token alone would keep showing (and, pre-
+// deactivation, actually working) for up to 15 more minutes — the exact
+// gap closed API-side in services/permissions.ts's isActiveAccount. A
+// deactivated account gets logged out outright here instead of just having
+// its tiles hidden — there's nothing else on this page for it to do.
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -38,11 +46,31 @@ export default async function DashboardPage({
     redirect("/");
   }
 
-  const { role, name, permissions = [] } = peekJwtPayload(accessToken);
-  const isStaff = role === "agent" || role === "admin" || role === "subadmin";
+  const { role: tokenRole, name } = peekJwtPayload(accessToken);
+  const isStaff = tokenRole === "agent" || tokenRole === "admin" || tokenRole === "subadmin";
   if (!isStaff) {
     redirect("/");
   }
+
+  const statusRes = await fetch(`${API_URL}/api/v1/me/status`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (statusRes.status === 401 && !_refreshed) {
+    redirect("/api/session/refresh?next=/dashboard");
+  }
+  if (!statusRes.ok) {
+    redirect("/");
+  }
+
+  const { role, isActive, permissions }: { role: string; isActive: boolean; permissions: string[] } =
+    await statusRes.json();
+
+  if (!isActive) {
+    redirect("/api/session/deactivated");
+  }
+
   // Mirrors the actual route gates: agent/admin always reach /customers,
   // a sub-admin only with a customers:manage delegation (see
   // backend/src/routes/customer.routes.ts's staffOrDelegatedSubadmin);

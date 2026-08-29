@@ -35,10 +35,11 @@ export function UserMenu({
   membershipNumber?: string;
   locale: Locale;
   inlineName?: boolean;
-  // Customer-only (Story 7): links to /customers/[id]'s richer profile
-  // (name/email/phone plus the notes/attachments gallery step) — distinct
-  // from "profile" below, which is Story 5's contact-only settings page.
-  // Staff never get this — /customers/[id] is a customer-facing surface.
+  // Customer-only: links to /customers/[id]'s richer profile (name/email/
+  // phone plus the notes/attachments gallery step). Used to sit alongside a
+  // second, separate "Profile" item pointing at /settings — merged into one
+  // entry since a customer never needed both (there was nothing on the
+  // /settings copy that this page didn't already cover).
   viewProfileHref?: string;
 }) {
   const router = useRouter();
@@ -89,13 +90,8 @@ export function UserMenu({
           )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {viewProfileHref && (
-          <DropdownMenuItem asChild>
-            <Link href={viewProfileHref}>{t("myProfile")}</Link>
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem asChild>
-          <Link href="/settings">{t("profile")}</Link>
+          <Link href={viewProfileHref ?? "/settings"}>{viewProfileHref ? t("myProfile") : t("profile")}</Link>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={toggleLocale}>
           {locale === "en" ? t("switchToArabic") : t("switchToEnglish")}

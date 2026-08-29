@@ -7,6 +7,7 @@ import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE } from "@/lib/auth";
 import { refreshSession } from "@/lib/session";
 import { isValidPhone } from "@/lib/phone";
+import { peekJwtPayload } from "@/lib/jwt";
 
 const profileSchema = z.object({
   name: z.string().trim().min(1),
@@ -55,11 +56,22 @@ export async function updateProfile(
     return { error: tAuth("notSignedIn"), message: null };
   }
 
-  const { phone, ...rest } = parsed.data;
-  const body = { ...rest, phone: phone.length > 0 ? phone : null };
+  const { phone, email, name } = parsed.data;
 
-  const doFetch = (bearer: string) =>
-    fetch(`${API_URL}/api/v1/customers/${id}`, {
+  // backend/src/routes/customer.routes.ts's PATCH /:id deliberately 400s an
+  // email change from the SAME account it belongs to ("isSelf") — that has
+  // to go through the confirm-then-apply flow at PATCH /me/contact instead
+  // (Story 5), while a staff member editing a DIFFERENT customer's record
+  // keeps applying email immediately (a different trust boundary). This
+  // form always submits all three fields together, so a self-edit needs to
+  // route them to two different endpoints rather than always sending email
+  // straight to /customers/:id, which is what previously made every
+  // customer self-save fail regardless of whether email actually changed.
+  const { id: callerId } = peekJwtPayload(token);
+  const isSelf = callerId === id;
+
+  const doFetch = (bearer: string, path: string, body: Record<string, unknown>) =>
+    fetch(`${API_URL}${path}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
       body: JSON.stringify(body),
@@ -67,30 +79,62 @@ export async function updateProfile(
 
   // Inline refresh-and-retry, not a redirect — see settings/actions.ts for
   // why (a redirect here would silently drop this profile-edit submission).
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    const refreshedToken = await refreshSession();
-    if (!refreshedToken) {
-      return { error: tAuth("notSignedIn"), message: null };
+  async function patchWithRefresh(path: string, body: Record<string, unknown>) {
+    let res = await doFetch(token!, path, body);
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession();
+      if (!refreshedToken) return null;
+      token = refreshedToken;
+      res = await doFetch(refreshedToken, path, body);
     }
-    res = await doFetch(refreshedToken);
+    return res;
   }
-  const data = await res.json();
 
-  if (!res.ok) {
+  const profileBody = isSelf
+    ? { name, phone: phone.length > 0 ? phone : null }
+    : { name, email, phone: phone.length > 0 ? phone : null };
+
+  const profileRes = await patchWithRefresh(`/api/v1/customers/${id}`, profileBody);
+  if (!profileRes) {
+    return { error: tAuth("notSignedIn"), message: null };
+  }
+  if (!profileRes.ok) {
     // Backend has no i18n of its own — map its known, reachable error
     // strings to translated copy rather than showing raw English.
-    if (res.status === 409) {
+    if (profileRes.status === 409) {
       return { error: t("emailInUse"), message: null };
     }
-    if (res.status === 403) {
+    if (profileRes.status === 403) {
       return { error: t("noPermission"), message: null };
     }
     return { error: t("genericError"), message: null };
   }
 
+  if (!isSelf) {
+    revalidatePath(`/customers/${id}`);
+    return { error: null, message: t("saved") };
+  }
+
+  // Self-edit: name/phone are already saved above — email (if the field
+  // actually changed) still needs the confirm flow. "This is already your
+  // current email" isn't a real failure here (name/phone still saved), so
+  // it's treated as a no-op rather than shown as an error.
+  const emailRes = await patchWithRefresh("/api/v1/me/contact", { email });
+  if (!emailRes) {
+    return { error: tAuth("notSignedIn"), message: t("saved") };
+  }
+  const emailData = await emailRes.json();
   revalidatePath(`/customers/${id}`);
-  return { error: null, message: t("saved") };
+  if (emailRes.ok) {
+    return { error: null, message: t("savedEmailConfirmationSent", { email }) };
+  }
+  if (emailData?.error === "This is already your current email") {
+    return { error: null, message: t("saved") };
+  }
+  if (emailData?.error === "Email already in use" || emailRes.status === 409) {
+    return { error: t("emailInUse"), message: t("saved") };
+  }
+  return { error: t("genericError"), message: t("saved") };
 }
 
 export interface UploadActionState {

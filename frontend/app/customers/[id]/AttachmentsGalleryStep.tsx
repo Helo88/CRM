@@ -39,11 +39,11 @@ export function AttachmentsGalleryStep({
   ].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
 
   if (items.length === 0) {
-    return <p className="px-6 pb-6 text-sm text-muted-foreground">{t("noDocuments")}</p>;
+    return <p className="text-sm text-muted-foreground">{t("noDocuments")}</p>;
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 px-6 pb-6 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((item) => {
         const kind = fileKind(item.fileName);
         const label = t("galleryTileLabel", { fileName: item.fileName, date: new Date(item.uploadedAt).toLocaleDateString() });

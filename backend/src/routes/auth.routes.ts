@@ -126,7 +126,7 @@ router.post("/login", async (req: Request, res: Response) => {
   const normalizedEmail = email.trim().toLowerCase();
   const user = await User.findOne({ email: normalizedEmail });
 
-  if (!user || !user.isActive) {
+  if (!user) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
@@ -134,6 +134,17 @@ router.post("/login", async (req: Request, res: Response) => {
   const passwordOk = await bcrypt.compare(password, user.passwordHash);
   if (!passwordOk) {
     res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  // Deliberately checked AFTER the password, not folded into the query
+  // above with `!user.isActive` (that was the previous shape) — this way a
+  // wrong-password guess against a deactivated account still gets the
+  // generic anti-enumeration message, and only a caller who actually knows
+  // the correct password for a real, deactivated account sees this distinct
+  // one. A 403, not 401: the credentials themselves were correct.
+  if (!user.isActive) {
+    res.status(403).json({ error: "ACCOUNT_DEACTIVATED" });
     return;
   }
 

@@ -61,6 +61,7 @@
     "signUp": "Sign up",
     "genericError": "Could not log you in.",
     "invalidCredentials": "Invalid email or password.",
+    "accountDeactivated": "This account has been deactivated. Contact an administrator for access.",
     "invalidEmail": "Enter a valid email address.",
     "passwordRequired": "Password is required.",
     "fillDemo": "Fill demo credentials"
@@ -300,12 +301,15 @@
     "save": "Save changes",
     "savePending": "Saving…",
     "saved": "Saved",
+    "savedEmailConfirmationSent": "Saved. A confirmation link was sent to {email} to finish changing your email.",
     "genericError": "Could not update this profile.",
     "emailInUse": "That email is already in use.",
     "noPermission": "You don't have permission to do that.",
     "nameRequired": "Name is required.",
     "invalidEmail": "Enter a valid email address.",
     "notFound": "Customer not found, or you don't have permission to view this profile.",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
     "stepProfile": "Profile",
     "stepInternal": "Internal",
     "stepDocuments": "Documents",
@@ -337,7 +341,7 @@
     "deleteAttachmentConfirmAction": "Delete",
     "deleteAttachmentCancel": "Cancel",
     "unsupportedFileType": "That file type isn't supported here.",
-    "fileTooLarge": "That file is larger than the 10MB limit.",
+    "fileTooLarge": "That file is larger than the 3MB limit.",
     "noDocuments": "No documents yet.",
     "galleryTileLabel": "{fileName}, uploaded {date}"
   }

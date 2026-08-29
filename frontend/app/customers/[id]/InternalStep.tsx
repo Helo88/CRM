@@ -202,13 +202,13 @@ export function InternalStep({
   useResetOnSuccess(idFormRef, idState);
 
   return (
-    <div className="flex flex-col gap-6 px-6 pb-6">
-      <section className="flex flex-col gap-3">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
+      <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 shadow-card">
         <h3 className="text-sm font-semibold">{t("notesHeading")}</h3>
         {notes.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("noNotes")}</p>
         ) : (
-          <ul className="flex max-h-56 flex-col gap-3 overflow-y-auto">
+          <ul className="flex max-h-96 flex-col gap-3 overflow-y-auto">
             {notes.map((note) => (
               <NoteItem key={note.id} customerId={customerId} note={note} />
             ))}
@@ -228,72 +228,74 @@ export function InternalStep({
         </form>
       </section>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-4">
-        <h3 className="text-sm font-semibold">{t("idDocumentHeading")}</h3>
-        {idDocument ? (
-          <a
-            href={`/api/customers/${customerId}/id-document`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex flex-col gap-0.5 rounded-xl border border-border p-3 text-sm hover:bg-muted/40"
-          >
-            <span className="font-medium text-primary">{idDocument.fileName}</span>
-            <span className="text-xs text-muted-foreground">
-              {formatSize(idDocument.size)} · {idDocument.uploader?.name ?? t("unknownAuthor")} ·{" "}
-              {new Date(idDocument.uploadedAt).toLocaleDateString()}
-            </span>
-          </a>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("noIdDocument")}</p>
-        )}
-        <p className="text-xs text-muted-foreground">{t("idDocumentReplaceWarning")}</p>
-        <p className="text-xs text-muted-foreground">{t("idDocumentAcceptedTypes")}</p>
-        {/* Kept in sync by hand with backend/src/middleware/upload.ts's
-            ID_DOCUMENT_ACCEPTED_TYPES — jpg/png/pdf only, not "any image". */}
-        <form ref={idFormRef} action={idFormAction} className="flex flex-col gap-2">
-          <Input
-            type="file"
-            name="file"
-            accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
-            disabled={idPending}
-            required
-          />
-          {idState.error && (
-            <Alert variant="destructive">
-              <CircleAlert />
-              <AlertDescription>{idState.error}</AlertDescription>
-            </Alert>
+      <div className="flex flex-col gap-6">
+        <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h3 className="text-sm font-semibold">{t("idDocumentHeading")}</h3>
+          {idDocument ? (
+            <a
+              href={`/api/customers/${customerId}/id-document`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex flex-col gap-0.5 rounded-xl border border-border p-3 text-sm hover:bg-muted/40"
+            >
+              <span className="font-medium text-primary">{idDocument.fileName}</span>
+              <span className="text-xs text-muted-foreground">
+                {formatSize(idDocument.size)} · {idDocument.uploader?.name ?? t("unknownAuthor")} ·{" "}
+                {new Date(idDocument.uploadedAt).toLocaleDateString()}
+              </span>
+            </a>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("noIdDocument")}</p>
           )}
-          <Button type="submit" size="sm" disabled={idPending} className="self-start">
-            {idPending ? t("uploadingIdDocument") : t("uploadIdDocument")}
-          </Button>
-        </form>
-      </section>
+          <p className="text-xs text-muted-foreground">{t("idDocumentReplaceWarning")}</p>
+          <p className="text-xs text-muted-foreground">{t("idDocumentAcceptedTypes")}</p>
+          {/* Kept in sync by hand with backend/src/middleware/upload.ts's
+              ID_DOCUMENT_ACCEPTED_TYPES — jpg/png/pdf only, not "any image". */}
+          <form ref={idFormRef} action={idFormAction} className="flex flex-col gap-2">
+            <Input
+              type="file"
+              name="file"
+              accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+              disabled={idPending}
+              required
+            />
+            {idState.error && (
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>{idState.error}</AlertDescription>
+              </Alert>
+            )}
+            <Button type="submit" size="sm" disabled={idPending} className="self-start">
+              {idPending ? t("uploadingIdDocument") : t("uploadIdDocument")}
+            </Button>
+          </form>
+        </section>
 
-      <section className="flex flex-col gap-3 border-t border-border pt-4">
-        <h3 className="text-sm font-semibold">{t("attachmentsHeading")}</h3>
-        {attachments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("noAttachments")}</p>
-        ) : (
-          <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto">
-            {attachments.map((attachment) => (
-              <AttachmentItem key={attachment.id} customerId={customerId} attachment={attachment} />
-            ))}
-          </ul>
-        )}
-        <form ref={attachFormRef} action={attachFormAction} className="flex flex-col gap-2">
-          <Input type="file" name="files" multiple disabled={attachPending} required />
-          {attachState.error && (
-            <Alert variant="destructive">
-              <CircleAlert />
-              <AlertDescription>{attachState.error}</AlertDescription>
-            </Alert>
+        <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 shadow-card">
+          <h3 className="text-sm font-semibold">{t("attachmentsHeading")}</h3>
+          {attachments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("noAttachments")}</p>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+              {attachments.map((attachment) => (
+                <AttachmentItem key={attachment.id} customerId={customerId} attachment={attachment} />
+              ))}
+            </ul>
           )}
-          <Button type="submit" size="sm" disabled={attachPending} className="self-start">
-            {attachPending ? t("uploadingFiles") : t("uploadFiles")}
-          </Button>
-        </form>
-      </section>
+          <form ref={attachFormRef} action={attachFormAction} className="flex flex-col gap-2">
+            <Input type="file" name="files" multiple disabled={attachPending} required />
+            {attachState.error && (
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>{attachState.error}</AlertDescription>
+              </Alert>
+            )}
+            <Button type="submit" size="sm" disabled={attachPending} className="self-start">
+              {attachPending ? t("uploadingFiles") : t("uploadFiles")}
+            </Button>
+          </form>
+        </section>
+      </div>
     </div>
   );
 }

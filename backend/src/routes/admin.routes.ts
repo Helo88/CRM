@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser, UserRole } from "../models/User";
-import { hasPermission } from "../services/permissions";
+import { hasPermission, isActiveAccount } from "../services/permissions";
 import { PERMISSION_KEYS, PermissionKey, CreatableStaffRole, permissionKeysAllowedForRole } from "../constants/permissions";
 
 const router = express.Router();
@@ -62,7 +62,10 @@ async function canManageTarget(
   target: IUser,
   requiredKey: PermissionKey
 ): Promise<boolean> {
-  if (callerRole === "admin") return true;
+  // Same isActive re-check as customer.routes.ts's isFullStaffViewer/
+  // staffOrDelegatedSubadmin — an admin bypasses the permission-key check
+  // itself, but a deactivated admin's still-unexpired token must not.
+  if (callerRole === "admin") return isActiveAccount(callerId);
   if (target.role === "admin") return false; // hard cap — never delegable, see Story 46
   return hasPermission(callerId, requiredKey);
 }
