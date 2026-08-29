@@ -54,8 +54,10 @@ ticket, so that I can see what actions were taken, by whom, and when.
 
 | File (relative to this folder) | What it is |
 | ------------------------------ | ---------- |
+| `attachments/agent-detail-recent-activity.png` | The trimmed "Recent activity" teaser in the agent ticket-detail sidebar. |
+| `attachments/subadmin-detail-full-history.png` | The full timeline plus "Export history" button in the sub-admin ticket-detail sidebar. |
 
-None.
+*(Both screenshots are in place under `attachments/`.)*
 
 ---
 
@@ -72,7 +74,9 @@ None.
 ## Technical hints (optional)
 
 - Repos/roots: `.`. Primary language: `typescript`.
-- `requireAuth`, `requireRole("agent", "admin")`. "Read-only for regular agents" — if there's an implicit senior-agent/admin distinction for EDITING history, note that the current `UserRole` enum only has `"customer" | "agent" | "admin"` (no "senior agent" tier) — don't invent a new role value without flagging it.
+- **Correction from an earlier version of this intake:** `UserRole` is actually `"customer" | "agent" | "admin" | "subadmin"` (`backend/src/models/User.ts`) — the security-admin permission model already exists. "Read-only for regular agents" maps cleanly onto that: history viewing itself needs no new permission beyond ticket access, but from the approved "Ticket Views" mockup, the "Export history" action is only shown to accounts with broader ticket permissions (e.g. `tickets:view_all`) — a plain agent sees a trimmed "recent activity" teaser with a "view full history" link but no export button. Add a permission key for export specifically (e.g. `tickets:export_history`) rather than overloading `tickets:view_all` for it, and put it in `SUBADMIN_ONLY_PERMISSIONS`.
+- `requireAuth` + a base ticket-access check for viewing; `requirePermission("tickets:export_history")` for the export endpoint, per `[[feedback_every_route_needs_permission]]`.
+- Frontend: this shows up in two places per the mockup — a compact "Recent activity" list in the agent ticket-detail sidebar, and the full exportable timeline in the sub-admin ticket-detail sidebar. Story 60 ("view and filter the ticket queue") also links out to a ticket's detail view where this timeline lives — no separate page needed.
 
 ## Out of scope
 

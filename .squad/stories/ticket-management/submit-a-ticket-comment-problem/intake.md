@@ -70,6 +70,7 @@ None.
 
 ## Extra notes (optional)
 
+- New sibling story since this intake was first written: Story 57 ("Create a ticket on behalf of a customer") reuses this exact form as a staff-mode extension (customer picker, priority field, notify-customer toggle) rather than being a separate page. Building this story's `POST /` handler and form component in a way that Story 57 can extend (not duplicate) will save rework — but don't build any of Story 57's staff-only fields here, that's its own story.
 - Auto-assignment to an agent (mentioned in the flow decisions in `USER_STORIES.md`'s intro) is Story 10, a SEPARATE story — do not implement auto-assignment logic here; this story only creates the ticket with status `"new"` and no `assignedAgent` (or leaves that to Story 10 to wire in).
 - "Acknowledgment email with a reference number" — the ticket's own MongoDB `_id` (or a shorter derived reference) can serve as the reference number; there's no separate ticket-numbering scheme in the current schema, so don't invent one without noting it as a design decision.
 - Attachments are optional per the acceptance criteria, but `Ticket.ts`'s schema (as currently modeled) has no attachments field — check the model before assuming one exists; if it's missing, note that as a gap for this story to either add (a plain array field, following the pattern of `IAttachment` on `User.ts`) or flag as deferred.
@@ -84,3 +85,4 @@ None.
 - Category/priority assignment (Story 9, separate story) — new tickets can default `category: null`, `priority: "medium"` per the schema defaults.
 - Auto-assignment to an agent (Story 10, separate story).
 - Ticket status transitions beyond the initial `"new"` (Story 11, separate story).
+- Staff-mode creation on a customer's behalf, including the "notify customer" toggle (Story 57, separate story).

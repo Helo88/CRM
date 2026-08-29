@@ -99,7 +99,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: ticket-management
 
-> **Numbering note:** Stories 53 and 54 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 54 between Story 9 and Story 10 (it's infrastructure the very next story needs).
+> **Numbering note:** Stories 53, 54, 56, 57, 58, and 60 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 57 right after Story 8 (the staff-side equivalent of customer submission), Story 58 right before Story 9 (categories have to exist before Story 9 can assign one), Story 54 between Story 9 and Story 10 (infrastructure the very next story needs), Story 60 right after Story 10 (an agent needs their queue before they can open anything in it), and Story 56 between Story 60 and Story 11 (a reply is what normally drives a ticket into "Answered"). Story 60 also depends on `platform` Story 59 (the shared pagination component), which was itself pulled forward the same way Story 50 was — see the numbering note under `platform`.
 
 ### Story 53: Get support — choose a ticket or live chat
 **As a** logged-in customer, **I want to** land on one clear starting point that lets me choose between submitting a ticket or starting a live chat, **so that** I don't have to guess which nav link gets me help.
@@ -113,11 +113,25 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Submitting it creates a ticket with status "New," linked to the customer.
 - Customer gets an in-app confirmation and an acknowledgment email with a reference number.
 
+### Story 57: Create a ticket on behalf of a customer
+**As an** agent or admin, **I want to** open a ticket on behalf of a customer, **so that** I can log an issue reported by phone, in person, or through another channel without asking them to submit it themselves.
+- Form requires picking the customer plus subject, category, and description — same fields as Story 8, but the category picker is populated from Story 58, and priority is also settable up front (Story 8's version leaves priority for Story 9 to set later).
+- Customer can optionally be notified by email that a ticket was opened on their behalf.
+- The created ticket behaves identically to a customer-submitted one — same statuses (Story 11), same visibility to the customer (Story 36).
+- **Frontend:** the same ticket form as Story 8 gains a staff mode (customer picker, priority field, "notify customer" toggle) when opened by an agent/admin, rather than a separate page. **Backend:** a staff-only creation endpoint, gated by its own permission, distinct from Story 8's customer-only endpoint.
+
+### Story 58: Manage ticket categories and priorities
+**As an** admin, **I want to** define the list of ticket categories and priority levels, **so that** Story 9's categorization has real, business-relevant options to choose from instead of nothing to pick.
+- Categories and priority levels can be added, renamed, and deactivated — not hard-deleted, so history on tickets already using one stays intact.
+- Deactivating one only removes it from the picker for new assignments; existing tickets keep showing it.
+- This is a narrower, ticket-specific slice of Story 48's system configuration, built here first so ticket-management isn't blocked on the much-later `platform` feature.
+- **Frontend:** an admin-only settings page listing and editing the category/priority lists. **Backend:** CRUD endpoints gated by a dedicated permission, separate from Story 9's per-ticket categorize/prioritize action.
+
 ### Story 9: Categorize and prioritize a ticket
 **As an** agent, **I want to** assign a category and priority level to a ticket, **so that** urgent or relevant issues are handled with the right level of attention.
-- Categories and priority levels are configurable by an admin (Story 48).
+- Categories and priority levels are configurable by an admin (Story 58).
 - Category/priority can be changed at any time and is logged.
-- Tickets can be filtered and sorted by category and priority.
+- Filtering/sorting the ticket list by category and priority is the ticket queue's job (Story 60), not this story — this story is just the per-ticket assignment action.
 
 ### Story 54: In-app notifications for ticket events
 **As an** agent, **I want to** see an in-app notification when a ticket is assigned or escalated to me, **so that** I don't have to keep refreshing my ticket list to notice new work.
@@ -133,8 +147,24 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - The assigned agent is notified (in-app and/or email).
 - Ticket ownership is visible to the assigned agent and the admin, and can be manually reassigned (Story 25).
 
+### Story 60: View and filter the ticket queue
+**As an** agent or admin, **I want to** see a filterable, sortable, paginated list of tickets, **so that** I can find what I need instead of scrolling through everything I'm not looking for.
+- An agent's queue defaults to their own assigned tickets; an account granted `tickets:view_all` sees every ticket across every agent instead, with an added "Assigned to" column.
+- Filterable by status, category, and priority, and sortable by any of those plus last-updated.
+- Each row surfaces reply (Story 56) and escalate (Story 12) actions; reassign (`tickets:reassign`) and delete (`tickets:delete`) only appear for accounts granted that permission.
+- List is paginated using `platform` Story 59's shared pagination component and query-param contract.
+- **Frontend:** one ticket queue table, shared by agent and sub-admin views — they differ only in which columns/actions their permissions unlock, not in separate pages. **Backend:** `GET /api/v1/tickets` accepts `status`, `category`, `priority`, `sort`, and Story 59's pagination params, scoped server-side to the caller's role/permissions — never trusted from client-side filtering alone.
+
+### Story 56: Reply to a ticket
+**As a** human agent, **I want to** write a reply to a ticket, **so that** the customer gets an answer delivered the way they submitted their issue — by email.
+- Reply is emailed to the customer's address on file and also stored on the ticket, so it's visible in-app (Story 36) and in its history (Story 13).
+- Agent can attach files to a reply, same as a customer can when submitting (Story 8).
+- Sending a reply moves the ticket to "Answered" (Story 11) unless the agent has already closed it.
+- **Frontend:** a reply composer on the ticket detail view, available to the assigned agent (and any agent/admin with ticket access). **Backend:** a reply endpoint, gated by its own permission, that calls the email service to send — never sends email directly from the route.
+
 ### Story 11: Update ticket status
 **As an** agent, **I want to** move a ticket through statuses (New → In Progress → Answered → Closed), **so that** everyone can see where it stands.
+- Moving to "Answered" normally happens automatically when an agent sends a reply (Story 56), though an agent can also set status manually.
 - Status changes are logged with who made the change and when.
 - Customers see the current status when viewing their ticket (Story 36).
 - Closing a ticket doesn't delete it — it remains viewable read-only.
@@ -399,8 +429,8 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Log is filterable by user, action type, and date range.
 
 ### Story 48: System configuration
-**As an** admin, **I want to** configure system-wide settings (ticket categories, SLA defaults, quick-reply library, branding), **so that** the platform matches how the business actually operates.
-- Settings are centralized in one administration area.
+**As an** admin, **I want to** configure system-wide settings (SLA defaults, quick-reply library, branding), **so that** the platform matches how the business actually operates.
+- Settings are centralized in one administration area — ticket categories/priorities live here too, but as `ticket-management` Story 58, built earlier so ticket-management isn't blocked on this story.
 - Changes to critical settings require admin-level permission.
 - A history of configuration changes is kept for reference (feeds Story 47).
 
@@ -419,6 +449,15 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 ---
 
 ## Feature: platform
+
+> **Numbering note:** Story 59 below was added after the rest of this backlog was already numbered, so it keeps its high number rather than triggering a renumber. Like Story 50, it's pulled forward and built alongside earlier feature work instead of waiting for `platform`'s turn in the build order — `ticket-management` Story 60 needs it for the ticket queue. It's placed first in this section since nothing else here depends on it.
+
+### Story 59: Paginate list views
+**As a** user of any list screen in the app, **I want to** page through results instead of everything loading at once, **so that** large lists — tickets first, others later — stay fast to load and easy to scan.
+- One reusable pagination component (page controls plus a result-count readout) that any list screen can drop in, instead of each feature building its own.
+- List endpoints accept page/limit query params and return that page of results plus a total count alongside them — pagination happens server-side, never by fetching everything and slicing it in the browser.
+- First real integration is `ticket-management` Story 60's ticket queue; built generically enough that later list views (customer roster, KB articles, reports) can adopt the same component and query-param contract without rework.
+- **Frontend:** the pagination control component, added to the shared component library. **Backend:** the page/limit query-param contract and paginated-response shape, applied first to `GET /api/v1/tickets`.
 
 ### Story 50: Bilingual Arabic & English UI
 **As a** user (customer, agent, or admin), **I want to** use the interface in either Arabic or English, **so that** I can work comfortably in my preferred language.

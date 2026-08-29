@@ -57,6 +57,9 @@ export async function SiteHeader() {
               </>
             ) : (
               <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/support">{t("getSupport")}</Link>
+                </Button>
                 <ThemeToggleButton theme={theme} />
                 <UserMenu
                   name={name || "?"}

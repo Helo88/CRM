@@ -13,7 +13,8 @@
     "toggleTheme": "Toggle theme",
     "toggleLanguage": "Toggle language",
     "logIn": "Log in",
-    "signUp": "Sign up"
+    "signUp": "Sign up",
+    "getSupport": "Get support"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -342,5 +343,23 @@
     "fileTooLarge": "That file is larger than the 3MB limit.",
     "noDocuments": "No documents yet.",
     "galleryTileLabel": "{fileName}, uploaded {date}"
+  },
+  "Support": {
+    "meta": {
+      "title": "Get support",
+      "description": "Choose between live chat and submitting a ticket."
+    },
+    "heading": "How can we help?",
+    "intro": "Pick the option that fits your situation.",
+    "liveChat": {
+      "title": "Start a live chat",
+      "description": "Best for something that needs a real-time back-and-forth.",
+      "cta": "Start chat"
+    },
+    "ticket": {
+      "title": "Submit a ticket",
+      "description": "Best for something that doesn't need an instant answer.",
+      "cta": "Submit ticket"
+    }
   }
 }
