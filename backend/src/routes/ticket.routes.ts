@@ -6,6 +6,7 @@ import { Ticket, ITicket } from "../models/Ticket";
 import { Message, IMessage } from "../models/Message";
 import { User } from "../models/User";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
+import { pickNextAvailableAgent } from "../services/assignment.service";
 import type { PermissionKey } from "../constants/permissions";
 import { hasPermission, isActiveAccount } from "../services/permissions";
 import { validateBody } from "../middleware/validate";
@@ -50,7 +51,8 @@ function customerOrPermitted(key: PermissionKey) {
 }
 
 // Story 8: customer submits their own ticket, created with status "new" and
-// no category/assignedAgent (Stories 9/10 assign those later). Story 57:
+// no category (Story 9 assigns that later); Story 10 auto-assigns an agent
+// right after creation, below. Story 57:
 // staff (agent/admin/subadmin holding tickets:create_for_customer) opens a
 // ticket on behalf of an existing customer, additionally setting category
 // (free-text until Story 58) and priority up front, with an optional
@@ -117,6 +119,22 @@ router.post(
     const referenceNumber = `TCK-${ticket.ticketNumber}`;
     const shouldSendEmail = !isStaffCreated || notifyCustomer;
 
+    // Story 10: attempt to auto-assign to an online agent (least-busy,
+    // oldest-createdAt tiebreak). Never fail creation on a missing agent
+    // or a DB hiccup — the ticket is the source of truth; assignment is a
+    // best-effort side effect (same reasoning as the acknowledgment email
+    // below).
+    let assignedAgentId: Types.ObjectId | null = null;
+    try {
+      assignedAgentId = await pickNextAvailableAgent();
+      if (assignedAgentId) {
+        ticket.assignedAgent = assignedAgentId;
+        await ticket.save();
+      }
+    } catch (err) {
+      console.error("[tickets] auto-assignment failed", err);
+    }
+
     if (shouldSendEmail) {
       try {
         if (isStaffCreated) {
@@ -150,6 +168,27 @@ router.post(
         // SMTP hiccup (same reasoning CLAUDE.md gives for Gemini calls,
         // generalized to email).
         console.error("[tickets] acknowledgment email failed", err);
+      }
+    }
+
+    if (assignedAgentId) {
+      try {
+        const agent = await User.findById(assignedAgentId).select("name email");
+        if (agent) {
+          await sendEmail({
+            to: agent.email,
+            subject: `New ticket assigned to you — #${referenceNumber}`,
+            text: `Hi ${agent.name},\n\nA new ticket "${subject}" has been assigned to you.\n\nReference: ${referenceNumber}\n\n— AzmSquad Support`,
+            html: renderEmailHtml({
+              heading: "New ticket assigned to you",
+              bodyHtml: `Hi ${agent.name},<br><br>A new ticket "<strong>${subject}</strong>" has been assigned to you.<br><br>Reference: <strong>${referenceNumber}</strong>.`,
+              ctaText: "Open ticket",
+              ctaUrl: `${CLIENT_ORIGIN}/tickets/${ticket._id.toString()}`,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error("[tickets] assignment notification email failed", err);
       }
     }
 

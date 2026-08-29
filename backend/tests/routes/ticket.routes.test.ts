@@ -241,6 +241,97 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
   });
 });
 
+async function seedOnlineAgent(overrides: Partial<{ email: string }> = {}) {
+  return User.create({
+    name: "Available Agent",
+    email: overrides.email ?? `agent-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
+    passwordHash: "irrelevant-for-these-tests",
+    role: "agent",
+    isOnline: true,
+    isActive: true,
+  });
+}
+
+describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
+  it("assigns the newly created ticket to an online agent", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const agent = await seedOnlineAgent();
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.assignedAgent?.toString()).toBe(agent.id);
+  });
+
+  it("leaves assignedAgent null when no agent is online", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.assignedAgent).toBeNull();
+  });
+
+  it("sends an assignment email to the picked agent", async () => {
+    const sendEmailMock = vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const agent = await seedOnlineAgent({ email: "agent@example.com" });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    expect(sendEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: agent.email, subject: expect.stringContaining("New ticket assigned to you") })
+    );
+  });
+
+  it("still returns 201 when the assignment notification email throws", async () => {
+    vi.spyOn(emailService, "sendEmail")
+      .mockResolvedValueOnce({ dryRun: true }) // acknowledgment email to the customer
+      .mockRejectedValueOnce(new Error("SMTP down")); // assignment email to the agent
+    await seedOnlineAgent();
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.assignedAgent).not.toBeNull();
+  });
+
+  it("auto-assigns on the staff-created branch too", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const agent = await seedOnlineAgent();
+    const { user: pickedCustomer } = await seedUser({ email: "picked@example.com" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken", customerId: pickedCustomer.id });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.assignedAgent?.toString()).toBe(agent.id);
+  });
+});
+
 async function seedTicket(overrides: Partial<{ category: string | null; priority: string }> = {}) {
   const { user: customer } = await seedUser();
   return Ticket.create({
