@@ -11,3 +11,9 @@ export const conversationMessagePayloadSchema = z.object({
   conversationId: objectIdSchema("Invalid conversation id"),
   text: requiredString("Message text is required"),
 });
+
+// Used server-side to validate an inbound conversation:escalate socket
+// payload (live-chat Story 16 — customer asks to talk to a human).
+export const conversationEscalatePayloadSchema = z.object({
+  conversationId: objectIdSchema("Invalid conversation id"),
+});

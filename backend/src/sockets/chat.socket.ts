@@ -4,7 +4,7 @@ import type { JwtPayload } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
 import { objectIdSchema } from "../validation/common";
-import { conversationMessagePayloadSchema } from "../validation/conversation.schema";
+import { conversationMessagePayloadSchema, conversationEscalatePayloadSchema } from "../validation/conversation.schema";
 import { getAiReply } from "../services/liveChatAi.service";
 
 const AI_FALLBACK_TEXT =
@@ -166,6 +166,56 @@ export function registerChatHandlers(io: Server): void {
           }
         }
       }
+    });
+
+    // Story 16: customer-triggered "talk to a human" — flips status to
+    // "escalated", which is enough on its own to disable the Story 15 AI
+    // branch above (it only fires while status === "ai_handling"). Story 17
+    // (auto-assign an escalated chat) is the one that queries
+    // Conversation.find({ status: "escalated", assignedAgent: null }) and
+    // actually picks an agent — nothing here does that.
+    socket.on("conversation:escalate", async (payload: { conversationId: string }) => {
+      const parsed = conversationEscalatePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid escalate payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      // Customer-only: agents never escalate on the customer's behalf in
+      // this story (stricter than isAuthorizedOnConversation, which also
+      // allows the assignedAgent).
+      if (socket.data.user.id !== String(conversation.customer)) {
+        socket.emit("conversation:error", { error: "You do not have permission to escalate this conversation" });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:error", { error: "This conversation is closed" });
+        return;
+      }
+
+      // Idempotent: already-escalated / already-with-agent is a no-op
+      // success — re-emit directly to the caller so a reconnecting client
+      // can re-sync its UI state without erroring.
+      if (conversation.status === "escalated" || conversation.status === "with_agent") {
+        socket.emit("conversation:escalated", { conversationId, status: conversation.status });
+        return;
+      }
+
+      conversation.status = "escalated";
+      await conversation.save();
+
+      io.to(`conversation:${conversationId}`).emit("conversation:escalated", {
+        conversationId,
+        status: "escalated",
+      });
     });
 
     socket.on("disconnect", () => {

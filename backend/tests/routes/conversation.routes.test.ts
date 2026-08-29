@@ -68,11 +68,11 @@ describe("POST /api/v1/conversations (Story 14)", () => {
     expect(await Conversation.countDocuments()).toBe(1);
   });
 
-  it("still returns 501 for POST /:id/escalate (Story 16, untouched)", async () => {
+  it("returns 404 for POST /:id/escalate — escalation is socket-only (Story 16)", async () => {
     const { token } = await seedUser();
     const res = await request(app)
       .post("/api/v1/conversations/abc/escalate")
       .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(404);
   });
 });

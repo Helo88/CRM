@@ -514,7 +514,10 @@
     "previousTicketsHeading": "تذاكرك الأخيرة",
     "previousTicketsEmpty": "لم تفتح أي تذاكر بعد.",
     "previousTicketsError": "تعذر تحميل تذاكرك في الوقت الحالي.",
-    "previousTicketsClose": "إغلاق"
+    "previousTicketsClose": "إغلاق",
+    "talkToHuman": "التحدث مع موظف",
+    "talkToHumanRequesting": "جارٍ تحويلك إلى موظف دعم…",
+    "escalatedWaiting": "أنت الآن في قائمة الانتظار لموظف دعم. سينضم أحدهم إلى هذه المحادثة قريبًا."
   },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",

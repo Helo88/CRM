@@ -29,10 +29,10 @@ router.post(
   }
 );
 
-// TODO (live-chat feature, Story 16): POST /:id/escalate — flag for human hand-off
-// and queue for auto-assignment (Story 17).
-router.post("/:id/escalate", requireAuth, requireRole("customer"), (req: Request, res: Response) => {
-  res.status(501).json({ error: "Not implemented — see USER_STORIES.md live-chat Story 16" });
-});
+// Story 16 ("Escalate to a human agent") is socket-only, not a REST route —
+// see backend/src/sockets/chat.socket.ts's conversation:escalate handler.
+// conversation:message is already the customer's only real-time channel into
+// the conversation, so escalation reuses that same authenticated/authorized
+// transport rather than introducing a second parallel one.
 
 export default router;

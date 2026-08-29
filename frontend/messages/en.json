@@ -514,7 +514,10 @@
     "previousTicketsHeading": "Your recent tickets",
     "previousTicketsEmpty": "You haven't opened any tickets yet.",
     "previousTicketsError": "Couldn't load your tickets right now.",
-    "previousTicketsClose": "Close"
+    "previousTicketsClose": "Close",
+    "talkToHuman": "Talk to a human",
+    "talkToHumanRequesting": "Connecting you to a human agent…",
+    "escalatedWaiting": "You're in the queue for a human agent. Someone will join this chat shortly."
   },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",

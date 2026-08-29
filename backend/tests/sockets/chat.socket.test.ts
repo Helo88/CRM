@@ -310,3 +310,119 @@ describe("chat.socket.ts AI agent branch (Story 15)", () => {
     }
   );
 });
+
+describe("chat.socket.ts escalate (Story 16)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("flips status to escalated and broadcasts conversation:escalated", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "escalated" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("escalated");
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-customer (agent) trying to escalate, leaving status unchanged", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "ai_handling",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "You do not have permission to escalate this conversation",
+    });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("ai_handling");
+
+    socket.disconnect();
+  });
+
+  it("rejects a malformed payload", async () => {
+    const { token } = await seedUser();
+    const socket = await connect(token);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: "not-an-object-id" });
+
+    await errored;
+    socket.disconnect();
+  });
+
+  it("rejects escalating a resolved conversation", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "resolved" });
+    const socket = await connect(token);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({ error: "This conversation is closed" });
+
+    socket.disconnect();
+  });
+
+  it("is idempotent for an already-escalated conversation — no error, direct re-emit", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "escalated" });
+    const socket = await connect(token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "escalated" });
+
+    socket.disconnect();
+  });
+
+  it("is idempotent for an already-with_agent conversation", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "with_agent" });
+    const socket = await connect(token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "with_agent" });
+
+    socket.disconnect();
+  });
+
+  it("after escalation, a customer message persists but does not trigger the AI branch", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    await new Promise((resolve) => {
+      socket.on("conversation:escalated", resolve);
+      socket.emit("conversation:escalate", { conversationId: conversation.id });
+    });
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "still here?" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
+    expect(await Message.countDocuments({ senderType: "customer" })).toBe(1);
+
+    socket.disconnect();
+  });
+});

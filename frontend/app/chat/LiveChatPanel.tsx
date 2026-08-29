@@ -38,6 +38,10 @@ const STATUS_BADGE_CLASS: Record<ChatTicketSummary["status"], string> = {
 };
 
 type ConnectionStatus = "connecting" | "connected" | "error";
+// Story 16: orthogonal to ConnectionStatus (socket up/down) — this tracks
+// whether the customer has asked to talk to a human, independent of the
+// underlying connection ever dropping/reconnecting.
+type EscalationState = "idle" | "requesting" | "escalated";
 
 // Story 14: the access token is passed down once, purely so the Socket.io
 // handshake can authenticate (there is no other way for a WebSocket
@@ -53,6 +57,7 @@ export function LiveChatPanel({ token }: { token: string }) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiTyping, setAiTyping] = useState(false);
+  const [escalationState, setEscalationState] = useState<EscalationState>("idle");
   const [previousTicketsOpen, setPreviousTicketsOpen] = useState(false);
   const [previousTicketsLoading, setPreviousTicketsLoading] = useState(false);
   const [previousTickets, setPreviousTickets] = useState<ChatTicketSummary[] | null>(null);
@@ -112,6 +117,12 @@ export function LiveChatPanel({ token }: { token: string }) {
         setAiTyping(true);
         startAiTypingSafetyTimeout();
       });
+      socket.on("conversation:escalated", () => {
+        if (cancelled) return;
+        setEscalationState("escalated");
+        setAiTyping(false);
+        clearAiTypingTimeout();
+      });
       socket.on("conversation:error", (payload: { error: string }) => {
         if (!cancelled) {
           setStatus("error");
@@ -156,6 +167,16 @@ export function LiveChatPanel({ token }: { token: string }) {
     sendMessage(text);
   }
 
+  // Story 16: socket emit only — conversation:message is already the
+  // customer's only real-time channel into the conversation, so escalation
+  // reuses that same authenticated transport rather than a REST call.
+  function handleEscalate() {
+    if (!socketRef.current || !conversationIdRef.current) return;
+    if (escalationState !== "idle") return;
+    setEscalationState("requesting");
+    socketRef.current.emit("conversation:escalate", { conversationId: conversationIdRef.current });
+  }
+
   async function handleTogglePreviousTickets() {
     if (previousTicketsOpen) {
       setPreviousTicketsOpen(false);
@@ -188,6 +209,12 @@ export function LiveChatPanel({ token }: { token: string }) {
           <Alert variant="destructive">
             <CircleAlert />
             <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        )}
+        {escalationState === "escalated" && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription>{t("escalatedWaiting")}</AlertDescription>
           </Alert>
         )}
         {messages.map((message) => {
@@ -291,6 +318,18 @@ export function LiveChatPanel({ token }: { token: string }) {
             <Ticket className="size-3.5" />
             {t("previousTicketsChip")}
           </Button>
+          {escalationState !== "escalated" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={status !== "connected" || escalationState === "requesting"}
+              onClick={handleEscalate}
+            >
+              <MessageSquareWarning className="size-3.5" />
+              {escalationState === "requesting" ? t("talkToHumanRequesting") : t("talkToHuman")}
+            </Button>
+          )}
         </div>
         <div className="flex w-full items-center gap-2">
           <Textarea
