@@ -1,6 +1,8 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { requireAuth, requirePermission } from "../middleware/auth";
+import { hasPermission, isActiveAccount } from "../services/permissions";
+import type { PermissionKey } from "../constants/permissions";
 import { TicketCategory, ITicketCategory, TICKET_CATEGORY_NAME_MAX_LENGTH } from "../models/TicketCategory";
 
 const router = express.Router();
@@ -23,17 +25,49 @@ function findByNameCaseInsensitive(name: string, excludeId?: string) {
   return TicketCategory.findOne(filter).collation({ locale: "en", strength: 2 });
 }
 
+// GET /?active=true is consumed by the ticket-submission forms (Story 8/57)
+// for ANY authenticated customer/staff — a plain picklist read, no admin
+// significance, so it must stay permission-free. Only the admin surface's
+// full-list view (default, includes inactive rows) requires
+// tickets:categories_view.
+function viewListOrActiveOnly(key: PermissionKey) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.query.active === "true") {
+      next();
+      return;
+    }
+    requirePermission(key)(req, res, next);
+  };
+}
+
+// Admin-implicit-pass + live DB check, for the PATCH handler below where the
+// required key depends on WHICH fields are being changed in this specific
+// request (rename vs. toggle-status vs. both) — can't be a single fixed
+// route-level requirePermission. Mirrors ticket.routes.ts's
+// customerOrPermitted / admin.routes.ts's canManageTarget reasoning: calling
+// hasPermission directly would incorrectly reject admin, whose permissions
+// array is normally empty.
+async function callerHasPermission(req: Request, key: PermissionKey): Promise<boolean> {
+  if (req.user!.role === "admin") return isActiveAccount(req.user!.id);
+  return hasPermission(req.user!.id, key);
+}
+
 // Story 58: admin-editable ticket category list backing Story 9's
 // categorize-a-ticket picker and Story 57's staff-create-for-customer form
-// (neither is wired up to this list yet — that's their own job). No
-// customer path — every mutation here is staff-only, gated on
-// tickets:manage_categories (admin/system-configuration tier, same as
-// config:edit/sla:configure).
-router.get("/", requireAuth, async (req: Request, res: Response) => {
-  const filter = req.query.active === "true" ? { active: true } : {};
-  const categories = await TicketCategory.find(filter).sort({ name: 1 });
-  res.status(200).json(categories.map(toCategoryResponse));
-});
+// (neither is wired up to this list yet — that's their own job). Every
+// distinct action here has its own permission key (view/create/edit/
+// toggle-status) rather than one umbrella key — see
+// [[feedback_granular_action_permissions]].
+router.get(
+  "/",
+  requireAuth,
+  viewListOrActiveOnly("tickets:categories_view"),
+  async (req: Request, res: Response) => {
+    const filter = req.query.active === "true" ? { active: true } : {};
+    const categories = await TicketCategory.find(filter).sort({ name: 1 });
+    res.status(200).json(categories.map(toCategoryResponse));
+  }
+);
 
 interface CreateTicketCategoryBody {
   name?: string;
@@ -42,7 +76,7 @@ interface CreateTicketCategoryBody {
 router.post(
   "/",
   requireAuth,
-  requirePermission("tickets:manage_categories"),
+  requirePermission("tickets:categories_create"),
   async (req: Request<unknown, unknown, CreateTicketCategoryBody>, res: Response) => {
     const name = (req.body?.name ?? "").trim();
     if (!name) {
@@ -89,7 +123,6 @@ interface UpdateTicketCategoryBody {
 router.patch(
   "/:id",
   requireAuth,
-  requirePermission("tickets:manage_categories"),
   async (req: Request<{ id: string }, unknown, UpdateTicketCategoryBody>, res: Response) => {
     if (!mongoose.isValidObjectId(req.params.id)) {
       res.status(404).json({ error: "Category not found" });
@@ -102,6 +135,15 @@ router.patch(
     }
 
     const { name, active } = req.body ?? {};
+
+    if (name !== undefined && !(await callerHasPermission(req, "tickets:categories_edit"))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+    if (active !== undefined && !(await callerHasPermission(req, "tickets:categories_toggle_status"))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
 
     if (name !== undefined) {
       const trimmedName = name.trim();

@@ -14,7 +14,16 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
   audit: ["audit:view"],
   config: ["config:edit"],
   customers: ["customers:manage"],
-  tickets: ["tickets:delete", "tickets:reassign", "tickets:view_all", "tickets:create_for_customer"],
+  tickets: [
+    "tickets:delete",
+    "tickets:reassign",
+    "tickets:view_all",
+    "tickets:create_for_customer",
+    "tickets:categories_view",
+    "tickets:categories_create",
+    "tickets:categories_edit",
+    "tickets:categories_toggle_status",
+  ],
   sla: ["sla:configure"],
   kb: ["kb:publish"],
   reports: ["reports:view", "reports:export"],
@@ -37,6 +46,10 @@ export const SUBADMIN_ONLY_PERMISSIONS = new Set<string>([
   "sla:configure",
   "kb:publish",
   "reports:export",
+  "tickets:categories_view",
+  "tickets:categories_create",
+  "tickets:categories_edit",
+  "tickets:categories_toggle_status",
 ]);
 
 export function stripSubadminOnlyPermissions(permissions: string[]): string[] {

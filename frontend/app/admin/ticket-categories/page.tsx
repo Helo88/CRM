@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,14 @@ interface TicketCategoryRow {
   createdAt: string;
 }
 
-// Admin/sub-admin-only ticket category list (Story 58), gated on
-// tickets:manage_categories. No pagination — categories are expected to
-// stay a short, hand-curated list, unlike the customer/staff rosters.
+// Admin/sub-admin-only ticket category list (Story 58). Every action here
+// (view/create/edit/toggle-status) has its own permission key rather than
+// one umbrella key — see [[feedback_granular_action_permissions]] — so the
+// page hides each control independently based on the viewer's own
+// permissions, same as admin/users/page.tsx's canEdit/canToggleStatus/
+// canDelete pattern, rather than showing every action to every viewer. No
+// pagination — categories are expected to stay a short, hand-curated list,
+// unlike the customer/staff rosters.
 export default async function AdminTicketCategoriesPage({
   searchParams,
 }: {
@@ -56,10 +62,10 @@ export default async function AdminTicketCategoriesPage({
     redirect("/login");
   }
 
-  // GET / is requireAuth-only on the backend (any authenticated role can
-  // read the list) — 403 isn't actually reachable here, but the redirect
-  // stays for symmetry with every other admin page, in case that gate
-  // tightens later.
+  // GET / (the full list this page needs) requires tickets:categories_view
+  // — a viewer without it never gets a working link to this page (see
+  // lib/staffNav.ts's own comment on this exact pattern), so reaching it
+  // and being turned away belongs on the dashboard, not a dead-end message.
   if (res.status === 403) {
     redirect("/dashboard");
   }
@@ -70,15 +76,24 @@ export default async function AdminTicketCategoriesPage({
 
   const categories: TicketCategoryRow[] = await res.json();
 
+  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const isViewerAdmin = viewerRole === "admin";
+  const canCreate = isViewerAdmin || viewerPermissions.includes("tickets:categories_create");
+  const canEdit = isViewerAdmin || viewerPermissions.includes("tickets:categories_edit");
+  const canToggleStatus = isViewerAdmin || viewerPermissions.includes("tickets:categories_toggle_status");
+  const showActionsColumn = canEdit || canToggleStatus;
+
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
       <StaffSidebar />
       <main className="min-w-0 flex-1 p-4 md:p-8">
         <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
-          <Button asChild size="sm">
-            <Link href="/admin/ticket-categories/new">{t("addCategory")}</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild size="sm">
+              <Link href="/admin/ticket-categories/new">{t("addCategory")}</Link>
+            </Button>
+          )}
         </div>
 
         {categories.length === 0 ? (
@@ -105,7 +120,15 @@ export default async function AdminTicketCategoriesPage({
                     <span className="text-sm text-muted-foreground">
                       {new Date(c.createdAt).toLocaleDateString()}
                     </span>
-                    <RowActions categoryId={c.id} name={c.name} active={c.active} />
+                    {showActionsColumn && (
+                      <RowActions
+                        categoryId={c.id}
+                        name={c.name}
+                        active={c.active}
+                        canEdit={canEdit}
+                        canToggleStatus={canToggleStatus}
+                      />
+                    )}
                   </div>
                 </div>
               ))}
@@ -119,7 +142,7 @@ export default async function AdminTicketCategoriesPage({
                     <TableHead>{t("colName")}</TableHead>
                     <TableHead>{t("colStatus")}</TableHead>
                     <TableHead>{t("colCreated")}</TableHead>
-                    <TableHead className="text-end">{t("colActions")}</TableHead>
+                    {showActionsColumn && <TableHead className="text-end">{t("colActions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -136,9 +159,17 @@ export default async function AdminTicketCategoriesPage({
                         )}
                       </TableCell>
                       <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <RowActions categoryId={c.id} name={c.name} active={c.active} />
-                      </TableCell>
+                      {showActionsColumn && (
+                        <TableCell>
+                          <RowActions
+                            categoryId={c.id}
+                            name={c.name}
+                            active={c.active}
+                            canEdit={canEdit}
+                            canToggleStatus={canToggleStatus}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

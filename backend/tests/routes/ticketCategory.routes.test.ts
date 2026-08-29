@@ -45,10 +45,32 @@ describe("GET /api/v1/ticket-categories (Story 58)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns the full list (active and inactive) for a plain authenticated customer", async () => {
+  it("?active=true is open to any authenticated role — a plain customer can read the picker list", async () => {
     await TicketCategory.create({ name: "Billing", active: true });
     await TicketCategory.create({ name: "Old category", active: false });
     const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .get("/api/v1/ticket-categories?active=true")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].name).toBe("Billing");
+  });
+
+  it("the default (full) list requires tickets:categories_view — a plain customer is 403", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app).get("/api/v1/ticket-categories").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("an admin sees the full list (active and inactive), serialized without __v/_id", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    await TicketCategory.create({ name: "Old category", active: false });
+    const { token } = await seedUser({ role: "admin" });
 
     const res = await request(app).get("/api/v1/ticket-categories").set("Authorization", `Bearer ${token}`);
 
@@ -58,18 +80,18 @@ describe("GET /api/v1/ticket-categories (Story 58)", () => {
     expect(res.body[0]).not.toHaveProperty("_id");
   });
 
-  it("?active=true filters out inactive rows", async () => {
+  it("a subadmin with tickets:categories_view sees the full list", async () => {
     await TicketCategory.create({ name: "Billing", active: true });
-    await TicketCategory.create({ name: "Old category", active: false });
-    const { token } = await seedUser();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:categories_view"] });
 
-    const res = await request(app)
-      .get("/api/v1/ticket-categories?active=true")
-      .set("Authorization", `Bearer ${token}`);
-
+    const res = await request(app).get("/api/v1/ticket-categories").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].name).toBe("Billing");
+  });
+
+  it("a subadmin without tickets:categories_view is 403 on the full list", async () => {
+    const { token } = await seedUser({ role: "subadmin", permissions: [] });
+    const res = await request(app).get("/api/v1/ticket-categories").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
   });
 });
 
@@ -85,7 +107,7 @@ describe("POST /api/v1/ticket-categories (Story 58)", () => {
     expect(res.body).toMatchObject({ name: "Billing", active: true });
   });
 
-  it("returns 403 for an agent (no tickets:manage_categories)", async () => {
+  it("returns 403 for an agent (never holds tickets:categories_create)", async () => {
     const { token } = await seedUser({ role: "agent" });
     const res = await request(app)
       .post("/api/v1/ticket-categories")
@@ -94,8 +116,8 @@ describe("POST /api/v1/ticket-categories (Story 58)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("lets a subadmin with tickets:manage_categories create a category", async () => {
-    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:manage_categories"] });
+  it("lets a subadmin with tickets:categories_create create a category", async () => {
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:categories_create"] });
     const res = await request(app)
       .post("/api/v1/ticket-categories")
       .set("Authorization", `Bearer ${token}`)
@@ -103,7 +125,7 @@ describe("POST /api/v1/ticket-categories (Story 58)", () => {
     expect(res.status).toBe(201);
   });
 
-  it("returns 403 for a subadmin without tickets:manage_categories", async () => {
+  it("returns 403 for a subadmin without tickets:categories_create", async () => {
     const { token } = await seedUser({ role: "subadmin", permissions: [] });
     const res = await request(app)
       .post("/api/v1/ticket-categories")
@@ -135,15 +157,42 @@ describe("POST /api/v1/ticket-categories (Story 58)", () => {
 });
 
 describe("PATCH /api/v1/ticket-categories/:id (Story 58)", () => {
-  it("renames a category", async () => {
+  it("renames a category (admin, implicit pass)", async () => {
     const category = await TicketCategory.create({ name: "Billing", active: true });
-    const { token } = await seedUser();
+    const { token } = await seedUser({ role: "admin" });
     const res = await request(app)
       .patch(`/api/v1/ticket-categories/${category.id}`)
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "Billing (finance)" });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Billing (finance)");
+  });
+
+  it("returns 403 renaming without tickets:categories_edit", async () => {
+    const category = await TicketCategory.create({ name: "Billing", active: true });
+    const { token } = await seedUser({ role: "subadmin", permissions: [] });
+    const res = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Billing (finance)" });
+    expect(res.status).toBe(403);
+  });
+
+  it("lets a subadmin with only tickets:categories_edit rename (but not toggle status)", async () => {
+    const category = await TicketCategory.create({ name: "Billing", active: true });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:categories_edit"] });
+
+    const renameRes = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Billing (finance)" });
+    expect(renameRes.status).toBe(200);
+
+    const toggleRes = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ active: false });
+    expect(toggleRes.status).toBe(403);
   });
 
   it("returns 409 when renaming to a name that collides with another row", async () => {
@@ -157,9 +206,9 @@ describe("PATCH /api/v1/ticket-categories/:id (Story 58)", () => {
     expect(res.status).toBe(409);
   });
 
-  it("toggles active off, and the deactivated row no longer appears in ?active=true", async () => {
+  it("toggles active off (admin, implicit pass), and the deactivated row no longer appears in ?active=true", async () => {
     const category = await TicketCategory.create({ name: "Billing", active: true });
-    const { token } = await seedUser();
+    const { token } = await seedUser({ role: "admin" });
 
     const patchRes = await request(app)
       .patch(`/api/v1/ticket-categories/${category.id}`)
@@ -172,6 +221,33 @@ describe("PATCH /api/v1/ticket-categories/:id (Story 58)", () => {
       .get("/api/v1/ticket-categories?active=true")
       .set("Authorization", `Bearer ${token}`);
     expect(listRes.body).toHaveLength(0);
+  });
+
+  it("returns 403 toggling status without tickets:categories_toggle_status", async () => {
+    const category = await TicketCategory.create({ name: "Billing", active: true });
+    const { token } = await seedUser({ role: "subadmin", permissions: [] });
+    const res = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ active: false });
+    expect(res.status).toBe(403);
+  });
+
+  it("lets a subadmin with only tickets:categories_toggle_status toggle (but not rename)", async () => {
+    const category = await TicketCategory.create({ name: "Billing", active: true });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:categories_toggle_status"] });
+
+    const toggleRes = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ active: false });
+    expect(toggleRes.status).toBe(200);
+
+    const renameRes = await request(app)
+      .patch(`/api/v1/ticket-categories/${category.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Billing (finance)" });
+    expect(renameRes.status).toBe(403);
   });
 
   it("returns 404 for an unknown id", async () => {

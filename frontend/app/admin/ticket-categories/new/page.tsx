@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Story 58. Reachable by a true admin or a sub-admin delegated
-// tickets:manage_categories (the same key the POST itself requires) —
+// tickets:categories_create (the same key the POST itself requires) —
 // checked directly from the access token, same UI-nicety caveat as
 // admin/users/new/page.tsx: requirePermission on the actual POST is what
 // really enforces this.
@@ -34,7 +34,7 @@ export default async function NewTicketCategoryPage({
   }
 
   const { role, permissions = [] } = peekJwtPayload(accessToken);
-  if (role !== "admin" && !permissions.includes("tickets:manage_categories")) {
+  if (role !== "admin" && !permissions.includes("tickets:categories_create")) {
     redirect("/dashboard");
   }
 

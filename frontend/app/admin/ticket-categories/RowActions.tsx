@@ -10,17 +10,21 @@ export function RowActions({
   categoryId,
   name,
   active,
+  canEdit,
+  canToggleStatus,
 }: {
   categoryId: string;
   name: string;
   active: boolean;
+  canEdit: boolean;
+  canToggleStatus: boolean;
 }) {
   const t = useTranslations("AdminTicketCategories");
 
   return (
     <div className="flex items-center justify-end gap-1.5">
-      <RenameCategoryDialog categoryId={categoryId} currentName={name} />
-      {active ? (
+      {canEdit && <RenameCategoryDialog categoryId={categoryId} currentName={name} />}
+      {canToggleStatus && (active ? (
         <ConfirmActionButton
           icon={<Ban className="size-4" />}
           label={t("actionDeactivate")}
@@ -42,7 +46,7 @@ export function RowActions({
           cancelLabel={t("confirmReactivateCancel")}
           onConfirm={() => reactivateTicketCategory(categoryId)}
         />
-      )}
+      ))}
     </div>
   );
 }
