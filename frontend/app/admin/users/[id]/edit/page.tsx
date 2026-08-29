@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
+import { StaffSidebar } from "@/components/StaffSidebar";
 import { EditStaffAccountForm } from "./EditStaffAccountForm";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -16,6 +17,7 @@ interface StaffAccountDetail {
   name: string;
   email: string;
   role: "agent" | "admin" | "subadmin";
+  isActive: boolean;
   permissions: string[];
 }
 
@@ -82,12 +84,15 @@ export default async function EditStaffAccountPage({
   const canEditPermissions = isViewerAdmin || viewerPermissions.includes("staff:permissions");
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <EditStaffAccountForm
-        account={{ ...account, role: account.role as "agent" | "subadmin" }}
-        canEditDetails={canEditDetails}
-        canEditPermissions={canEditPermissions}
-      />
-    </main>
+    <div className="flex min-h-[calc(100vh-57px)]">
+      <StaffSidebar active="accounts" />
+      <main className="min-w-0 flex-1 p-4 md:p-8">
+        <EditStaffAccountForm
+          account={{ ...account, role: account.role as "agent" | "subadmin" }}
+          canEditDetails={canEditDetails}
+          canEditPermissions={canEditPermissions}
+        />
+      </main>
+    </div>
   );
 }
