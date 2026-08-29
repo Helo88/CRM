@@ -28,6 +28,9 @@ export const PERMISSION_KEYS = [
   "tickets:categories_create",
   "tickets:categories_edit",
   "tickets:categories_toggle_status",
+  "tickets:categorize",
+  "tickets:change_priority",
+  "tickets:reply",
   "sla:configure",
   "kb:publish",
   "reports:view",
@@ -71,6 +74,14 @@ export function permissionKeysAllowedForRole(role: CreatableStaffRole): readonly
 // role-level set. The admin can freely adjust before or after creation;
 // once created, permissions live entirely on that individual User document.
 export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionKey[]> = {
-  agent: ["tickets:reassign", "reports:view", "ai:override_category", "tickets:create_for_customer"],
+  agent: [
+    "tickets:reassign",
+    "reports:view",
+    "ai:override_category",
+    "tickets:create_for_customer",
+    "tickets:categorize",
+    "tickets:change_priority",
+    "tickets:reply",
+  ],
   subadmin: [],
 };

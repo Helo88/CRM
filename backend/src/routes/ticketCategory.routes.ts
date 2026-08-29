@@ -22,7 +22,7 @@ function toCategoryResponse(category: ITicketCategory) {
 
 // Case-insensitive lookup matching the model's collation-aware unique
 // index — used on both create (new name) and rename (name changing).
-function findByNameCaseInsensitive(name: string, excludeId?: string) {
+export function findByNameCaseInsensitive(name: string, excludeId?: string) {
   const filter: Record<string, unknown> = { name };
   if (excludeId) filter._id = { $ne: excludeId };
   return TicketCategory.findOne(filter).collation({ locale: "en", strength: 2 });

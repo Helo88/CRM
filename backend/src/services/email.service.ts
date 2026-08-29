@@ -30,6 +30,10 @@ interface SendEmailInput {
   subject: string;
   text: string;
   html?: string;
+  // Nodemailer reads the file straight off disk via `path` — used by the
+  // ticket-reply email (Story 56) so an attached file is actually
+  // delivered to the customer, not just stored for in-app viewing.
+  attachments?: { filename: string; path: string }[];
 }
 
 /**
@@ -58,7 +62,7 @@ export function renderEmailHtml(options: {
 </div>`.trim();
 }
 
-export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
+export async function sendEmail({ to, subject, text, html, attachments }: SendEmailInput) {
   const t = getTransporter();
   if (!t) {
     console.log(`[email:dry-run] to=${to} subject="${subject}"\n${text}`);
@@ -71,5 +75,6 @@ export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
     subject,
     text,
     html,
+    attachments,
   });
 }

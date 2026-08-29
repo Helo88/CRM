@@ -99,7 +99,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: ticket-management
 
-> **Numbering note:** Stories 53, 54, 56, 57, 58, and 60 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 57 right after Story 8 (the staff-side equivalent of customer submission), Story 58 right before Story 9 (categories have to exist before Story 9 can assign one), Story 54 between Story 9 and Story 10 (infrastructure the very next story needs), Story 60 right after Story 10 (an agent needs their queue before they can open anything in it), and Story 56 between Story 60 and Story 11 (a reply is what normally drives a ticket into "Answered"). Story 60 also depends on `platform` Story 59 (the shared pagination component), which was itself pulled forward the same way Story 50 was — see the numbering note under `platform`.
+> **Numbering note:** Stories 53, 54, 56, 57, 58, 60, and 61 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 57 right after Story 8 (the staff-side equivalent of customer submission), Story 58 right before Story 9 (categories have to exist before Story 9 can assign one), Story 54 between Story 9 and Story 10 (infrastructure the very next story needs), Story 60 right after Story 10 (an agent needs their queue before they can open anything in it), Story 56 between Story 60 and Story 11 (a reply is what normally drives a ticket into "Answered"), and Story 61 directly after Story 56 (the two-way extension of the same one-way email delivery Story 56 ships). Story 60 also depends on `platform` Story 59 (the shared pagination component), which was itself pulled forward the same way Story 50 was — see the numbering note under `platform`. **Story 61 is deferred/not started** — added to the backlog as a known gap, not queued for immediate implementation.
 
 ### Story 53: Get support — choose a ticket or live chat
 **As a** logged-in customer, **I want to** land on one clear starting point that lets me choose between submitting a ticket or starting a live chat, **so that** I don't have to guess which nav link gets me help.
@@ -162,6 +162,16 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Sending a reply moves the ticket to "Answered" (Story 11) unless the agent has already closed it.
 - **Frontend:** a reply composer on the ticket detail view, available to the assigned agent (and any agent/admin with ticket access). **Backend:** a reply endpoint, gated by its own permission, that calls the email service to send — never sends email directly from the route.
 
+### Story 61: Customer replies by email appear in the ticket thread
+**As a** customer, **I want to** reply directly to the agent's email, **so that** I don't have to log into the portal or open a new ticket to continue the conversation.
+- **Not started — deferred.** Story 56 ships one-way delivery only (agent → customer by email); a customer's reply currently goes nowhere. This story is what closes that gap, once picked up.
+- A customer's email reply is matched to the correct open ticket (via the email's `References`/`In-Reply-To` headers) and appended to its thread as a new message, visible to the agent the same way an agent's own reply is.
+- Quoted prior-thread text is stripped from the stored message — only the customer's new content is kept.
+- A reply on an `answered`/`closed` ticket reopens it to `in_progress`.
+- Attachments on the inbound email are saved the same way reply attachments are (Story 56).
+- **Technical approach:** IMAP polling of the existing support mailbox, not a provider webhook (a webhook needs an owned domain with MX records pointed at a mail-processing provider, which this project doesn't have) — a genuinely bigger lift than a typical ticket-management story (new background-job infrastructure, header-based thread matching, quoted-text stripping), closer in size to a small feature than a single story.
+- Until this ships, the ticket detail page shows a "coming soon" note near the reply composer so agents don't assume a customer's email reply will be captured.
+
 ### Story 11: Update ticket status
 **As an** agent, **I want to** move a ticket through statuses (New → In Progress → Answered → Closed), **so that** everyone can see where it stands.
 - Moving to "Answered" normally happens automatically when an agent sends a reply (Story 56), though an agent can also set status manually.
@@ -210,10 +220,11 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Two escalations at the same instant don't get double-assigned to the same agent.
 - Chat ownership, like ticket ownership, can be manually reassigned later (Story 25).
 
-### Story 18: Agent replies to a live chat in real time
-**As a** human agent, **I want to** see my assigned live chats and reply in real time, **so that** I can resolve the customer's issue directly.
+### Story 18: Agent or admin replies to a live chat in real time
+**As a** human agent (or admin), **I want to** see my assigned live chats and reply in real time, **so that** I can resolve the customer's issue directly.
 - Agent sees the full conversation, including prior AI messages, before replying.
 - Messages the agent sends appear instantly for the customer via WebSocket.
+- Admin can also reply to any live chat, not just their own assigned ones — to take over a difficult issue, respond when no agent is available, correct an agent's handling, or handle an escalated chat.
 - Agent can mark the conversation resolved (Story 19) once done.
 
 ### Story 19: Close a live chat conversation

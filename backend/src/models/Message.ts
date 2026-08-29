@@ -4,8 +4,18 @@ export type MessageParentType = "ticket" | "conversation";
 export type MessageSenderType = "customer" | "agent" | "ai" | "system";
 
 export interface IMessageAttachment {
+  _id: Types.ObjectId;
   fileName: string;
+  // The PROTECTED route path the frontend links to (e.g.
+  // /api/v1/tickets/<ticketId>/messages/<messageId>/attachments/<attachmentId>)
+  // — never a raw filesystem path. Same reasoning as User.ts's IAttachment.
   url: string;
+  // The opaque on-disk filename multer generated at upload time (see
+  // backend/src/middleware/upload.ts's ticket-scoped storage) — internal
+  // only, never included in any API response.
+  storageFileName: string;
+  // Bytes, populated server-side from multer's file.size.
+  size: number;
 }
 
 /**
@@ -39,8 +49,10 @@ const messageSchema = new Schema<IMessage>(
 
     attachments: [
       {
-        fileName: String,
-        url: String,
+        fileName: { type: String, required: true },
+        url: { type: String, required: true },
+        storageFileName: { type: String, required: true },
+        size: { type: Number, required: true },
       },
     ],
   },
