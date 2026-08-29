@@ -14,7 +14,7 @@ This is **not** an implementation prompt. It is the input to the plan-generation
 ## Tracker (metadata only)
 
 - **Tracker type:** `none`
-- **Work item id:** `35` *(Story 35 in USER_STORIES.md)*
+- **Work item id:** `36` *(Story 36 in USER_STORIES.md)*
 - **Work item type:** `User Story`
 - **Status:** `Not started`
 - **Assignee:** ``
@@ -60,6 +60,8 @@ None.
 ---
 
 ## Dependencies
+
+> **STATUS (2026-08-30): subsumed into `ticket-management`'s Story 60 intake** (`.squad/stories/ticket-management/view-and-filter-the-ticket-queue/intake.md`), built in the same pass as that story and `platform` Story 59 — see that intake's "MERGED SCOPE" note for why (this story, Story 60, and Story 59 all converge on the same `GET /api/v1/tickets` stub and the same ticket-detail page). Don't plan/build this intake separately; it's kept here as the original acceptance-criteria source, not as a standalone target.
 
 - **Blocked by / related ids:** Story 8 (submit a ticket), Story 11 (update ticket status) — this story is explicitly what those two stories' intakes pointed forward to (Story 11's acceptance criteria literally says "Customers see the current status when viewing their ticket (Story 35)").
 - **Depends on code areas or other stories:** `backend/src/models/Ticket.ts` (`status`, `updatedAt`), `backend/src/routes/ticket.routes.ts` (`GET /` — currently a `501` stub; this story is what should implement it, scoped to `customer: req.user.id` for a customer caller, per that route's own existing TODO comment: "list tickets scoped to the caller").

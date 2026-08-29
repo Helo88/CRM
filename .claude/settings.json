@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view *)",
+      "Bash(npm install *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require\\('zod/package.json'\\).version\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(squad new-plan *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(npx tsx *)",
+      "Bash(rm \"d:/algoriza/CRM/backend/scratch-smoke-live-chat-ai.ts\")",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npx --yes playwright install chromium --with-deps)",
+      "Bash(npm init *)",
+      "Bash(npx playwright *)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(timeout 40 bash -c 'until curl -sf http://localhost:4000 >/dev/null 2>&1 || curl -s http://localhost:4000 >/dev/null 2>&1; do sleep 1; done')",
+      "Bash(echo \"poll exit: $?\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:4000/api/v1/auth/login -X POST -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(timeout 40 bash -c 'until curl -sf http://localhost:3000 >/dev/null 2>&1; do sleep 1; done')",
+      "Bash(node smoke.js)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 13812 //F)",
+      "Bash(npx shadcn@latest add pagination -y)",
+      "Bash(node smoke-tickets.js)",
+      "Bash(where chromium-cli *)",
+      "Bash(npx --no-install chromium-cli --version)",
+      "Bash(command -v chromium-cli)",
+      "Bash(command -v npx)",
+      "Read(//d//**)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -s -H \"Cookie: session_token=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIiwicm9sZSI6ImFnZW50IiwibmFtZSI6IkFsZXggQ2FydGVyIiwiZW1haWwiOiJhbGV4QHRlc3QuZGV2In0.sig\" http://localhost:3000/_scratch-layout-check -o /tmp/scratch.html)"
+    ]
+  }
+}

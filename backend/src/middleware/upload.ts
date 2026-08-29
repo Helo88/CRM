@@ -131,3 +131,38 @@ export const uploadGeneralAttachments = withMulterErrorHandling(uploadGeneralAtt
 export function customerFilePath(customerId: string, storageFileName: string): string {
   return path.join(UPLOAD_ROOT, customerId, storageFileName);
 }
+
+const TICKET_UPLOAD_ROOT = path.join(process.cwd(), "uploads", "tickets");
+
+function ticketUploadDir(ticketId: string): string {
+  const dir = path.join(TICKET_UPLOAD_ROOT, ticketId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+const ticketMessageStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const ticketId = req.params.id;
+    if (typeof ticketId !== "string") {
+      cb(new Error("Invalid ticket id"), "");
+      return;
+    }
+    cb(null, ticketUploadDir(ticketId));
+  },
+  filename: (_req, file, cb) => {
+    cb(null, `${crypto.randomUUID()}${path.extname(file.originalname)}`);
+  },
+});
+
+// Reply attachments stay type-unrestricted, same reasoning as
+// uploadGeneralAttachmentsMiddleware above (only size + count are capped).
+const uploadTicketMessageAttachmentsMiddleware = multer({
+  storage: ticketMessageStorage,
+  limits: { fileSize: MAX_FILE_SIZE },
+}).array("files", 10);
+
+export const uploadTicketMessageAttachments = withMulterErrorHandling(uploadTicketMessageAttachmentsMiddleware);
+
+export function ticketFilePath(ticketId: string, storageFileName: string): string {
+  return path.join(TICKET_UPLOAD_ROOT, ticketId, storageFileName);
+}

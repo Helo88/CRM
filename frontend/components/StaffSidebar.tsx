@@ -7,13 +7,15 @@ import { peekJwtPayload } from "@/lib/jwt";
 import { visibleStaffNavItems, type StaffNavKey } from "@/lib/staffNav";
 
 // A pure-CSS hover-to-expand rail (icons only at rest, widens to show
-// labels on hover) — no persisted collapse state, no click target. Fixed
-// below the 57px SiteHeader; the sibling spacer div in the page's own flex
-// row reserves its resting width so content doesn't jump when it expands.
-// Desktop only — below the md breakpoint this renders nothing at all;
-// SiteHeader's MobileStaffNav (inline with the other header icons) is the
-// mobile equivalent, not a second bar owned by this component.
-export async function StaffSidebar({ active }: { active: StaffNavKey }) {
+// labels on hover) — no persisted collapse state, no click target. Spans
+// the full viewport height (not just below the header) — SiteHeader gives
+// itself a matching md:ms-20 so its own bar starts to the right of this
+// rail instead of sitting above it. The sibling spacer div in the page's
+// own flex row reserves its resting width so content doesn't jump when it
+// expands. Desktop only — below the md breakpoint this renders nothing at
+// all; SiteHeader's MobileStaffNav (inline with the other header icons) is
+// the mobile equivalent, not a second bar owned by this component.
+export async function StaffSidebar({ active }: { active?: StaffNavKey }) {
   const t = await getTranslations("Nav");
   const cookieStore = await cookies();
   // Unverified peek, same pattern as SiteHeader/customers-new-page — a UI
@@ -25,7 +27,7 @@ export async function StaffSidebar({ active }: { active: StaffNavKey }) {
   return (
     <>
       <div className="hidden w-20 shrink-0 md:block" aria-hidden />
-      <aside className="group/rail fixed inset-y-0 start-0 top-[57px] z-30 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
+      <aside className="group/rail fixed inset-y-0 start-0 z-30 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
         <nav className="flex flex-col gap-1">
           {visibleItems.map((item) => {
             const Icon = item.icon;

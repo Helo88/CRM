@@ -4,22 +4,31 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { visibleStaffNavItems } from "@/lib/staffNav";
+import { visibleStaffNavItems, visibleStaffActionItems } from "@/lib/staffNav";
+import { CUSTOMER_SEARCH_ITEMS } from "@/lib/customerSearch";
 
-// Real quick-nav search (not decorative) — jumps to Customers/Accounts (and
-// whatever staff pages come later, since it reads the same shared nav list
-// as StaffSidebar/MobileStaffNav) via ⌘K or a click. No fake results.
-export function HeaderSearch({ role }: { role?: string }) {
+// Real quick-nav-and-action search (not decorative) — jumps to pages
+// (Customers/Accounts/...) and quick-create actions (New ticket/New
+// customer/...) via ⌘K or a click. No fake results. Takes only plain
+// serializable props (variant/role) and resolves the actual item list
+// (staffNav.ts / customerSearch.ts) itself — those lists carry Lucide icon
+// component references, which cannot cross the Server-to-Client prop
+// boundary from SiteHeader (a Server Component); only primitives can.
+export function HeaderSearch({ variant, role }: { variant: "staff" | "customer"; role?: string }) {
   const t = useTranslations("Nav");
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
-  const items = visibleStaffNavItems(role).map((item) => ({ ...item, label: t(item.key) }));
+  const items =
+    variant === "staff"
+      ? [...visibleStaffNavItems(role), ...visibleStaffActionItems(role)]
+      : CUSTOMER_SEARCH_ITEMS;
+  const labeledItems = items.map((item) => ({ ...item, label: t(item.key) }));
   const matches = query.trim()
-    ? items.filter((item) => item.label.toLowerCase().includes(query.trim().toLowerCase()))
-    : items;
+    ? labeledItems.filter((item) => item.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : labeledItems;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -40,8 +49,8 @@ export function HeaderSearch({ role }: { role?: string }) {
   }
 
   return (
-    <div className="relative hidden sm:block">
-      <div className="flex h-9 w-40 items-center gap-2 rounded-xl border border-input bg-muted/40 px-3 text-sm text-muted-foreground shadow-soft transition-colors focus-within:border-ring focus-within:bg-card sm:w-52 lg:w-64">
+    <div className="relative min-w-0 flex-1 sm:max-w-64 sm:flex-none">
+      <div className="flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-input bg-muted/40 px-3 text-sm text-muted-foreground shadow-soft transition-colors focus-within:border-ring focus-within:bg-card sm:w-52 lg:w-64">
         <Search className="size-4 shrink-0" />
         <input
           ref={inputRef}

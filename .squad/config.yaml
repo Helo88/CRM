@@ -18,9 +18,9 @@ planner:
   auth:
     anthropic: auto
   budget:
-    maxFileReads: 25
-    maxContextBytes: 50000
-    maxDurationSeconds: 180
+    maxFileReads: 45
+    maxContextBytes: 120000
+    maxDurationSeconds: 330
   cache:
     enabled: true
   maxOutputTokens: 16384

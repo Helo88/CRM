@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import { nextSequence } from "./Counter";
 
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
 export type TicketStatus = "new" | "in_progress" | "answered" | "escalated" | "closed";
@@ -14,6 +15,7 @@ export interface ITicketSla {
  * feature (Stories 25-27) via the sla sub-document.
  */
 export interface ITicket extends Document {
+  ticketNumber: number;
   subject: string;
   description: string;
   customer: Types.ObjectId;
@@ -29,6 +31,7 @@ export interface ITicket extends Document {
 
 const ticketSchema = new Schema<ITicket>(
   {
+    ticketNumber: { type: Number, unique: true, required: true },
     subject: { type: String, required: true },
     description: { type: String, required: true },
     customer: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -52,5 +55,17 @@ const ticketSchema = new Schema<ITicket>(
   },
   { timestamps: true }
 );
+
+// pre("validate"), same reasoning as User.ts's membershipNumber hook: required:
+// true is enforced during validation, which runs before "save" middleware, so
+// the number must exist by then. Runs for every creation path (customer
+// self-submit, staff create-on-behalf-of) since they all go through
+// Ticket.create()/doc.save().
+ticketSchema.pre("validate", async function (next) {
+  if (this.isNew && !this.ticketNumber) {
+    this.ticketNumber = await nextSequence("ticketNumber");
+  }
+  next();
+});
 
 export const Ticket = mongoose.model<ITicket>("Ticket", ticketSchema);

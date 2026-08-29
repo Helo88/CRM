@@ -1,0 +1,91 @@
+import { z } from "zod";
+import { requiredString } from "./common";
+
+export const SUBJECT_MAX_LENGTH = 200;
+export const DESCRIPTION_MAX_LENGTH = 4000;
+export const CATEGORY_MAX_LENGTH = 100;
+
+const REQUIRED_MESSAGE = "subject and description are required";
+
+export const ALLOWED_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const ALLOWED_STATUSES = ["new", "in_progress", "answered", "escalated", "closed"] as const;
+export const ALLOWED_SORT_KEYS = ["updatedAt", "status", "category", "priority"] as const;
+
+const categoryFieldSchema = z
+  .string()
+  .trim()
+  .max(CATEGORY_MAX_LENGTH, `category must be at most ${CATEGORY_MAX_LENGTH} characters`)
+  .nullable()
+  .optional()
+  .transform((val) => (val ? val : null));
+
+// Only the fields every caller (customer or staff) can set are covered here
+// — customerId/priority/notifyCustomer are staff-only, conditional on
+// req.user's role (not known to a body-shape schema), and stay validated
+// inline in ticket.routes.ts exactly as before.
+export const createTicketBodySchema = z
+  .object({
+    subject: requiredString(REQUIRED_MESSAGE).max(
+      SUBJECT_MAX_LENGTH,
+      `subject must be at most ${SUBJECT_MAX_LENGTH} characters`
+    ),
+    description: requiredString(REQUIRED_MESSAGE).max(
+      DESCRIPTION_MAX_LENGTH,
+      `description must be at most ${DESCRIPTION_MAX_LENGTH} characters`
+    ),
+    category: categoryFieldSchema,
+  })
+  // customerId/priority/notifyCustomer are staff-only fields this schema
+  // doesn't know about (see ticket.routes.ts) — passthrough so validateBody
+  // replacing req.body with the parsed result doesn't silently drop them.
+  .passthrough();
+
+// Story 9: change category and/or priority on an existing ticket. Shape
+// only — "category must match an active TicketCategory" is a DB lookup and
+// stays inline in ticket.routes.ts's PATCH /:id handler (same pattern as
+// every other DB-dependent rule in this codebase). Whether a field is even
+// present is decided against the RAW request body in the route handler, not
+// this parsed result — categoryFieldSchema's transform turns an absent key
+// into `null`, same as it does for the create schema above, which would
+// otherwise make "field omitted" indistinguishable from "field explicitly
+// cleared."
+export const updateTicketBodySchema = z.object({
+  category: categoryFieldSchema,
+  priority: z
+    .enum(ALLOWED_PRIORITIES, { error: `priority must be one of: ${ALLOWED_PRIORITIES.join(", ")}` })
+    .optional(),
+});
+
+// Story 60 (merged with customer-portal Story 36 + platform Story 59): query
+// params for GET /api/v1/tickets. All optional — the route handler applies
+// role-based defaults/overrides (e.g. forcing `customer`/`assignedAgent`
+// scope) that this schema has no knowledge of; it only validates shape.
+export const listTicketsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z.enum(ALLOWED_STATUSES).optional(),
+  category: z.string().trim().min(1).optional(),
+  priority: z.enum(ALLOWED_PRIORITIES).optional(),
+  sort: z
+    .string()
+    .regex(
+      new RegExp(`^-?(${ALLOWED_SORT_KEYS.join("|")})$`),
+      `sort must be one of: ${ALLOWED_SORT_KEYS.join(", ")}, optionally prefixed with -`
+    )
+    .optional(),
+});
+
+export const REPLY_TEXT_MAX_LENGTH = DESCRIPTION_MAX_LENGTH;
+
+// Story 56: the reply-text field of POST /:id/messages. Multer parses the
+// multipart body before this runs (see ticket.routes.ts), so this is used
+// via an inline `.safeParse(req.body)` there, never `validateBody` —
+// validateBody assumes req.body is already the full request payload, but
+// multer's own body-parsing populates req.body with only the non-file
+// fields as strings, which this schema is shaped to match.
+export const replyToTicketBodySchema = z.object({
+  text: requiredString("reply text is required").max(
+    REPLY_TEXT_MAX_LENGTH,
+    `reply text must be at most ${REPLY_TEXT_MAX_LENGTH} characters`
+  ),
+});

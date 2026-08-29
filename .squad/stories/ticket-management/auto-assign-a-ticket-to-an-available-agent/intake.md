@@ -46,7 +46,7 @@ dispatching.
 - Assignment happens as soon as the ticket is created.
 - The assigned agent is notified (in-app and/or email).
 - Ticket ownership is visible to the assigned agent and the admin, and can
-  be manually reassigned (Story 41).
+  be manually reassigned (Story 25).
 ```
 
 ---
@@ -69,7 +69,8 @@ None.
 
 - "First available (online) agent" — with no other ordering signal in the acceptance criteria or the data model, use a deterministic tiebreaker (e.g. fewest currently-assigned open tickets, or creation-order/oldest-online-first) and state the chosen rule explicitly in the plan rather than leaving it ambiguous — Story 17 (live-chat's equivalent auto-assignment) explicitly calls out avoiding double-assignment on simultaneous events; the same concurrency care applies here even though it's not spelled out in this story's acceptance criteria.
 - `isOnline` toggling itself is Story 21 (`agent-workspace` feature, "Agent availability toggle") — a LATER story. Until Story 21 ships, no code path sets `isOnline: true` on any agent, meaning this story's auto-assignment query would always find zero eligible agents in practice. Flag this as a known cross-story dependency rather than silently working around it (e.g. don't invent an alternate "availability" signal not in the data model).
-- "In-app" notification implies some notification mechanism/model that doesn't exist yet in this codebase (no `Notification` model). If none is judged in-scope to build fresh here, the email path (already supported via `email.service.ts`) can satisfy the "and/or" wording in the acceptance criteria on its own — don't invent a full notification system unprompted.
+- "In-app" notification: Story 54 ("In-app notifications for ticket events," same feature) now owns the notification model/mechanism this used to lack. If Story 54 is built by the time this is planned, call its notification-creation function on assignment rather than inventing a second mechanism; if not yet built, the email path (already supported via `email.service.ts`) can satisfy the "and/or" wording on its own in the meantime.
+- Ticket visibility once assigned is Story 60's ("View and filter the ticket queue," same feature) job — this story only needs to persist `assignedAgent`, not build any list UI.
 
 ## Technical hints (optional)
 
@@ -79,5 +80,5 @@ None.
 ## Out of scope
 
 - Agent availability toggle itself (Story 21, separate, later story) — this story's assignment logic depends on `isOnline` but does not implement how it gets set.
-- Manual reassignment UI/endpoint (Story 41, separate, later story) — this story only needs assignment to be visible/queryable, not reassignable yet.
+- Manual reassignment UI/endpoint (Story 25, separate, later story) — this story only needs assignment to be visible/queryable, not reassignable yet.
 - Live-chat's parallel auto-assignment (Story 17) — separate story, though the underlying mechanism may be shared per Technical hints.

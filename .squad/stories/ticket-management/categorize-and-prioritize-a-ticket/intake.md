@@ -43,9 +43,11 @@ attention.
 ## Acceptance criteria
 
 ```
-- Categories and priority levels are configurable by an admin (Story 47).
+- Categories and priority levels are configurable by an admin (Story 58).
 - Category/priority can be changed at any time and is logged.
-- Tickets can be filtered and sorted by category and priority.
+- Filtering/sorting the ticket list by category and priority is the ticket
+  queue's job (Story 60), not this story — this story is just the
+  per-ticket assignment action.
 ```
 
 ---
@@ -54,28 +56,30 @@ attention.
 
 | File (relative to this folder) | What it is |
 | ------------------------------ | ---------- |
+| `attachments/agent-detail-sidebar.png` | The Status/Category/Priority select fields in the agent ticket-detail sidebar, from the approved "Ticket Views" mockup. |
 
-None.
+*(Screenshot is in place under `attachments/`.)*
 
 ---
 
 ## Dependencies
 
-- **Blocked by / related ids:** Story 8 (submit a ticket) — a ticket must exist to categorize. Story 47 (system configuration, `security-admin` feature) is the eventual source of configurable categories, but that feature is planned much later than this one in the build order — this story should NOT block on it (see Extra notes).
-- **Depends on code areas or other stories:** `backend/src/models/Ticket.ts` (`category: string | null`, `priority: TicketPriority = "low"|"medium"|"high"|"urgent"` already on the schema), `backend/src/routes/ticket.routes.ts` (`GET /` list stub, currently `501`).
+- **Blocked by / related ids:** Story 8 (submit a ticket) — a ticket must exist to categorize. Story 58 (manage ticket categories and priorities, same feature) is the source of the configurable category list this story's picker reads from — build Story 58 first even though it's numbered higher (see the `ticket-management` numbering note in `USER_STORIES.md`). Story 60 (view and filter the ticket queue) owns list-level filtering/sorting by category and priority — do not build that here.
+- **Depends on code areas or other stories:** `backend/src/models/Ticket.ts` (`category: string | null`, `priority: TicketPriority`), `backend/src/routes/ticket.routes.ts` (no per-ticket PATCH endpoint exists yet — this story adds one), `backend/src/constants/permissions.ts` (needs new permission keys — see Technical hints).
 
 ## Extra notes (optional)
 
-- Story 47 (admin-configurable categories) does not exist yet and is many features away in the build order. For THIS story, treat category as a free-form string field already supported by the schema (`category: string | null`) — do not build a category-configuration admin UI/endpoint now; that is Story 47's job later. This story only needs an endpoint to SET category/priority on an existing ticket.
-- "Changed at any time and is logged" implies some form of change history. There is no dedicated audit-log/history model yet in this codebase (Story 13, "View full ticket history," and Story 46, "Review audit logs," are separate, later stories). For this story, at minimum update `Ticket.updatedAt` (already automatic via the schema's `timestamps: true`) — if a full audit trail is expected, flag that as depending on Story 13's data model rather than inventing one here.
-- "Filtered and sorted by category and priority" is a `GET /` query-parameter concern on the existing ticket list stub.
+- **Superseded from an earlier version of this intake:** this file previously said "treat category as free-form, do not build a category-configuration admin UI — that's Story 47's job later." That's no longer correct — Story 58 (renumbered from the earlier "Story 47"/"Story 48") now builds that admin UI *before* this story, deliberately pulled forward so this story has real categories to assign rather than a free-text field. If Story 58 isn't implemented yet when this story is planned, fall back to free-text category as the earlier note described, and flag that as a known gap to close once Story 58 lands.
+- "Changed at any time and is logged" implies some form of change history. There is no dedicated audit-log/history model yet — Story 13 ("View full ticket history") is the eventual home for a real audit trail. For this story, at minimum rely on `Ticket.updatedAt` (already automatic via `timestamps: true`); if Story 13 already exists by the time this is planned, append to its history mechanism instead of inventing a second one.
 
 ## Technical hints (optional)
 
 - Repos/roots: `.`. Primary language: `typescript`.
-- `requireAuth`, `requireRole("agent", "admin")` for the category/priority-setting endpoint (customers should not be able to set these).
+- This story needs two new permission keys in `backend/src/constants/permissions.ts`'s `PERMISSION_KEYS`: `tickets:categorize` (sets category) and `tickets:change_priority` (sets priority) — both day-to-day agent actions, so add both to `DEFAULT_PERMISSIONS_BY_ROLE.agent`, neither to `SUBADMIN_ONLY_PERMISSIONS`. Gate the new PATCH endpoint(s) with `requirePermission(...)` per `[[feedback_every_route_needs_permission]]`, not a bare `requireRole("agent", "admin")`.
+- New endpoint, e.g. `PATCH /api/v1/tickets/:id` (or split into `/:id/category` and `/:id/priority` if that's cleaner) — `ticket.routes.ts` currently only has `POST /` and `GET /` stubs.
 
 ## Out of scope
 
-- Admin-configurable category/priority lists (Story 47, separate, later feature).
-- Full change-history/audit trail (Stories 13 and 46, separate stories).
+- Admin-configurable category/priority *lists* (Story 58, separate story in this same feature).
+- List-level filtering/sorting by category/priority (Story 60, separate story).
+- Full change-history/audit trail beyond `updatedAt` (Story 13, separate story).
