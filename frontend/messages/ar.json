@@ -441,7 +441,7 @@
     "customerRequired": "اختر عميلاً",
     "askAdminForCustomersManage": "اطلب من أحد المسؤولين منحك صلاحية الوصول إلى قائمة العملاء لاستخدام هذا الحقل.",
     "category": "الفئة",
-    "categoryHint": "نص حر في الوقت الحالي — ستتوفر قائمة فئات منظمة لاحقًا.",
+    "categoryUnspecified": "غير محدد",
     "priority": "الأولوية",
     "priorityLow": "منخفضة",
     "priorityMedium": "متوسطة",

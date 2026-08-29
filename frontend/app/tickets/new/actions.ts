@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE } from "@/lib/auth";
 import { refreshSession } from "@/lib/session";
+import { UNSPECIFIED_CATEGORY } from "./constants";
 
 const submitTicketSchema = z.object({
   mode: z.enum(["customer", "staff"]),
@@ -63,10 +64,14 @@ export async function submitTicket(
     return { error: t("notSignedIn") };
   }
 
+  // "unspecified" is a real, always-present dropdown choice (not an empty
+  // placeholder) for both customer and staff — maps to no category at all.
+  const resolvedCategory = category === UNSPECIFIED_CATEGORY ? undefined : category;
+
   const body =
     mode === "staff"
-      ? { subject, description, customerId, category, priority, notifyCustomer }
-      : { subject, description };
+      ? { subject, description, customerId, category: resolvedCategory, priority, notifyCustomer }
+      : { subject, description, category: resolvedCategory };
 
   const doFetch = (bearer: string) =>
     fetch(`${API_URL}/api/v1/tickets`, {
@@ -148,4 +153,38 @@ export async function listCustomersForPicker(): Promise<ListCustomersResult> {
     customers: data.customers.map((c) => ({ id: c.id, name: c.name, email: c.email })),
     forbidden: false,
   };
+}
+
+// Backs the staff-mode category dropdown (Story 57, wired up to real data
+// now that Story 58 exists — this form originally shipped with a free-text
+// category input plus a "free-text until Story 58 ships" hint, per its own
+// original scope note). Ticket.category is a name-copied string, not an
+// ObjectId reference (see backend/src/models/TicketCategory.ts), so the
+// dropdown's value is the category's name, not its id.
+export async function listActiveTicketCategories(): Promise<string[]> {
+  const cookieStore = await cookies();
+  let token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!token) {
+    token = (await refreshSession()) ?? undefined;
+  }
+  if (!token) {
+    return [];
+  }
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/ticket-categories?active=true`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) return [];
+    res = await doFetch(refreshedToken);
+  }
+  if (!res.ok) return [];
+
+  const data: { name: string }[] = await res.json();
+  return data.map((c) => c.name);
 }

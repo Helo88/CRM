@@ -18,9 +18,11 @@ import { cn } from "@/lib/utils";
 import {
   submitTicket,
   listCustomersForPicker,
+  listActiveTicketCategories,
   type SubmitTicketActionState,
   type CustomerOption,
 } from "./actions";
+import { UNSPECIFIED_CATEGORY } from "./constants";
 
 const INITIAL_STATE: SubmitTicketActionState = { error: null };
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -39,18 +41,29 @@ export function SubmitTicketForm({ mode }: { mode: "customer" | "staff" }) {
   const [customersLoading, setCustomersLoading] = useState(mode === "staff");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
-  const [category, setCategory] = useState("");
+  // Category is offered to both customer and staff (unlike the picker/
+  // priority/notify controls below, which stay staff-only) — "unspecified"
+  // is a real, always-selected-by-default choice, not an empty placeholder.
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [category, setCategory] = useState(UNSPECIFIED_CATEGORY);
   const [priority, setPriority] = useState<Priority>("medium");
   const [notifyCustomer, setNotifyCustomer] = useState(false);
 
   useEffect(() => {
-    if (mode !== "staff") return;
     let cancelled = false;
-    listCustomersForPicker().then((result) => {
+    if (mode === "staff") {
+      listCustomersForPicker().then((result) => {
+        if (cancelled) return;
+        setCustomers(result.customers);
+        setCustomersForbidden(result.forbidden);
+        setCustomersLoading(false);
+      });
+    }
+    listActiveTicketCategories().then((result) => {
       if (cancelled) return;
-      setCustomers(result.customers);
-      setCustomersForbidden(result.forbidden);
-      setCustomersLoading(false);
+      setCategories(result);
+      setCategoriesLoading(false);
     });
     return () => {
       cancelled = true;
@@ -189,19 +202,25 @@ export function SubmitTicketForm({ mode }: { mode: "customer" | "staff" }) {
               <p className="text-sm text-destructive">{state.fieldErrors.description}</p>
             )}
           </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="category">{t("category")}</Label>
+            <input type="hidden" name="category" value={category} />
+            <Select value={category} onValueChange={setCategory} disabled={categoriesLoading}>
+              <SelectTrigger id="category" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSPECIFIED_CATEGORY}>{t("categoryUnspecified")}</SelectItem>
+                {categories.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {mode === "staff" && (
             <>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="category">{t("category")}</Label>
-                <Input
-                  id="category"
-                  name="category"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  maxLength={100}
-                />
-                <p className="text-xs text-muted-foreground">{t("categoryHint")}</p>
-              </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="priority">{t("priority")}</Label>
                 <Select name="priority" value={priority} onValueChange={(v) => setPriority(v as Priority)}>

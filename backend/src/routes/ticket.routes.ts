@@ -72,7 +72,19 @@ router.post(
       return;
     }
 
+    // Category is settable by both a customer (picking "unspecified" when
+    // unsure — the frontend sends nothing in that case) and staff, unlike
+    // priority/customerId/notifyCustomer, which stay staff-only.
     let category: string | null = null;
+    if (req.body?.category) {
+      const trimmedCategory = req.body.category.trim();
+      if (trimmedCategory.length > CATEGORY_MAX_LENGTH) {
+        res.status(400).json({ error: `category must be at most ${CATEGORY_MAX_LENGTH} characters` });
+        return;
+      }
+      category = trimmedCategory || null;
+    }
+
     let priority: (typeof ALLOWED_PRIORITIES)[number] = "medium";
     let notifyCustomer = false;
     let customer;
@@ -87,15 +99,6 @@ router.post(
       if (!customer || customer.role !== "customer" || !customer.isActive) {
         res.status(400).json({ error: "customerId does not match an active customer" });
         return;
-      }
-
-      if (req.body?.category) {
-        const trimmedCategory = req.body.category.trim();
-        if (trimmedCategory.length > CATEGORY_MAX_LENGTH) {
-          res.status(400).json({ error: `category must be at most ${CATEGORY_MAX_LENGTH} characters` });
-          return;
-        }
-        category = trimmedCategory || null;
       }
 
       if (req.body?.priority !== undefined) {

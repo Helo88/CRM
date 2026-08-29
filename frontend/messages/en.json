@@ -441,7 +441,7 @@
     "customerRequired": "Pick a customer",
     "askAdminForCustomersManage": "Ask an admin to grant you access to the customer roster to use this picker.",
     "category": "Category",
-    "categoryHint": "Free-text for now — a managed category list is coming later.",
+    "categoryUnspecified": "Unspecified",
     "priority": "Priority",
     "priorityLow": "Low",
     "priorityMedium": "Medium",

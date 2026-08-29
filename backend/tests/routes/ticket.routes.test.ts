@@ -115,6 +115,20 @@ describe("POST /api/v1/tickets (Story 8)", () => {
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket).not.toBeNull();
   });
+
+  it("lets a customer set a category on their own ticket (frontend now offers this, not just staff)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Billing question", description: "Charged twice", category: "Billing" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.category).toBe("Billing");
+  });
 });
 
 describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
