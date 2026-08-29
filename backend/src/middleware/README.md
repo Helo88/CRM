@@ -12,9 +12,9 @@ Restricts a route to one or more roles. Must be used **after** `requireAuth` —
 
 See `backend/src/middleware/auth.ts:36-44`.
 
-## The three roles
+## The four roles
 
-`"customer" | "agent" | "admin"` — see `backend/src/models/User.ts:3`. There is no finer-grained permission system yet; that's Story 45 (`security-admin` feature).
+`"customer" | "agent" | "admin" | "subadmin"` — see `backend/src/models/User.ts:3`. `admin` is the full/main admin, always has every permission, and is only ever provisioned directly in the database (`backend/scripts/seed-admin.ts`) — there is no API that creates one. `agent` and `subadmin` are both delegated staff tiers, created through the app, whose specific permissions are configured per individual account (security-admin Story 46, see `requirePermission` below and `backend/src/constants/permissions.ts`) — an `agent` can hold any permission except the sub-admin-only staff/system-administration tier (`SUBADMIN_ONLY_PERMISSIONS`).
 
 ## Pattern for a new protected route
 
@@ -31,10 +31,24 @@ router.post(
 
 Matches the existing precedent in `backend/src/routes/ticket.routes.ts` and `backend/src/routes/conversation.routes.ts`.
 
+## `requirePermission(key)`
+
+Restricts a route to callers holding a specific permission from the fixed vocabulary in `backend/src/constants/permissions.ts`'s `PERMISSION_KEYS`. Must be used **after** `requireAuth`. `admin` always passes (fixed, not configurable). `agent`/`subadmin` are checked with a **live DB lookup on every request** — no caching — against **that individual caller's own** `User.permissions` field, via the shared `hasPermission()` helper (`backend/src/services/permissions.ts`). Permissions are granted per individual agent/sub-admin account, not per role — there is no shared role-level default. Any other caller (`customer`, or none) is rejected with `403`.
+
+```ts
+router.get(
+  "/",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin"),
+  requirePermission("staff:view_list"), // admin short-circuits inside requirePermission itself
+  handler
+);
+```
+
+When a check depends on data only available after loading a document (e.g. "is the *target* of this action an admin?"), don't try to compose `requirePermission` as route-level middleware for that branch — call the exported `hasPermission(userId, key)` helper directly inside the handler instead (see `backend/src/routes/admin.routes.ts`'s `canManageTarget()` for the pattern).
+
+See `backend/src/middleware/auth.ts`'s `requirePermission` function and `backend/src/services/permissions.ts`.
+
 ## Rule: never read role from anywhere but the verified JWT
 
-**Never** read the caller's role from `req.body`, `req.query`, `req.params`, or any header other than `Authorization`. `requireAuth` only trusts the JWT's signature-verified payload — this is what prevents a client from self-escalating by sending `{ "role": "admin" }` in a request body.
-
-## Fine-grained permissions
-
-Beyond the three roles above (e.g. "can this specific agent delete tickets"), see Story 45 (`security-admin` feature) — not built yet.
+**Never** read the caller's role from `req.body`, `req.query`, `req.params`, or any header other than `Authorization`. `requireAuth` only trusts the JWT's signature-verified payload — this is what prevents a client from self-escalating by sending `{ "role": "admin" }` in a request body. The same applies to permissions: `requirePermission` only ever trusts a live DB read of the caller's own account, never anything client-supplied.

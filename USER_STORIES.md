@@ -374,16 +374,23 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 ## Feature: security-admin
 
 ### Story 45: Manage user accounts
-**As an** admin, **I want to** create, view, and deactivate agent and admin accounts, **so that** I control who is allowed to work on the platform.
-- Admin can create a new account with a role (agent/admin) and an initial password or invite flow.
+**As an** admin, **I want to** create agent and sub-admin accounts, view every staff account, and deactivate any of them, **so that** I control who is allowed to work on the platform and at what level.
+- Admin can create a new account with a role of **agent or sub-admin only** — an initial password or invite flow, no `admin` option. Full admin accounts are never created through the app; they're provisioned directly in the database (see `backend/scripts/seed-admin.ts`-style bootstrapping), so there's nothing here for even a full admin to accidentally hand out.
+- Creating or deactivating an **agent or sub-admin** account requires the `users:manage` permission (admin always has it; a sub-admin only if granted one — see Story 46).
+- Deactivating an existing **admin** account is a separate, narrower action: always requires a full admin, regardless of permissions — a delegated sub-admin holding `users:manage` cannot disable a higher-privileged account.
+- A newly created sub-admin starts with no permissions granted (Story 46 assigns them).
 - Deactivating a user immediately revokes access and excludes agents from auto-assignment.
-- Account list shows each user's role and current online/offline status.
+- Account list shows every staff account (agent, admin, sub-admin) with role and current online/offline status, so an admin can see the full picture even though admin accounts aren't created here.
+- **Frontend:** account management screen in the admin area — create (agent/sub-admin only)/list (all staff)/deactivate (any staff role, with the admin-target restriction above). **Backend:** endpoints gated by the `users:manage` permission, except deactivating an `admin` target, which is always full-admin-only.
 
 ### Story 46: Configure roles and permissions
-**As an** admin, **I want to** review and adjust what each role is allowed to do, **so that** sensitive data/actions stay limited to the right people.
-- Permissions are viewable/editable per role (view reports, manage users, delete tickets, etc.).
-- Permission changes take effect immediately for affected users.
-- Default roles ship with sensible out-of-the-box permissions.
+**As an** admin, **I want to** grant and revoke specific permissions for the agent and sub-admin roles, **so that** sensitive actions stay limited to the right people without making every sub-admin a full admin.
+- Admin is fixed and always has every permission — nothing to configure there; only agent and sub-admin rows are editable.
+- Permissions are granted/revoked per role from a fixed list of named permissions covering account management, ticket/chat actions (delete, reassign), SLA and system config, KB publishing, reports, and audit access.
+- Permission changes take effect immediately for affected users (checked live per request, not cached in the session).
+- Agent ships with sensible working-level defaults; sub-admin starts with none granted until an admin assigns them.
+- Every action currently hardcoded as admin-only elsewhere in the backlog (customer roster/creation, SLA targets, KB publishing, etc.) is covered by one of these permissions, so a sub-admin can be granted that one action instead of full admin access.
+- **Frontend:** a permissions screen listing agent and sub-admin as the only editable rows, each with a checklist of permission keys; admin's row shows as fixed/all-granted. **Backend:** a `RolePermissions` collection (agent, sub-admin only) and a `requirePermission(key)` check that short-circuits true for admin, live-looks-up otherwise.
 
 ### Story 47: Review audit logs
 **As an** admin, **I want to** see a log of key actions (logins, edits, deletions, reassignments), **so that** I can investigate issues and stay accountable.

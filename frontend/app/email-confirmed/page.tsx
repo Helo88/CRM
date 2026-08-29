@@ -45,7 +45,7 @@ export default async function EmailConfirmedPage({
 
   return (
     <main className="min-h-screen flex items-center justify-center p-8">
-      <Card className="w-full max-w-md rounded-[28px] rounded-ss-none border-none shadow-2xl shadow-black/20 ring-1 ring-foreground/10">
+      <Card className="w-full max-w-md rounded-[28px] rounded-ss-none border-none shadow-pop ring-1 ring-foreground/10">
         <CardHeader className="items-center gap-3 pt-6 text-center">
           {isSuccess ? (
             <CircleCheck className="size-10 text-success" />

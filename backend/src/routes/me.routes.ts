@@ -16,6 +16,23 @@ interface ContactBody {
   email?: unknown;
 }
 
+// GET /api/v1/me/status — self-read of the live role/isActive/permissions,
+// so a page that decides what to show (the dashboard's tiles) doesn't have
+// to trust the access token's baked-in claims, which go stale the moment an
+// admin changes the caller's permissions or deactivates them mid-session
+// (the token itself stays validly signed until its own ~15min expiry
+// regardless — see services/permissions.ts's isActiveAccount comment for
+// the same staleness problem on the API-enforcement side). Self-scoped, so
+// no permission key needed — same reasoning as GET /contact below.
+router.get("/status", requireAuth, async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.id).select("role isActive permissions");
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.status(200).json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [] });
+});
+
 // GET /api/v1/me/contact — self-read, so the settings page (Task 5) has a
 // data source for the current phone/email/pendingEmail on load. Neither
 // Story 4's endpoint nor decoding the JWT (which only carries { sub, role })

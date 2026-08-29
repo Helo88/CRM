@@ -14,7 +14,7 @@ This is **not** an implementation prompt. It is the input to the plan-generation
 ## Tracker (metadata only)
 
 - **Tracker type:** `none`
-- **Work item id:** `47` *(Story 47 in USER_STORIES.md)*
+- **Work item id:** `48` *(Story 48 in USER_STORIES.md)*
 - **Work item type:** `User Story`
 - **Status:** `Not started`
 - **Assignee:** ``
@@ -44,9 +44,10 @@ how the business actually operates.
 
 ```
 - Settings are centralized in one administration area.
-- Changes to critical settings require admin-level permission.
+- Changes to critical settings require the `config:edit` permission
+  (admin always has it; sub-admin only if granted via Story 46).
 - A history of configuration changes is kept for reference (feeds
-  Story 46).
+  Story 47).
 ```
 
 ---
@@ -64,7 +65,8 @@ None.
 
 - **Blocked by / related ids:** This story is explicitly named as the eventual unifying home for several settings that EARLIER stories already built standalone versions of out of necessity (since this feature comes late in the build order): ticket categories (ticket-management Story 9's intake explicitly deferred admin-configurable categories to this story), SLA defaults (sla-automation Story 25's `SlaTarget` model), quick-reply library (agent-workspace Story 23's `QuickReply` model). This story's real job is likely CONSOLIDATION/a unified admin UI over those already-existing models, not rebuilding them from scratch — verify what actually exists by the time this is planned/executed and reconcile rather than duplicate.
 - **Depends on code areas or other stories:** `SlaTarget` (Story 25), `QuickReply` (Story 23), `Ticket.category` (Story 9), branding (no existing model — genuinely new for this story).
-- Story 46 (audit logs) — this story's own config changes should write to that log, per its acceptance criteria.
+- Story 46 (configure roles and permissions) — this story's endpoints gate on the `config:edit` permission (`requirePermission`), not a plain `requireRole("admin")`, so a sub-admin can be granted config access without full admin rights.
+- Story 47 (audit logs) — this story's own config changes should write to that log, per its acceptance criteria.
 
 ## Extra notes (optional)
 
@@ -74,9 +76,9 @@ None.
 ## Technical hints (optional)
 
 - Repos/roots: `.`. Primary language: `typescript`.
-- `requireAuth`, `requireRole("admin")` throughout.
+- `requireAuth`, `requirePermission("config:edit")` throughout (see Story 46 for the middleware) — not a plain `requireRole("admin")`, so this is delegable to a sub-admin who's been granted the permission.
 
 ## Out of scope
 
 - Rebuilding SLA targets, quick replies, or ticket categories from scratch if they already exist from their own earlier stories — consolidate, don't duplicate.
-- The audit log itself (Story 46, separate story) — this story only needs to WRITE to it.
+- The audit log itself (Story 47, separate story) — this story only needs to WRITE to it.

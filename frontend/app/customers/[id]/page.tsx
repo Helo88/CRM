@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { StaffSidebar } from "@/components/StaffSidebar";
 import { CustomerProfileForm } from "./CustomerProfileForm";
 
 // Same 401/refresh handling as settings/page.tsx — see that file's comment
@@ -45,9 +46,25 @@ export default async function CustomerProfilePage({
   }
 
   const profile = await res.json();
+  // Same signal CustomerProfileForm itself uses to pick its Tab 2 content —
+  // whether the backend included internalNotes, never a client-side role
+  // check. Deciding whether to show the staff sidebar here too keeps both
+  // decisions driven by the one authoritative source.
+  const isStaff = profile.internalNotes !== undefined;
+
+  if (isStaff) {
+    return (
+      <div className="flex min-h-[calc(100vh-57px)]">
+        <StaffSidebar active="customers" />
+        <main className="min-w-0 flex-1 p-4 md:p-8">
+          <CustomerProfileForm profile={profile} />
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex min-h-[calc(100vh-57px)] items-center justify-center p-8">
+    <main className="mx-auto min-h-[calc(100vh-57px)] w-full max-w-5xl p-4 md:p-8">
       <CustomerProfileForm profile={profile} />
     </main>
   );

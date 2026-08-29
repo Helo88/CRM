@@ -1,7 +1,9 @@
 // One-off dev bootstrap: inserts admin accounts directly into MongoDB.
 // Needed because self-service /register always creates role "customer"
-// (backend/src/routes/auth.routes.ts) and the in-app "admin creates
-// agent/admin accounts" feature (USER_STORIES.md Story 45) isn't built yet.
+// (backend/src/routes/auth.routes.ts), and this is the ONLY way a full
+// admin account is ever created — USER_STORIES.md Story 45's in-app account
+// management deliberately never accepts role: "admin" (see
+// backend/src/routes/admin.routes.ts), by design, not as an unbuilt feature.
 // Safe to re-run — skips any email that already exists.
 import "dotenv/config";
 import mongoose from "mongoose";

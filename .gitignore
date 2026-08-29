@@ -6,6 +6,8 @@ dist/
 build/
 *.log
 .DS_Store
+# Uploaded customer files (customer-management Story 7) — runtime data, not source.
+backend/uploads/
 .claude/scheduled_tasks.lock
 # .squad/ is intentionally NOT ignored — its intake.md and plan files are part of
 # the project's history and are meant to be committed.

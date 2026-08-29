@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ interface CustomerRow {
   id: string;
   name: string;
   email: string;
+  membershipNumber: string;
   phone: string | null;
   isActive: boolean;
   createdAt: string;
@@ -68,16 +70,10 @@ export default async function CustomersListPage({
   }
 
   if (res.status === 403) {
-    return (
-      <div className="flex min-h-[calc(100vh-57px)]">
-        <div className="hidden md:block">
-          <StaffSidebar active="customers" />
-        </div>
-        <main className="flex flex-1 items-center justify-center p-8">
-          <p className="text-muted-foreground">{t("noAccess")}</p>
-        </main>
-      </div>
-    );
+    // A persona without customers:manage never gets a working link to this
+    // page (see lib/staffNav.ts), so reaching it and being turned away
+    // belongs on the dashboard, not a dead-end message here.
+    redirect("/dashboard");
   }
 
   if (!res.ok) {
@@ -88,15 +84,17 @@ export default async function CustomersListPage({
     await res.json();
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
 
+  // Mirrors backend/src/routes/customer.routes.ts's GET /:id gate exactly —
+  // agent/admin always, a sub-admin only with the same customers:manage
+  // delegation the roster itself required to load. A name/history link a
+  // click would just 403 on isn't a link — render as plain text instead.
+  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const canViewCustomerDetail =
+    viewerRole === "agent" || viewerRole === "admin" || viewerPermissions.includes("customers:manage");
+
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
-      {/* Single nav item today — a persistent sidebar isn't the right mobile
-          pattern for that, and it's already reachable from the top nav. Once
-          agent-workspace/security-admin add more staff pages, a real
-          collapsible drawer belongs here instead of just hiding it. */}
-      <div className="hidden md:block">
-        <StaffSidebar active="customers" />
-      </div>
+      <StaffSidebar active="customers" />
       <main className="min-w-0 flex-1 p-4 md:p-8">
         <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
@@ -117,11 +115,15 @@ export default async function CustomersListPage({
               {data.customers.map((c) => (
                 <div key={c.id} className="rounded-xl border border-border p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
-                      {c.name}
-                    </Link>
+                    {canViewCustomerDetail ? (
+                      <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
+                        {c.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{c.name}</span>
+                    )}
                     {c.isActive ? (
-                      <Badge variant="outline" className="shrink-0 border-success/30 text-success">
+                      <Badge variant="outline" className="shrink-0 border-transparent bg-success/10 text-success">
                         {t("statusActive")}
                       </Badge>
                     ) : (
@@ -131,16 +133,19 @@ export default async function CustomersListPage({
                     )}
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">{c.email}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">{c.membershipNumber}</p>
                   <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
                     <span>{c.phone ?? "—"}</span>
                     <span>{new Date(c.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <Link
-                    href={`/api/v1/customers/${c.id}/history`}
-                    className="mt-3 inline-block text-sm text-primary hover:underline"
-                  >
-                    {t("history")}
-                  </Link>
+                  {canViewCustomerDetail && (
+                    <Link
+                      href={`/api/v1/customers/${c.id}/history`}
+                      className="mt-3 inline-block text-sm text-primary hover:underline"
+                    >
+                      {t("history")}
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>
@@ -151,6 +156,7 @@ export default async function CustomersListPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("colName")}</TableHead>
+                    <TableHead>{t("colMembershipNumber")}</TableHead>
                     <TableHead>{t("colEmail")}</TableHead>
                     <TableHead>{t("colPhone")}</TableHead>
                     <TableHead>{t("colStatus")}</TableHead>
@@ -162,15 +168,20 @@ export default async function CustomersListPage({
                   {data.customers.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
-                        <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
-                          {c.name}
-                        </Link>
+                        {canViewCustomerDetail ? (
+                          <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
+                            {c.name}
+                          </Link>
+                        ) : (
+                          <span className="font-medium">{c.name}</span>
+                        )}
                       </TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">{c.membershipNumber}</TableCell>
                       <TableCell>{c.email}</TableCell>
                       <TableCell>{c.phone ?? "—"}</TableCell>
                       <TableCell>
                         {c.isActive ? (
-                          <Badge variant="outline" className="border-success/30 text-success">
+                          <Badge variant="outline" className="border-transparent bg-success/10 text-success">
                             {t("statusActive")}
                           </Badge>
                         ) : (
@@ -179,12 +190,14 @@ export default async function CustomersListPage({
                       </TableCell>
                       <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell>
-                        <Link
-                          href={`/api/v1/customers/${c.id}/history`}
-                          className="text-sm text-primary hover:underline"
-                        >
-                          {t("history")}
-                        </Link>
+                        {canViewCustomerDetail && (
+                          <Link
+                            href={`/api/v1/customers/${c.id}/history`}
+                            className="text-sm text-primary hover:underline"
+                          >
+                            {t("history")}
+                          </Link>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

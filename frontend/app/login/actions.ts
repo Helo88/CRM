@@ -46,13 +46,22 @@ export async function login(
 
   if (!backendRes.ok) {
     // Backend has no i18n of its own (separate service, plain error
-    // strings) — it always returns the exact same English string here by
-    // design (anti-enumeration, see auth.routes.ts), so translate it here
-    // rather than ever showing the raw backend text.
+    // strings). Wrong credentials always return the exact same English
+    // string by design (anti-enumeration, see auth.routes.ts) — translate
+    // that generically. A deactivated account gets a distinct machine-
+    // readable code instead of a plain string specifically so this can't be
+    // confused with the generic case.
+    if (backendRes.status === 403 && data?.error === "ACCOUNT_DEACTIVATED") {
+      return { error: t("accountDeactivated") };
+    }
     return { error: backendRes.status === 401 ? t("invalidCredentials") : t("genericError") };
   }
 
   await setSessionCookies(data.token, data.refreshToken);
 
-  redirect("/settings");
+  // Staff land on the dashboard (their actual landing page — nav into
+  // customers/accounts); a customer has no dashboard, so /settings (their
+  // profile) is still the right landing page for them.
+  const isStaff = data.user.role === "agent" || data.user.role === "admin" || data.user.role === "subadmin";
+  redirect(isStaff ? "/dashboard" : "/settings");
 }

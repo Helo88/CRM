@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Direction } from "radix-ui";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
@@ -11,7 +11,11 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { THEME_COOKIE, type Theme } from "@/lib/theme";
 import { localeDir, type Locale } from "@/lib/locale";
 
-const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-sans",
+});
 
 export const metadata: Metadata = {
   title: { default: "AzmSquad Customer Service", template: "%s · AzmSquad" },
@@ -35,7 +39,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html
       lang={locale}
       dir={dir}
-      className={cn(theme === "dark" && "dark", "font-sans", plusJakartaSans.variable)}
+      className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}
     >
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { PresenceBadge } from "@/components/PresenceBadge";
+import { Typewriter } from "@/components/Typewriter";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Home");
@@ -19,7 +20,9 @@ export default async function Home() {
         </div>
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 [animation-delay:150ms] [animation-fill-mode:both] space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
-          <p className="text-muted-foreground text-balance">{t("tagline")}</p>
+          <p className="text-muted-foreground text-balance">
+            <Typewriter text={t("tagline")} />
+          </p>
         </div>
       </div>
     </main>

@@ -95,7 +95,14 @@ router.post("/register", async (req: Request<unknown, unknown, RegisterBody>, re
     throw err;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   const refreshToken = await issueRefreshFamily(user.id);
   res.status(201).json({
     token,
@@ -119,7 +126,7 @@ router.post("/login", async (req: Request, res: Response) => {
   const normalizedEmail = email.trim().toLowerCase();
   const user = await User.findOne({ email: normalizedEmail });
 
-  if (!user || !user.isActive) {
+  if (!user) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
@@ -130,7 +137,25 @@ router.post("/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  // Deliberately checked AFTER the password, not folded into the query
+  // above with `!user.isActive` (that was the previous shape) — this way a
+  // wrong-password guess against a deactivated account still gets the
+  // generic anti-enumeration message, and only a caller who actually knows
+  // the correct password for a real, deactivated account sees this distinct
+  // one. A 403, not 401: the credentials themselves were correct.
+  if (!user.isActive) {
+    res.status(403).json({ error: "ACCOUNT_DEACTIVATED" });
+    return;
+  }
+
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   const refreshToken = await issueRefreshFamily(user.id);
   res.status(200).json({
     token,
@@ -207,7 +232,14 @@ router.post("/refresh", async (req: Request<unknown, unknown, RefreshBody>, res:
     return;
   }
 
-  const token = signToken({ sub: user.id, role: user.role, name: user.name });
+  const token = signToken({
+    sub: user.id,
+    role: user.role,
+    name: user.name,
+    email: user.email,
+    permissions: user.permissions ?? [],
+    membershipNumber: user.membershipNumber,
+  });
   res.status(200).json({
     token,
     refreshToken: successor,

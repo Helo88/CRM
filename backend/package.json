@@ -11,7 +11,9 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "seed:demo": "tsx scripts/seed-demo-customer.ts",
+    "backfill:membership-numbers": "tsx scripts/backfill-membership-numbers.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -22,6 +24,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.24.4",
     "morgan": "^1.11.0",
+    "multer": "^2.3.0",
     "nodemailer": "^9.0.5",
     "socket.io": "^4.8.3"
   },
@@ -30,6 +33,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.19.43",
     "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^6.0.2",

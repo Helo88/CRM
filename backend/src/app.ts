@@ -8,6 +8,7 @@ import ticketRoutes from "./routes/ticket.routes";
 import conversationRoutes from "./routes/conversation.routes";
 import customerRoutes from "./routes/customer.routes";
 import meRoutes from "./routes/me.routes";
+import adminRoutes from "./routes/admin.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export function createApp(): Application {
@@ -23,8 +24,9 @@ export function createApp(): Application {
   app.use("/api/v1/conversations", conversationRoutes);
   app.use("/api/v1/customers", customerRoutes);
   app.use("/api/v1/me", meRoutes);
+  app.use("/api/v1/admin/users", adminRoutes);
   // TODO: mount remaining feature routers as they're implemented —
-  // agent-workspace, sla-automation, knowledge-base, ai-features, security-admin,
+  // agent-workspace, sla-automation, knowledge-base, ai-features,
   // reports-management (see USER_STORIES.md for the full feature list).
 
   app.use((req: Request, res: Response) => {

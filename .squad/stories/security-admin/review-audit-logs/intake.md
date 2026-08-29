@@ -14,7 +14,7 @@ This is **not** an implementation prompt. It is the input to the plan-generation
 ## Tracker (metadata only)
 
 - **Tracker type:** `none`
-- **Work item id:** `46` *(Story 46 in USER_STORIES.md)*
+- **Work item id:** `47` *(Story 47 in USER_STORIES.md)*
 - **Work item type:** `User Story`
 - **Status:** `Not started`
 - **Assignee:** ``
@@ -67,7 +67,7 @@ None.
 ## Extra notes (optional)
 
 - "From where" (IP address) — Express exposes `req.ip`; capture it where available, but treat it as optional (proxies/load balancers can affect accuracy — not this story's concern to solve).
-- This model should be written-to by OTHER stories' actions (logins, ticket edits, reassignments, etc.) as they happen — but retrofitting every existing/planned mutation across the whole codebase to also write an audit entry is a large cross-cutting change beyond one story. Scope this story's OWN deliverable as: the `AuditLog` model + a read/filter endpoint for admins, plus wiring it into 2-3 concrete, already-built actions as a proof of pattern (e.g. login success/failure from Story 2, account deactivation from Story 44) — and explicitly flag that comprehensively wiring every mutation across the app is a larger, ongoing effort, not a one-story task.
+- This model should be written-to by OTHER stories' actions (logins, ticket edits, reassignments, etc.) as they happen — but retrofitting every existing/planned mutation across the whole codebase to also write an audit entry is a large cross-cutting change beyond one story. Scope this story's OWN deliverable as: the `AuditLog` model + a read/filter endpoint for admins, plus wiring it into 2-3 concrete, already-built actions as a proof of pattern (e.g. login success/failure from Story 2, account deactivation from Story 45, permission grant/revoke from Story 46 — the last one is worth prioritizing among the 2-3, since "who can now do what" is exactly the kind of change this feature exists to make reviewable) — and explicitly flag that comprehensively wiring every mutation across the app is a larger, ongoing effort, not a one-story task.
 - "Cannot be edited or deleted by regular users" — simplest enforcement: don't expose ANY update/delete endpoint for this model at all (write-only via internal calls, read-only via the admin API) rather than building permission checks for operations that don't need to exist.
 
 ## Technical hints (optional)
@@ -78,4 +78,4 @@ None.
 ## Out of scope
 
 - Retrofitting audit logging into every existing mutation across the entire codebase — proof-of-pattern wiring only, per Extra notes.
-- System configuration itself (Story 47, separate story) — though Story 47 explicitly says its own changes "feed" this story's log.
+- System configuration itself (Story 48, separate story) — though Story 48 explicitly says its own changes "feed" this story's log.

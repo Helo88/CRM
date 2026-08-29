@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
+
 // Not decoration: this product's own User model tracks isOnline for agents.
 // Surfacing that same idea — someone is actually here — as the auth pages'
 // focal signature, in place of a generic icon badge or gradient accent.
-export function PresenceBadge({ label }: { label: string }) {
+export function PresenceBadge({ label }: { label: ReactNode }) {
   return (
     <div className="flex items-center gap-2">
       <span className="relative flex size-2">
