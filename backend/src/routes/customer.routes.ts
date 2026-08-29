@@ -1,12 +1,15 @@
 import express, { Request, Response } from "express";
-import mongoose, { Types } from "mongoose";
+import { z } from "zod";
+import { Types } from "mongoose";
 import bcrypt from "bcryptjs";
 import { requireAuth, requireRole, requirePermission } from "../middleware/auth";
 import { User, IUser, IAttachment } from "../models/User";
 import { hasPermission, isActiveAccount } from "../services/permissions";
-import { isValidPhone } from "../utils/phone";
 import { uploadIdDocument, uploadGeneralAttachments, customerFilePath } from "../middleware/upload";
 import fs from "fs";
+import { validateBody, validateParams } from "../middleware/validate";
+import { userIdParamsSchema } from "../validation/common";
+import { createCustomerBodySchema, noteBodySchema, updateCustomerBodySchema } from "../validation/customer.schema";
 
 // security-admin Story 46: agent/admin access to the roster and creation
 // endpoints below is UNCHANGED from before this story — only the
@@ -37,8 +40,6 @@ function staffOrDelegatedSubadmin(key: Parameters<typeof requirePermission>[0]) 
 const router = express.Router();
 
 const BCRYPT_SALT_ROUNDS = 10;
-const MIN_PASSWORD_LENGTH = 8;
-const NOTE_MAX_LENGTH = 4000;
 
 // Fields safely editable via this endpoint (Story 4).
 // role / isActive / passwordHash / internalNotes / attachments are intentionally
@@ -183,13 +184,6 @@ router.get(
   });
 });
 
-interface CreateCustomerBody {
-  name?: string;
-  email?: string;
-  password?: string;
-  phone?: string;
-}
-
 // USER_STORIES.md customer-management Story 55 ("Add a customer account (as
 // staff)") — staff-created customer, initial password set directly (no
 // invite-email flow yet). Mirrors auth.routes.ts's /register validation, but
@@ -200,24 +194,11 @@ router.post(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
-  async (req: Request<unknown, unknown, CreateCustomerBody>, res: Response) => {
-    const { name, email, password, phone } = req.body ?? {};
+  validateBody(createCustomerBodySchema),
+  async (req: Request<unknown, unknown, z.infer<typeof createCustomerBodySchema>>, res: Response) => {
+    const { name, email, password, phone } = req.body;
 
-    if (!name || !email || !password) {
-      res.status(400).json({ error: "name, email, and password are required" });
-      return;
-    }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
-      return;
-    }
-    if (phone !== undefined && phone.trim() !== "" && !isValidPhone(phone.trim())) {
-      res.status(400).json({ error: "phone must be a valid phone number" });
-      return;
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const existing = await User.findOne({ email: normalizedEmail });
+    const existing = await User.findOne({ email });
     if (existing) {
       res.status(409).json({ error: "An account with this email already exists" });
       return;
@@ -229,10 +210,10 @@ router.post(
     try {
       user = await User.create({
         name,
-        email: normalizedEmail,
+        email,
         passwordHash,
         role: "customer",
-        phone: phone?.trim() || undefined,
+        phone,
       });
     } catch (err) {
       if ((err as { code?: number }).code === 11000) {
@@ -246,12 +227,7 @@ router.post(
   }
 );
 
-router.get("/:id", requireAuth, async (req: Request, res: Response) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
-
+router.get("/:id", requireAuth, validateParams(userIdParamsSchema), async (req: Request, res: Response) => {
   // internalNotes/attachments/idDocument ARE loaded here (Story 7) — what's
   // actually exposed in the response is decided by toProfileResponse's
   // includeNotes/includeAttachments flags below, not by what's fetched.
@@ -278,12 +254,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response) => {
   res.status(200).json(await toProfileResponse(user, { includeNotes: isFullStaff, includeAttachments: true }));
 });
 
-router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
-
+router.patch("/:id", requireAuth, validateParams(userIdParamsSchema), async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
   if (!user) {
     res.status(404).json({ error: "Customer not found" });
@@ -314,60 +285,32 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
+  // Story 5 ("Maintain contact details"): a customer changing their OWN
+  // email must go through the confirm-then-apply flow at
+  // PATCH /api/v1/me/contact, not this immediate-apply endpoint — otherwise
+  // this endpoint bypasses that story's entire confirmation flow. Staff
+  // editing a *different* customer's record (isSelf === false here) is a
+  // different trust boundary and keeps immediate-apply. Checked before shape
+  // validation since it's not a format rule — even a well-formed email is
+  // rejected here for a self-edit.
+  if ("email" in body && isSelf) {
+    res.status(400).json({
+      error: "Update your email from account settings (PATCH /api/v1/me/contact) — it requires confirmation",
+    });
+    return;
+  }
+
+  const parsed = updateCustomerBodySchema.safeParse(body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    return;
+  }
+
   const updates: Partial<Pick<IUser, EditableField>> = {};
-
-  if ("name" in body) {
-    const name = body.name;
-    if (typeof name !== "string" || name.trim().length === 0 || name.trim().length > 200) {
-      res.status(400).json({ error: "name must be a non-empty string" });
-      return;
-    }
-    updates.name = name.trim();
-  }
-
-  if ("email" in body) {
-    // Story 5 ("Maintain contact details"): a customer changing their OWN
-    // email must go through the confirm-then-apply flow at
-    // PATCH /api/v1/me/contact, not this immediate-apply endpoint — otherwise
-    // this endpoint bypasses that story's entire confirmation flow. Staff
-    // editing a *different* customer's record (isSelf === false here) is a
-    // different trust boundary and keeps immediate-apply.
-    if (isSelf) {
-      res.status(400).json({
-        error: "Update your email from account settings (PATCH /api/v1/me/contact) — it requires confirmation",
-      });
-      return;
-    }
-    const email = body.email;
-    if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      res.status(400).json({ error: "valid email is required" });
-      return;
-    }
-    updates.email = email.toLowerCase().trim();
-  }
-
-  if ("phone" in body) {
-    const phone = body.phone;
-    if (phone !== null && typeof phone !== "string") {
-      res.status(400).json({ error: "phone must be a string or null" });
-      return;
-    }
-    const trimmed = phone === null ? "" : phone.trim();
-    if (trimmed !== "" && !isValidPhone(trimmed)) {
-      res.status(400).json({ error: "phone must be a valid phone number" });
-      return;
-    }
-    updates.phone = trimmed === "" ? undefined : trimmed;
-  }
-
-  if ("preferredLanguage" in body) {
-    const preferredLanguage = body.preferredLanguage;
-    if (preferredLanguage !== "en" && preferredLanguage !== "ar") {
-      res.status(400).json({ error: "preferredLanguage must be 'en' or 'ar'" });
-      return;
-    }
-    updates.preferredLanguage = preferredLanguage;
-  }
+  if ("name" in body) updates.name = parsed.data.name;
+  if ("email" in body) updates.email = parsed.data.email;
+  if ("phone" in body) updates.phone = parsed.data.phone;
+  if ("preferredLanguage" in body) updates.preferredLanguage = parsed.data.preferredLanguage;
 
   Object.assign(user, updates);
 
@@ -388,11 +331,11 @@ router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
 // would serve every customer's files (including ID documents) to anyone
 // with the URL, no login required. Both routes re-run the exact same
 // isFullStaffViewer-or-self check GET /:id uses before touching the disk.
-router.get("/:id/attachments/:attachmentId", requireAuth, async (req: Request, res: Response) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
+router.get(
+  "/:id/attachments/:attachmentId",
+  requireAuth,
+  validateParams(userIdParamsSchema),
+  async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
   if (!user) {
     res.status(404).json({ error: "Customer not found" });
@@ -415,11 +358,11 @@ router.get("/:id/attachments/:attachmentId", requireAuth, async (req: Request, r
   });
 });
 
-router.get("/:id/id-document/file", requireAuth, async (req: Request, res: Response) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
+router.get(
+  "/:id/id-document/file",
+  requireAuth,
+  validateParams(userIdParamsSchema),
+  async (req: Request, res: Response) => {
   const user = await User.findById(req.params.id);
   if (!user) {
     res.status(404).json({ error: "Customer not found" });
@@ -441,10 +384,6 @@ router.get("/:id/id-document/file", requireAuth, async (req: Request, res: Respo
   });
 });
 
-interface AddNoteBody {
-  text?: string;
-}
-
 // Staff-only writes (Story 7) — customers never reach these (requireRole
 // excludes "customer" outright), matching "notes/attachments are added by
 // staff about a customer," never by the customer themselves.
@@ -453,29 +392,19 @@ router.post(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
-  async (req: Request<{ id: string }, unknown, AddNoteBody>, res: Response) => {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      res.status(400).json({ error: "Invalid user id" });
-      return;
-    }
+  validateParams(userIdParamsSchema),
+  validateBody(noteBodySchema),
+  async (req: Request<{ id: string }, unknown, z.infer<typeof noteBodySchema>>, res: Response) => {
     const user = await User.findById(req.params.id);
     if (!user || user.role !== "customer") {
       res.status(404).json({ error: "Customer not found" });
       return;
     }
 
-    const text = req.body?.text;
-    if (typeof text !== "string" || text.trim().length === 0) {
-      res.status(400).json({ error: "TEXT_REQUIRED" });
-      return;
-    }
-    if (text.trim().length > NOTE_MAX_LENGTH) {
-      res.status(400).json({ error: "TEXT_TOO_LONG" });
-      return;
-    }
+    const { text } = req.body;
 
     const authorId = new Types.ObjectId(req.user!.id);
-    user.internalNotes.push({ _id: new Types.ObjectId(), text: text.trim(), authorId, createdAt: new Date() });
+    user.internalNotes.push({ _id: new Types.ObjectId(), text, authorId, createdAt: new Date() });
     await user.save();
     const newNote = user.internalNotes[user.internalNotes.length - 1];
 
@@ -497,11 +426,9 @@ router.patch(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
-  async (req: Request<{ id: string; noteId: string }, unknown, AddNoteBody>, res: Response) => {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      res.status(400).json({ error: "Invalid user id" });
-      return;
-    }
+  validateParams(userIdParamsSchema),
+  validateBody(noteBodySchema),
+  async (req: Request<{ id: string; noteId: string }, unknown, z.infer<typeof noteBodySchema>>, res: Response) => {
     const user = await User.findById(req.params.id);
     if (!user || user.role !== "customer") {
       res.status(404).json({ error: "Customer not found" });
@@ -514,17 +441,7 @@ router.patch(
       return;
     }
 
-    const text = req.body?.text;
-    if (typeof text !== "string" || text.trim().length === 0) {
-      res.status(400).json({ error: "TEXT_REQUIRED" });
-      return;
-    }
-    if (text.trim().length > NOTE_MAX_LENGTH) {
-      res.status(400).json({ error: "TEXT_TOO_LONG" });
-      return;
-    }
-
-    note.text = text.trim();
+    note.text = req.body.text;
     await user.save();
 
     const author = note.authorId ? await User.findById(note.authorId, { name: 1 }) : null;
@@ -542,12 +459,9 @@ router.post(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
+  validateParams(userIdParamsSchema),
   uploadGeneralAttachments,
   async (req: Request<{ id: string }>, res: Response) => {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      res.status(400).json({ error: "Invalid user id" });
-      return;
-    }
     const user = await User.findById(req.params.id);
     if (!user || user.role !== "customer") {
       res.status(404).json({ error: "Customer not found" });
@@ -592,11 +506,8 @@ router.delete(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
+  validateParams(userIdParamsSchema),
   async (req: Request<{ id: string; attachmentId: string }>, res: Response) => {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      res.status(400).json({ error: "Invalid user id" });
-      return;
-    }
     const user = await User.findById(req.params.id);
     if (!user || user.role !== "customer") {
       res.status(404).json({ error: "Customer not found" });
@@ -630,12 +541,9 @@ router.put(
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
+  validateParams(userIdParamsSchema),
   uploadIdDocument,
   async (req: Request<{ id: string }>, res: Response) => {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      res.status(400).json({ error: "Invalid user id" });
-      return;
-    }
     const user = await User.findById(req.params.id);
     if (!user || user.role !== "customer") {
       res.status(404).json({ error: "Customer not found" });

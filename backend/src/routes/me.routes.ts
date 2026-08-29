@@ -3,18 +3,13 @@ import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
-import { isValidPhone } from "../utils/phone";
+import { contactBodySchema } from "../validation/me.schema";
 
 const router = express.Router();
 
 const CONFIRM_TOKEN_TTL_MS = 24 * 3600 * 1000;
 const APP_BASE_URL = process.env.APP_BASE_URL || "http://localhost:4000";
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
-
-interface ContactBody {
-  phone?: unknown;
-  email?: unknown;
-}
 
 // GET /api/v1/me/status — self-read of the live role/isActive/permissions,
 // so a page that decides what to show (the dashboard's tiles) doesn't have
@@ -46,42 +41,30 @@ router.get("/contact", requireAuth, async (req: Request, res: Response) => {
   res.status(200).json({ phone: user.phone ?? null, email: user.email, pendingEmail: user.pendingEmail });
 });
 
-router.patch("/contact", requireAuth, async (req: Request<unknown, unknown, ContactBody>, res: Response) => {
-  const { phone, email } = req.body;
+router.patch("/contact", requireAuth, async (req: Request, res: Response) => {
+  const rawBody = (req.body ?? {}) as Record<string, unknown>;
+  const parsed = contactBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const { phone, email } = parsed.data;
+
   const user = await User.findById(req.user!.id);
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
 
-  if (phone !== undefined) {
-    if (typeof phone !== "string") {
-      res.status(400).json({ error: "phone must be a string" });
-      return;
-    }
-    // Phone is optional on the User model (models/User.ts) — an empty
-    // string clears it, matching customer.routes.ts's PATCH /customers/:id
-    // handling of the same field.
-    const trimmedPhone = phone.trim();
-    if (trimmedPhone !== "" && !isValidPhone(trimmedPhone)) {
-      res.status(400).json({ error: "phone must be a valid phone number" });
-      return;
-    }
-    user.phone = trimmedPhone === "" ? undefined : trimmedPhone;
+  // Phone is optional on the User model (models/User.ts) — an empty string
+  // clears it, matching customer.routes.ts's PATCH /customers/:id handling
+  // of the same field.
+  if ("phone" in rawBody) {
+    user.phone = phone;
   }
 
-  if (email !== undefined) {
-    if (typeof email !== "string") {
-      res.status(400).json({ error: "valid email is required" });
-      return;
-    }
-    const normalizedEmail = email.toLowerCase().trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      // Validate AFTER trim/lowercase — a copy-pasted address with
-      // surrounding whitespace should be cleaned up, not rejected.
-      res.status(400).json({ error: "valid email is required" });
-      return;
-    }
+  if ("email" in rawBody) {
+    const normalizedEmail = email as string;
     if (normalizedEmail === user.email) {
       res.status(400).json({ error: "This is already your current email" });
       return;

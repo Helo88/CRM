@@ -1,26 +1,25 @@
 import express, { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { Types } from "mongoose";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { Ticket } from "../models/Ticket";
 import { User } from "../models/User";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
 import type { PermissionKey } from "../constants/permissions";
+import { validateBody } from "../middleware/validate";
+import { createTicketBodySchema } from "../validation/ticket.schema";
 
 const router = express.Router();
 
-const SUBJECT_MAX_LENGTH = 200;
-const DESCRIPTION_MAX_LENGTH = 4000;
-const CATEGORY_MAX_LENGTH = 100;
 const ALLOWED_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
-interface CreateTicketBody {
-  subject?: string;
-  description?: string;
+interface CreateTicketBody extends z.infer<typeof createTicketBodySchema> {
   // Staff-mode fields (Story 57) — only honored when the caller's role is
-  // not "customer".
+  // not "customer". Kept out of createTicketBodySchema since their
+  // required-ness/validity depends on req.user's role, not the body shape
+  // alone — see the inline checks below.
   customerId?: string;
-  category?: string | null;
   priority?: (typeof ALLOWED_PRIORITIES)[number];
   notifyCustomer?: boolean;
 }
@@ -53,37 +52,14 @@ router.post(
   "/",
   requireAuth,
   customerOrPermitted("tickets:create_for_customer"),
+  validateBody(createTicketBodySchema),
   async (req: Request<unknown, unknown, CreateTicketBody>, res: Response) => {
     const isStaffCreated = req.user!.role !== "customer";
-
-    const subject = (req.body?.subject ?? "").trim();
-    const description = (req.body?.description ?? "").trim();
-
-    if (!subject || !description) {
-      res.status(400).json({ error: "subject and description are required" });
-      return;
-    }
-    if (subject.length > SUBJECT_MAX_LENGTH) {
-      res.status(400).json({ error: `subject must be at most ${SUBJECT_MAX_LENGTH} characters` });
-      return;
-    }
-    if (description.length > DESCRIPTION_MAX_LENGTH) {
-      res.status(400).json({ error: `description must be at most ${DESCRIPTION_MAX_LENGTH} characters` });
-      return;
-    }
 
     // Category is settable by both a customer (picking "unspecified" when
     // unsure — the frontend sends nothing in that case) and staff, unlike
     // priority/customerId/notifyCustomer, which stay staff-only.
-    let category: string | null = null;
-    if (req.body?.category) {
-      const trimmedCategory = req.body.category.trim();
-      if (trimmedCategory.length > CATEGORY_MAX_LENGTH) {
-        res.status(400).json({ error: `category must be at most ${CATEGORY_MAX_LENGTH} characters` });
-        return;
-      }
-      category = trimmedCategory || null;
-    }
+    const { subject, description, category } = req.body;
 
     let priority: (typeof ALLOWED_PRIORITIES)[number] = "medium";
     let notifyCustomer = false;

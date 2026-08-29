@@ -1,9 +1,12 @@
 import express, { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import mongoose from "mongoose";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { hasPermission, isActiveAccount } from "../services/permissions";
 import type { PermissionKey } from "../constants/permissions";
-import { TicketCategory, ITicketCategory, TICKET_CATEGORY_NAME_MAX_LENGTH } from "../models/TicketCategory";
+import { TicketCategory, ITicketCategory } from "../models/TicketCategory";
+import { validateBody } from "../middleware/validate";
+import { createTicketCategoryBodySchema, updateTicketCategoryBodySchema } from "../validation/ticketCategory.schema";
 
 const router = express.Router();
 
@@ -69,24 +72,13 @@ router.get(
   }
 );
 
-interface CreateTicketCategoryBody {
-  name?: string;
-}
-
 router.post(
   "/",
   requireAuth,
   requirePermission("tickets:categories_create"),
-  async (req: Request<unknown, unknown, CreateTicketCategoryBody>, res: Response) => {
-    const name = (req.body?.name ?? "").trim();
-    if (!name) {
-      res.status(400).json({ error: "name is required" });
-      return;
-    }
-    if (name.length > TICKET_CATEGORY_NAME_MAX_LENGTH) {
-      res.status(400).json({ error: `name must be at most ${TICKET_CATEGORY_NAME_MAX_LENGTH} characters` });
-      return;
-    }
+  validateBody(createTicketCategoryBodySchema),
+  async (req: Request<unknown, unknown, z.infer<typeof createTicketCategoryBodySchema>>, res: Response) => {
+    const { name } = req.body;
 
     const existing = await findByNameCaseInsensitive(name);
     if (existing) {
@@ -115,15 +107,10 @@ router.post(
   }
 );
 
-interface UpdateTicketCategoryBody {
-  name?: string;
-  active?: boolean;
-}
-
 router.patch(
   "/:id",
   requireAuth,
-  async (req: Request<{ id: string }, unknown, UpdateTicketCategoryBody>, res: Response) => {
+  async (req: Request<{ id: string }>, res: Response) => {
     if (!mongoose.isValidObjectId(req.params.id)) {
       res.status(404).json({ error: "Category not found" });
       return;
@@ -134,7 +121,12 @@ router.patch(
       return;
     }
 
-    const { name, active } = req.body ?? {};
+    const parsed = updateTicketCategoryBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+      return;
+    }
+    const { name, active } = parsed.data;
 
     if (name !== undefined && !(await callerHasPermission(req, "tickets:categories_edit"))) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
@@ -146,21 +138,12 @@ router.patch(
     }
 
     if (name !== undefined) {
-      const trimmedName = name.trim();
-      if (!trimmedName) {
-        res.status(400).json({ error: "name is required" });
-        return;
-      }
-      if (trimmedName.length > TICKET_CATEGORY_NAME_MAX_LENGTH) {
-        res.status(400).json({ error: `name must be at most ${TICKET_CATEGORY_NAME_MAX_LENGTH} characters` });
-        return;
-      }
-      const existing = await findByNameCaseInsensitive(trimmedName, category.id);
+      const existing = await findByNameCaseInsensitive(name, category.id);
       if (existing) {
         res.status(409).json({ error: "A category with that name already exists." });
         return;
       }
-      category.name = trimmedName;
+      category.name = name;
     }
 
     if (active !== undefined) {

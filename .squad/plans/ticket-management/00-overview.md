@@ -11,6 +11,7 @@ Entry point for the **ticket-management** feature. Stories execute in order by t
 | 11 | `11-story-submit-a-ticket-comment-problem.md` | Submit a ticket (comment/problem) | submit-a-ticket-comment-problem | Story 53 (`10-story-get-support-choose-a-ticket-or-live-chat.md`) |
 | 12 | `12-story-create-a-ticket-on-behalf-of-a-customer.md` | Create a ticket on behalf of a customer | create-a-ticket-on-behalf-of-a-customer | — |
 | 13 | `13-story-manage-ticket-categories-and-priorities.md` | Manage ticket categories and priorities | manage-ticket-categories-and-priorities | — |
+| 14 | `14-story-categorize-and-prioritize-a-ticket.md` | Categorize and prioritize a ticket | categorize-and-prioritize-a-ticket | — |
 
 ## Dependency notes
 
