@@ -30,7 +30,9 @@
       "Bash(npx --no-install chromium-cli --version)",
       "Bash(command -v chromium-cli)",
       "Bash(command -v npx)",
-      "Read(//d//**)"
+      "Read(//d//**)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -s -H \"Cookie: session_token=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIiwicm9sZSI6ImFnZW50IiwibmFtZSI6IkFsZXggQ2FydGVyIiwiZW1haWwiOiJhbGV4QHRlc3QuZGV2In0.sig\" http://localhost:3000/_scratch-layout-check -o /tmp/scratch.html)"
     ]
   }
 }

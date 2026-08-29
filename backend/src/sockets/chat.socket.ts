@@ -5,6 +5,10 @@ import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
 import { objectIdSchema } from "../validation/common";
 import { conversationMessagePayloadSchema } from "../validation/conversation.schema";
+import { getAiReply } from "../services/liveChatAi.service";
+
+const AI_FALLBACK_TEXT =
+  "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
 
 /**
  * Socket.io wiring for the live-chat feature (Stories 14, 18: real-time messaging).
@@ -88,9 +92,8 @@ export function registerChatHandlers(io: Server): void {
     });
 
     // Story 14: validates sender, persists the message, and broadcasts it.
-    // Story 15's insertion point is right after Message.create below,
-    // guarded by senderType === "customer" and "no prior AI/agent message in
-    // this conversation yet" — not implemented here.
+    // Story 15: right after the customer's own message is persisted and
+    // broadcast, triggers the AI agent's reply — see the guard below.
     socket.on("conversation:message", async (payload: ConversationMessagePayload) => {
       const parsed = conversationMessagePayloadSchema.safeParse(payload);
       if (!parsed.success) {
@@ -128,6 +131,41 @@ export function registerChatHandlers(io: Server): void {
       });
 
       io.to(`conversation:${conversationId}`).emit("conversation:message", message);
+
+      // Story 15: the AI agent answers every customer message while the
+      // conversation hasn't been escalated. Keying off `status` (rather than
+      // "no prior AI/agent message") means Story 16's escalation flips this
+      // off with no change here.
+      if (senderType === "customer" && conversation.status === "ai_handling") {
+        const roomKey = `conversation:${conversationId}`;
+        io.to(roomKey).emit("conversation:ai-typing", { conversationId });
+
+        try {
+          const reply = await getAiReply(conversationId);
+          const aiMessage = await Message.create({
+            parentType: "conversation",
+            parentId: conversation._id,
+            senderType: "ai",
+            senderId: null,
+            text: reply ?? AI_FALLBACK_TEXT,
+          });
+          io.to(roomKey).emit("conversation:message", aiMessage);
+        } catch (err) {
+          console.error("[chat.socket] AI branch failed:", (err as Error).message);
+          try {
+            const fallback = await Message.create({
+              parentType: "conversation",
+              parentId: conversation._id,
+              senderType: "ai",
+              senderId: null,
+              text: AI_FALLBACK_TEXT,
+            });
+            io.to(roomKey).emit("conversation:message", fallback);
+          } catch (innerErr) {
+            console.error("[chat.socket] fallback persistence also failed:", (innerErr as Error).message);
+          }
+        }
+      }
     });
 
     socket.on("disconnect", () => {

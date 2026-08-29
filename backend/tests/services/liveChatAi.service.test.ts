@@ -1,0 +1,117 @@
+import mongoose from "mongoose";
+import { MongoMemoryServer } from "mongodb-memory-server";
+import { Message } from "../../src/models/Message";
+import * as geminiService from "../../src/services/gemini.service";
+import { getAiReply } from "../../src/services/liveChatAi.service";
+
+let mongod: MongoMemoryServer;
+
+beforeAll(async () => {
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri("live-chat-ai-test"));
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongod.stop();
+});
+
+beforeEach(async () => {
+  await Message.deleteMany({});
+  vi.restoreAllMocks();
+});
+
+const parentId = new mongoose.Types.ObjectId();
+
+async function seedMessage(senderType: string, text: string, extra: Partial<{ internal: boolean }> = {}) {
+  await Message.create({
+    parentType: "conversation",
+    parentId,
+    senderType,
+    senderId: null,
+    text,
+    ...extra,
+  });
+}
+
+describe("liveChatAi.service.ts getAiReply (Story 15)", () => {
+  it("returns the trimmed reply when generateText resolves to a non-empty string", async () => {
+    await seedMessage("customer", "Hello?");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue("  Sure, I can help!  ");
+
+    const reply = await getAiReply(parentId.toHexString());
+
+    expect(reply).toBe("Sure, I can help!");
+  });
+
+  it("returns null when generateText resolves to null", async () => {
+    await seedMessage("customer", "Hello?");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(null);
+
+    const reply = await getAiReply(parentId.toHexString());
+
+    expect(reply).toBeNull();
+  });
+
+  it("returns null when generateText resolves to whitespace-only text", async () => {
+    await seedMessage("customer", "Hello?");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue("   ");
+
+    const reply = await getAiReply(parentId.toHexString());
+
+    expect(reply).toBeNull();
+  });
+
+  it("builds the prompt with Customer/AI Agent/Agent labels in oldest-to-newest order", async () => {
+    await seedMessage("customer", "First message");
+    await seedMessage("ai", "First reply");
+    await seedMessage("agent", "Human follow-up");
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(parentId.toHexString());
+
+    const prompt = spy.mock.calls[0][0];
+    const customerIdx = prompt.indexOf("Customer: First message");
+    const aiIdx = prompt.indexOf("AI Agent: First reply");
+    const agentIdx = prompt.indexOf("Agent: Human follow-up");
+    expect(customerIdx).toBeGreaterThan(-1);
+    expect(aiIdx).toBeGreaterThan(customerIdx);
+    expect(agentIdx).toBeGreaterThan(aiIdx);
+  });
+
+  it("excludes system and internal messages from the prompt", async () => {
+    await seedMessage("customer", "Visible message");
+    await seedMessage("system", "Should be excluded");
+    await seedMessage("agent", "Internal note", { internal: true });
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(parentId.toHexString());
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).not.toContain("Should be excluded");
+    expect(prompt).not.toContain("Internal note");
+  });
+
+  it("caps history at 20 messages when more exist", async () => {
+    for (let i = 0; i < 25; i++) {
+      await seedMessage("customer", `msg-${i}`);
+    }
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(parentId.toHexString());
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).not.toContain("msg-0\n");
+    expect(prompt).toContain("msg-24");
+  });
+
+  it("returns null when the history query throws", async () => {
+    vi.spyOn(Message, "find").mockImplementation(() => {
+      throw new Error("db down");
+    });
+
+    const reply = await getAiReply(parentId.toHexString());
+
+    expect(reply).toBeNull();
+  });
+});
