@@ -14,7 +14,7 @@ This is **not** an implementation prompt. It is the input to the plan-generation
 ## Tracker (metadata only)
 
 - **Tracker type:** `none`
-- **Work item id:** `42` *(Story 42 in USER_STORIES.md)*
+- **Work item id:** `43` *(Story 43 in USER_STORIES.md)*
 - **Work item type:** `User Story`
 - **Status:** `Not started`
 - **Assignee:** ``

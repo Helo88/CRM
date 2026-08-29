@@ -98,7 +98,7 @@ export async function submitTicket(
     return { error: data.error ?? t("genericError") };
   }
 
-  return { error: null, referenceNumber: data.id };
+  return { error: null, referenceNumber: data.reference };
 }
 
 export interface CustomerOption {

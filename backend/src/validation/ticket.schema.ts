@@ -8,6 +8,8 @@ export const CATEGORY_MAX_LENGTH = 100;
 const REQUIRED_MESSAGE = "subject and description are required";
 
 export const ALLOWED_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const ALLOWED_STATUSES = ["new", "in_progress", "answered", "escalated", "closed"] as const;
+export const ALLOWED_SORT_KEYS = ["updatedAt", "status", "category", "priority"] as const;
 
 const categoryFieldSchema = z
   .string()
@@ -51,6 +53,25 @@ export const updateTicketBodySchema = z.object({
   category: categoryFieldSchema,
   priority: z
     .enum(ALLOWED_PRIORITIES, { error: `priority must be one of: ${ALLOWED_PRIORITIES.join(", ")}` })
+    .optional(),
+});
+
+// Story 60 (merged with customer-portal Story 36 + platform Story 59): query
+// params for GET /api/v1/tickets. All optional — the route handler applies
+// role-based defaults/overrides (e.g. forcing `customer`/`assignedAgent`
+// scope) that this schema has no knowledge of; it only validates shape.
+export const listTicketsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z.enum(ALLOWED_STATUSES).optional(),
+  category: z.string().trim().min(1).optional(),
+  priority: z.enum(ALLOWED_PRIORITIES).optional(),
+  sort: z
+    .string()
+    .regex(
+      new RegExp(`^-?(${ALLOWED_SORT_KEYS.join("|")})$`),
+      `sort must be one of: ${ALLOWED_SORT_KEYS.join(", ")}, optionally prefixed with -`
+    )
     .optional(),
 });
 

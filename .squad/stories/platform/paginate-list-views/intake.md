@@ -70,6 +70,8 @@ first, others later — stay fast to load and easy to scan.
 
 ## Dependencies
 
+> **STATUS (2026-08-30): subsumed into `ticket-management`'s Story 60 intake** (`.squad/stories/ticket-management/view-and-filter-the-ticket-queue/intake.md`), built in the same pass as that story — see that intake's "MERGED SCOPE" note. The reasoning below (build the reusable primitive before/alongside its first consumer) still holds, but the original "do not build it [Story 60] yet" advice is superseded: Story 60 no longer waits on this being planned separately. Don't plan/build this intake on its own; it's kept here as the original acceptance-criteria source, not as a standalone target.
+
 - **Blocked by / related ids:** None — this is a foundational, reusable piece. `ticket-management` Story 60 (view and filter the ticket queue) is its first and only required consumer for this pass; do not build it, since it comes later in the plan sequence and this story should be usable standalone first.
 - **Depends on code areas or other stories:** No existing list endpoint in the codebase currently supports pagination — `backend/src/routes/ticket.routes.ts`'s `GET /` is a `501` stub with no query-param handling yet. No shared list/table component exists in `frontend/components/ui/` (shadcn's `table` primitive is installed, but there's no pagination control built on top of it yet).
 

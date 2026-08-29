@@ -13,6 +13,7 @@ import {
   createTicketBodySchema,
   updateTicketBodySchema,
   replyToTicketBodySchema,
+  listTicketsQuerySchema,
   ALLOWED_PRIORITIES,
 } from "../validation/ticket.schema";
 import { findByNameCaseInsensitive } from "./ticketCategory.routes";
@@ -110,7 +111,10 @@ router.post(
       priority,
     });
 
-    const referenceNumber = ticket._id.toString();
+    // Story 60: a human-friendly "TCK-<n>" reference for anything shown to a
+    // person (email text, the submission confirmation, list/detail rows) —
+    // distinct from `ticket._id`, which stays the real routing id below.
+    const referenceNumber = `TCK-${ticket.ticketNumber}`;
     const shouldSendEmail = !isStaffCreated || notifyCustomer;
 
     if (shouldSendEmail) {
@@ -150,7 +154,8 @@ router.post(
     }
 
     res.status(201).json({
-      id: referenceNumber,
+      id: ticket._id.toString(),
+      reference: referenceNumber,
       subject: ticket.subject,
       status: ticket.status,
       createdAt: ticket.createdAt,
@@ -158,11 +163,65 @@ router.post(
   }
 );
 
-// TODO (ticket-management feature, Story 13 / customer-portal Story 35-36):
-// GET / — list tickets (scoped to the caller: their own if customer, assigned if
-// agent, all if admin).
-router.get("/", requireAuth, (req: Request, res: Response) => {
-  res.status(501).json({ error: "Not implemented — see USER_STORIES.md ticket-management Story 13" });
+// Story 60 (merged with customer-portal Story 36 "track ticket status from
+// the portal" and platform Story 59 "paginate list views" — see that story's
+// intake for why these three ship together): GET / lists tickets, scoped to
+// the caller. requireAuth only at the middleware level — all three roles are
+// let in, the actual scope narrowing happens inside the handler because it
+// depends on `tickets:view_all`, which callerHasPermission below already
+// checks the same way PATCH /:id does.
+router.get("/", requireAuth, async (req: Request, res: Response) => {
+  const parsed = listTicketsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
+    return;
+  }
+  const { page, limit, status, category, priority, sort } = parsed.data;
+
+  const filter: Record<string, unknown> = {};
+  let sortSpec: Record<string, 1 | -1> = { updatedAt: -1 };
+
+  if (req.user!.role === "customer") {
+    // Customer branch: always their own tickets, always newest-updated-first.
+    // Status is the one filter a customer can apply (decided with the user
+    // during Story 60 kickoff, extending the original merged-scope note) —
+    // category/priority/sort stay staff-only concepts and are ignored here.
+    filter.customer = new Types.ObjectId(req.user!.id);
+    if (status) filter.status = status;
+  } else {
+    // Staff branch: apply filters, then scope-enforce server-side — never
+    // trust a client-supplied "show all" flag.
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+    if (priority) filter.priority = priority;
+
+    if (!(await callerHasPermission(req, "tickets:view_all"))) {
+      filter.assignedAgent = new Types.ObjectId(req.user!.id);
+    }
+
+    if (sort) {
+      const descending = sort.startsWith("-");
+      const key = (descending ? sort.slice(1) : sort) as "updatedAt" | "status" | "category" | "priority";
+      sortSpec = { [key]: descending ? -1 : 1 };
+    }
+  }
+
+  const [tickets, total] = await Promise.all([
+    Ticket.find(filter)
+      .sort(sortSpec)
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate<{ customer: { _id: Types.ObjectId; name: string; email: string } }>("customer", "name email")
+      .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name"),
+    Ticket.countDocuments(filter),
+  ]);
+
+  res.status(200).json({
+    tickets: tickets.map((ticket) => toTicketListItem(ticket)),
+    total,
+    page,
+    limit,
+  });
 });
 
 // Mirrors ticketCategory.routes.ts's callerHasPermission exactly (admin
@@ -180,12 +239,21 @@ async function callerHasPermission(req: Request, key: PermissionKey): Promise<bo
 // ITicket (whose `customer: Types.ObjectId` no longer matches after populate).
 type TicketDetailFields = Pick<
   ITicket,
-  "subject" | "description" | "status" | "category" | "priority" | "assignedAgent" | "createdAt" | "updatedAt"
+  | "ticketNumber"
+  | "subject"
+  | "description"
+  | "status"
+  | "category"
+  | "priority"
+  | "assignedAgent"
+  | "createdAt"
+  | "updatedAt"
 > & { _id: Types.ObjectId };
 
 function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: string; name: string; email: string }) {
   return {
     id: ticket._id.toString(),
+    reference: `TCK-${ticket.ticketNumber}`,
     subject: ticket.subject,
     description: ticket.description,
     status: ticket.status,
@@ -198,12 +266,43 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
   };
 }
 
+// Story 60: one row of GET /'s paginated list — a narrower shape than
+// toTicketDetailResponse (no description, populated customer/assignedAgent
+// already carried by the query above rather than a second lookup).
+type TicketListFields = Pick<
+  ITicket,
+  "ticketNumber" | "subject" | "status" | "category" | "priority" | "createdAt" | "updatedAt"
+> & {
+  _id: Types.ObjectId;
+  customer: { _id: Types.ObjectId; name: string; email: string };
+  assignedAgent: { _id: Types.ObjectId; name: string } | null;
+};
+
+function toTicketListItem(ticket: TicketListFields) {
+  return {
+    id: ticket._id.toString(),
+    reference: `TCK-${ticket.ticketNumber}`,
+    subject: ticket.subject,
+    status: ticket.status,
+    category: ticket.category,
+    priority: ticket.priority,
+    customer: { id: ticket.customer._id.toString(), name: ticket.customer.name, email: ticket.customer.email },
+    assignedAgent: ticket.assignedAgent
+      ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
+      : null,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+  };
+}
+
 // Story 9: single-ticket detail read, backing the ticket-detail page.
-// Staff-only — no customer path exists for ticket detail yet.
+// Story 60 added the customer branch: a customer may read their OWN ticket
+// (read-only — no category/priority edits, no reply, enforced by never
+// giving customers write routes below, not by anything in this handler).
 router.get(
   "/:id",
   requireAuth,
-  requireRole("agent", "admin", "subadmin"),
+  requireRole("agent", "admin", "subadmin", "customer"),
   async (req: Request<{ id: string }>, res: Response) => {
     if (!Types.ObjectId.isValid(req.params.id)) {
       res.status(404).json({ error: "Ticket not found" });
@@ -213,6 +312,12 @@ router.get(
       customer: { _id: Types.ObjectId; name: string; email: string };
     }>("customer", "name email");
     if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    // 404, never 403 — a customer probing a foreign ticket id must not be
+    // able to tell "forbidden" (ticket exists) apart from "not found".
+    if (req.user!.role === "customer" && ticket.customer._id.toString() !== req.user!.id) {
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
@@ -336,22 +441,36 @@ function toMessageResponse(message: MessageFields, sender: MessageSenderFields |
 // Story 56: the ticket's message thread — any staff role that can view the
 // ticket (GET /:id) can also view its thread, no separate permission (same
 // reasoning as GET /:id itself: read access isn't gated per-action here).
+// Story 60 added the customer branch: same ownership rule as GET /:id
+// (404-not-403), plus internal notes are excluded from the response —
+// `internal: true` is agent-only per Message.ts's own doc comment, never
+// shown to the customer.
 router.get(
   "/:id/messages",
   requireAuth,
-  requireRole("agent", "admin", "subadmin"),
+  requireRole("agent", "admin", "subadmin", "customer"),
   async (req: Request<{ id: string }>, res: Response) => {
     if (!Types.ObjectId.isValid(req.params.id)) {
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
-    const ticket = await Ticket.findById(req.params.id);
+    const ticket = await Ticket.findById(req.params.id).select("customer");
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
+    const isCustomerCaller = req.user!.role === "customer";
+    if (isCustomerCaller && ticket.customer.toString() !== req.user!.id) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
 
-    const messages = await Message.find({ parentType: "ticket", parentId: ticket._id })
+    const filter: Record<string, unknown> = { parentType: "ticket", parentId: ticket._id };
+    if (isCustomerCaller) {
+      filter.internal = { $ne: true };
+    }
+
+    const messages = await Message.find(filter)
       .sort({ createdAt: 1 })
       .populate<{ senderId: { _id: Types.ObjectId; name: string } | null }>("senderId", "name");
 

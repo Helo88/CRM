@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, ShieldUser, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
+import { LayoutDashboard, Users, ShieldUser, Ticket, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
 
 // Shared between the desktop hover-expand rail and the mobile drawer
 // (components/StaffSidebar.tsx, components/MobileStaffNav.tsx) so both stay
@@ -9,6 +9,7 @@ import { LayoutDashboard, Users, ShieldUser, TicketPlus, UserPlus, ShieldPlus, T
 export const STAFF_NAV_ITEMS = [
   { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false },
   { key: "customers", href: "/customers", icon: Users, staffOnly: false },
+  { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false },
   { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true },
 ] as const;
 

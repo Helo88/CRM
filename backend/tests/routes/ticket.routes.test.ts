@@ -259,11 +259,11 @@ describe("GET /api/v1/tickets/:id (Story 9)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 for a customer", async () => {
+  it("returns 404 (not 403) for a customer who doesn't own the ticket (Story 60)", async () => {
     const ticket = await seedTicket();
     const { token } = await seedUser({ role: "customer" });
     const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("returns 404 for a malformed id", async () => {
@@ -547,13 +547,13 @@ describe("GET /api/v1/tickets/:id/messages (Story 56)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 for a customer", async () => {
+  it("returns 404 (not 403) for a customer who doesn't own the ticket (Story 60)", async () => {
     const ticket = await seedTicket();
     const { token } = await seedUser({ role: "customer" });
     const res = await request(app)
       .get(`/api/v1/tickets/${ticket.id}/messages`)
       .set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("returns 404 for a malformed or nonexistent ticket id", async () => {
@@ -823,5 +823,188 @@ describe("GET /api/v1/tickets/:id/messages/:messageId/attachments/:attachmentId 
       )
       .set("Authorization", `Bearer ${token}`);
     expect(wrongAttachmentId.status).toBe(404);
+  });
+});
+
+// Story 60 (merged with customer-portal Story 36, platform Story 59).
+async function seedTicketFor(
+  customerId: string,
+  overrides: Partial<{ status: string; category: string | null; priority: string; assignedAgent: string }> = {}
+) {
+  return Ticket.create({
+    subject: "Something is broken",
+    description: "Details here",
+    customer: customerId,
+    status: overrides.status ?? "new",
+    category: overrides.category ?? null,
+    priority: overrides.priority ?? "medium",
+    assignedAgent: overrides.assignedAgent ?? null,
+  });
+}
+
+describe("GET /api/v1/tickets (Story 60)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/tickets");
+    expect(res.status).toBe(401);
+  });
+
+  it("scopes a customer to only their own tickets, ignoring a client-supplied customer filter", async () => {
+    const { user: customerA, token: tokenA } = await seedUser({ role: "customer" });
+    const { user: customerB } = await seedUser({ role: "customer" });
+    await seedTicketFor(customerA.id);
+    await seedTicketFor(customerA.id);
+    await seedTicketFor(customerB.id);
+
+    const res = await request(app)
+      .get(`/api/v1/tickets?customer=${customerB.id}`)
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.tickets).toHaveLength(2);
+    for (const row of res.body.tickets) {
+      expect(row.customer.id).toBe(customerA.id);
+    }
+  });
+
+  it("scopes an agent without tickets:view_all to only their assigned tickets", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { user: agent1, token: token1 } = await seedUser({ role: "agent" });
+    const { user: agent2 } = await seedUser({ role: "agent" });
+    await seedTicketFor(customer.id, { assignedAgent: agent1.id });
+    await seedTicketFor(customer.id, { assignedAgent: agent2.id });
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token1}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].assignedAgent.id).toBe(agent1.id);
+  });
+
+  it("shows every ticket, with assignedAgent populated, for an agent granted tickets:view_all", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { user: agent1 } = await seedUser({ role: "agent" });
+    const { user: agent2, token: token2 } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:view_all"],
+    });
+    await seedTicketFor(customer.id, { assignedAgent: agent1.id });
+    await seedTicketFor(customer.id, { assignedAgent: agent2.id });
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token2}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+  });
+
+  it("filters by status, category, and priority (staff caller)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await seedTicketFor(customer.id, { status: "new", category: "Billing", priority: "low" });
+    await seedTicketFor(customer.id, { status: "closed", category: "Technical", priority: "urgent" });
+
+    const res = await request(app)
+      .get("/api/v1/tickets?status=closed&category=Technical&priority=urgent")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].status).toBe("closed");
+  });
+
+  it("rejects an unsupported sort key with 400", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const res = await request(app).get("/api/v1/tickets?sort=notarealfield").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("paginates results and reports total/page/limit", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    for (let i = 0; i < 25; i++) {
+      await seedTicketFor(customer.id);
+    }
+
+    const res = await request(app).get("/api/v1/tickets?page=2&limit=10").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(25);
+    expect(res.body.page).toBe(2);
+    expect(res.body.limit).toBe(10);
+    expect(res.body.tickets).toHaveLength(10);
+  });
+
+  it("includes a human-friendly TCK-<n> reference on each row", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    await seedTicketFor(customer.id);
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tickets[0].reference).toMatch(/^TCK-\d+$/);
+  });
+
+  it("lets a customer filter their own list by status", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    await seedTicketFor(customer.id, { status: "new" });
+    await seedTicketFor(customer.id, { status: "closed" });
+
+    const res = await request(app)
+      .get("/api/v1/tickets?status=closed")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].status).toBe("closed");
+  });
+});
+
+describe("GET /api/v1/tickets/:id — customer ownership branch (Story 60)", () => {
+  it("lets a customer read their own ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await seedTicketFor(customer.id);
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(ticket.id);
+    expect(res.body.reference).toMatch(/^TCK-\d+$/);
+  });
+});
+
+describe("GET /api/v1/tickets/:id/messages — customer ownership + internal filtering (Story 60)", () => {
+  it("excludes internal: true messages for a customer, but an agent still sees them", async () => {
+    const { user: customer, token: customerToken } = await seedUser({ role: "customer" });
+    const { user: agent, token: agentToken } = await seedUser({ role: "agent" });
+    const ticket = await seedTicketFor(customer.id);
+    await Message.create({
+      parentType: "ticket",
+      parentId: ticket._id,
+      senderType: "agent",
+      senderId: agent._id,
+      text: "public reply",
+      internal: false,
+    });
+    await Message.create({
+      parentType: "ticket",
+      parentId: ticket._id,
+      senderType: "agent",
+      senderId: agent._id,
+      text: "internal note, staff only",
+      internal: true,
+    });
+
+    const customerRes = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/messages`)
+      .set("Authorization", `Bearer ${customerToken}`);
+    expect(customerRes.status).toBe(200);
+    expect(customerRes.body).toHaveLength(1);
+    expect(customerRes.body[0].text).toBe("public reply");
+
+    const agentRes = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/messages`)
+      .set("Authorization", `Bearer ${agentToken}`);
+    expect(agentRes.status).toBe(200);
+    expect(agentRes.body).toHaveLength(2);
   });
 });

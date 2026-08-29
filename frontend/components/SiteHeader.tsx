@@ -22,6 +22,11 @@ import { MobileStaffNav } from "@/components/MobileStaffNav";
 // their own smaller set (customerSearch.ts). Staff additionally get
 // notifications and the mobile nav drawer, which have no customer
 // equivalent yet.
+//
+// Signed-in staff also get StaffSidebar's full-height rail (see that
+// component), which sits to the left of this whole header rather than
+// below it — so the header shrinks by a matching md:ms-20 instead of
+// spanning edge-to-edge, leaving the rail uninterrupted top to bottom.
 export async function SiteHeader() {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
@@ -43,7 +48,12 @@ export async function SiteHeader() {
     : DEFAULT_LOCALE;
 
   return (
-    <header className="relative z-40 border-b border-border bg-background">
+    <header
+      className={cn(
+        "relative z-40 border-b border-border bg-background",
+        isSignedIn && isStaff && "md:ms-20"
+      )}
+    >
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
         <Link
           href="/"
@@ -64,6 +74,9 @@ export async function SiteHeader() {
             ) : (
               <>
                 <HeaderSearch variant="customer" />
+                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                  <Link href="/tickets">{t("myTickets")}</Link>
+                </Button>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link href="/support">{t("getSupport")}</Link>
                 </Button>

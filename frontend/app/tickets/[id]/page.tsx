@@ -82,7 +82,8 @@ export default async function TicketDetailPage({
   }
 
   const { role, permissions: viewerPermissions = [] } = peekJwtPayload(accessToken);
-  if (role !== "agent" && role !== "admin" && role !== "subadmin") {
+  const isStaffViewer = role === "agent" || role === "admin" || role === "subadmin";
+  if (!isStaffViewer && role !== "customer") {
     redirect("/dashboard");
   }
 
@@ -126,59 +127,74 @@ export default async function TicketDetailPage({
   const ticket: TicketDetailResponse = await res.json();
   const messages: TicketMessage[] = messagesRes.ok ? await messagesRes.json() : [];
   const isViewerAdmin = role === "admin";
-  const canCategorize = isViewerAdmin || viewerPermissions.includes("tickets:categorize");
-  const canChangePriority = isViewerAdmin || viewerPermissions.includes("tickets:change_priority");
-  const canReply = isViewerAdmin || viewerPermissions.includes("tickets:reply");
+  const canCategorize = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:categorize"));
+  const canChangePriority = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_priority"));
+  const canReply = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reply"));
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
-      <StaffSidebar />
+      {isStaffViewer && <StaffSidebar active="tickets" />}
       <main className="min-w-0 flex-1 p-4 md:p-8">
-        <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-[1fr_18rem]">
+        <div
+          className={`mx-auto w-full max-w-4xl gap-6 ${isStaffViewer ? "grid md:grid-cols-[1fr_18rem]" : "flex flex-col"}`}
+        >
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+              <div className="flex items-start justify-between gap-3">
+                <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                {/* Story 60: customer-facing read-only view shows status inline
+                    here instead of in the staff-only sidebar Card below. */}
+                {!isStaffViewer && (
+                  <Badge variant="outline" className="shrink-0">
+                    {t(STATUS_KEY[ticket.status])}
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <p className="whitespace-pre-wrap text-sm">{ticket.description}</p>
-              <div className="flex flex-col gap-1 border-t border-border pt-4">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("customer")}</span>
-                <span className="text-sm">
-                  {ticket.customer.name} — {ticket.customer.email}
-                </span>
-              </div>
+              {isStaffViewer && (
+                <div className="flex flex-col gap-1 border-t border-border pt-4">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("customer")}</span>
+                  <span className="text-sm">
+                    {ticket.customer.name} — {ticket.customer.email}
+                  </span>
+                </div>
+              )}
               <div className="flex flex-col gap-3 border-t border-border pt-4">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
                 <TicketMessageThread messages={messages} ticketId={ticket.id} />
                 {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
-                <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>
+                {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
                 {canReply && <TicketReplyComposer ticketId={ticket.id} />}
               </div>
             </CardContent>
           </Card>
 
-          <Card size="sm" className="h-fit">
-            <CardHeader>
-              <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
-                {t("heading")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs text-muted-foreground">{t("status")}</span>
-                <Badge variant="outline" className="w-fit">
-                  {t(STATUS_KEY[ticket.status])}
-                </Badge>
-              </div>
-              <TicketDetailSidebar
-                ticketId={ticket.id}
-                category={ticket.category}
-                priority={ticket.priority}
-                canCategorize={canCategorize}
-                canChangePriority={canChangePriority}
-              />
-            </CardContent>
-          </Card>
+          {isStaffViewer && (
+            <Card size="sm" className="h-fit">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
+                  {t("heading")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs text-muted-foreground">{t("status")}</span>
+                  <Badge variant="outline" className="w-fit">
+                    {t(STATUS_KEY[ticket.status])}
+                  </Badge>
+                </div>
+                <TicketDetailSidebar
+                  ticketId={ticket.id}
+                  category={ticket.category}
+                  priority={ticket.priority}
+                  canCategorize={canCategorize}
+                  canChangePriority={canChangePriority}
+                />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>
