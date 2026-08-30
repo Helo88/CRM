@@ -529,3 +529,100 @@ describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
     socket.disconnect();
   });
 });
+
+describe("chat.socket.ts agent/admin reply (Story 18)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("lets the assigned agent join and reply; message persists as senderType agent and broadcasts to the customer", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    const receivedByCustomer = new Promise<Record<string, unknown>>((resolve) =>
+      customerSocket.on("conversation:message", resolve)
+    );
+    agentSocket.emit("conversation:message", { conversationId: conversation.id, text: "How can I help?" });
+
+    const message = await receivedByCustomer;
+    expect(message.senderType).toBe("agent");
+    expect(message.senderId).toBe(agent.id);
+    expect(message.text).toBe("How can I help?");
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("does not trigger the AI branch for the agent's own reply", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "agent reply" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
+
+    socket.disconnect();
+  });
+
+  it("admin can join and message any conversation even when not the assignedAgent", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent } = await seedUser("agent");
+    const { token: adminToken } = await seedUser("admin");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, adminToken);
+
+    const received = new Promise<Record<string, unknown>>((resolve) =>
+      socket.on("conversation:message", resolve)
+    );
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "Admin stepping in" });
+
+    const message = await received;
+    expect(message.senderType).toBe("agent"); // Message has no separate "admin" sender type
+    expect(message.text).toBe("Admin stepping in");
+
+    socket.disconnect();
+  });
+
+  it("an unassigned, non-admin agent is still rejected (regression on the widened check)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: assignedAgent } = await seedUser("agent");
+    const { token: otherAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: assignedAgent._id,
+      status: "with_agent",
+    });
+    const socket = await connect(otherAgentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:join", conversation.id);
+
+    await expect(errored).resolves.toEqual({ error: "You do not have permission to join this conversation" });
+
+    socket.disconnect();
+  });
+});

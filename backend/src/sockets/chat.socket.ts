@@ -32,11 +32,16 @@ interface ConversationMessagePayload {
 
 const conversationIdSchema = objectIdSchema("Invalid conversation id");
 
-// Whether `userId` may act on `conversation` — the conversation's own customer
-// (this story) or its assignedAgent (inert until Story 17 assigns one, but
-// forward-compatible so Story 18's agent-reply handler needs no change here).
-function isAuthorizedOnConversation(userId: string, conversation: { customer: unknown; assignedAgent: unknown }): boolean {
-  return userId === String(conversation.customer) || userId === String(conversation.assignedAgent);
+// Whether `user` may act on `conversation` — the conversation's own customer,
+// its assignedAgent, or (Story 18) any admin regardless of assignment, so an
+// admin can take over/respond to any live chat per that story's acceptance
+// criteria.
+function isAuthorizedOnConversation(
+  user: { id: string; role: string },
+  conversation: { customer: unknown; assignedAgent: unknown }
+): boolean {
+  if (user.role === "admin") return true;
+  return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
 }
 
 export function registerChatHandlers(io: Server): void {
@@ -87,7 +92,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
         socket.emit("conversation:error", { error: "You do not have permission to join this conversation" });
         return;
       }
@@ -113,7 +118,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
         socket.emit("conversation:error", {
           error: "You do not have permission to send messages in this conversation",
         });
@@ -125,6 +130,10 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
+      // Story 18: an admin replying (never the conversation's own customer,
+      // rarely its assignedAgent) also serializes as "agent" — Message has no
+      // separate "admin" sender type, and a UI-side distinction isn't part of
+      // this story (Story 24 covers internal team roles/notes).
       const senderType = socket.data.user.id === String(conversation.customer) ? "customer" : "agent";
 
       const message = await Message.create({
