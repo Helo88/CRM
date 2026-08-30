@@ -233,13 +233,13 @@ Do not touch the existing `"escalate"` key at line 564 (that's the staff-side ti
 
 ## Done Criteria
 
-- [ ] Customer can trigger escalation from the live chat panel at any point during `ai_handling` (acceptance criterion 1).
-- [ ] Escalation sets `Conversation.status = "escalated"` and the record is queryable by Story 17 (acceptance criterion 2).
-- [ ] After escalation, subsequent customer messages are persisted and do **not** trigger the AI branch (guard at `chat.socket.ts` line 139 exercised).
-- [ ] `Message` documents from the pre-escalation AI phase remain untouched and readable by conversation id (acceptance criterion 3 — verified by inspecting `Message.find({ parentId })` in a test).
-- [ ] The REST `POST /:id/escalate` 501 stub is deleted along with its regression test.
-- [ ] New socket event `conversation:escalate` is validated by zod, authorised to the customer only, idempotent for `"escalated"`/`"with_agent"`, and rejected for `"resolved"`.
-- [ ] `Chat.talkToHuman`, `Chat.talkToHumanRequesting`, and `Chat.escalatedWaiting` i18n keys exist in both `en.json` and `ar.json`.
-- [ ] Backend and frontend tests pass; backend and frontend both build clean.
+- [x] Customer can trigger escalation from the live chat panel at any point during `ai_handling` (acceptance criterion 1).
+- [x] Escalation sets `Conversation.status = "escalated"` and the record is queryable by Story 17 (acceptance criterion 2).
+- [x] After escalation, subsequent customer messages are persisted and do **not** trigger the AI branch (guard at `chat.socket.ts` exercised). — later widened by Story 17: with no agent online it deliberately reverts to `ai_handling` so the AI can resume; the underlying guard behavior this criterion checks is unchanged.
+- [x] `Message` documents from the pre-escalation AI phase remain untouched and readable by conversation id (acceptance criterion 3 — verified by inspecting `Message.find({ parentId })` in a test).
+- [x] The REST `POST /:id/escalate` 501 stub is deleted along with its regression test.
+- [x] New socket event `conversation:escalate` is validated by zod, authorised to the customer only, idempotent for `"escalated"`/`"with_agent"`, and rejected for `"resolved"`.
+- [x] `Chat.talkToHuman`, `Chat.talkToHumanRequesting`, and `Chat.escalatedWaiting` i18n keys exist in both `en.json` and `ar.json`.
+- [x] Backend and frontend tests pass; backend and frontend both build clean.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 17.**

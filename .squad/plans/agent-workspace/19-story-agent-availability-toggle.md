@@ -201,14 +201,14 @@ Reuse the tone of the existing `AdminUsersList` `onlineYes` / `onlineNo` / `onli
 
 ## Done Criteria
 
-- [ ] `PATCH /api/v1/me/availability` exists, is `requireAuth`-only, validates `{ isOnline: boolean }`, and returns `{ isOnline }`.
-- [ ] Endpoint rejects non-agents with 403.
-- [ ] Endpoint rejects a deactivated agent trying to go online with 403.
-- [ ] `GET /api/v1/me/status` includes `isOnline`.
-- [ ] Agent-facing toggle is reachable from the header user menu on every authenticated staff page and reflects the current DB value on load.
-- [ ] Toggle uses the retry-on-401 server-action pattern from `frontend/app/settings/actions.ts`.
-- [ ] `/admin/users` shows the agent's current online state (verified, no code change).
-- [ ] Existing deactivation test at `backend/tests/routes/admin.routes.test.ts:393` still passes.
-- [ ] New backend tests in `backend/tests/routes/me.routes.test.ts` cover all six behaviour branches listed in the Test Plan.
-- [ ] English and Arabic i18n strings for `availabilityOnline`, `availabilityOffline`, `availabilityUpdateFailed` are present.
-- [ ] No new permission key added; no new admin route added; no schema migration.
+- [x] `PATCH /api/v1/me/availability` exists, is `requireAuth`-only, validates `{ isOnline: boolean }`, and returns `{ isOnline }`.
+- [x] Endpoint rejects non-agents with 403.
+- [x] Endpoint rejects a deactivated agent trying to go online with 403.
+- [x] `GET /api/v1/me/status` includes `isOnline`.
+- [x] Agent-facing toggle is reachable from the header user menu on every authenticated staff page and reflects the current DB value on load.
+- [x] Toggle uses the retry-on-401 server-action pattern from `frontend/app/settings/actions.ts`.
+- [x] `/admin/users` shows the agent's current online state (verified, no code change).
+- [x] Existing deactivation test at `backend/tests/routes/admin.routes.test.ts:393` still passes.
+- [x] New backend tests in `backend/tests/routes/me.routes.test.ts` cover all six behaviour branches listed in the Test Plan.
+- [x] English and Arabic i18n strings for `availabilityOnline`, `availabilityOffline`, `availabilityUpdateFailed` are present.
+- [x] No new permission key added; no new admin route added; no schema migration.

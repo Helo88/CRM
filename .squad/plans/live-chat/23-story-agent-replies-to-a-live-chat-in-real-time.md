@@ -190,14 +190,14 @@ The customer surface is unchanged. Any styling shared between `LiveChatPanel.tsx
 
 ## Done Criteria
 
-- [ ] `isAuthorizedOnConversation` accepts a `{ id, role }` object and grants admins bypass; both call sites in `chat.socket.ts` updated; the customer-only guards in `conversation:escalate` and `conversation:close` handlers are **unchanged**.
-- [ ] `GET /api/v1/conversations` returns the caller's assigned active conversations (agent) or all active human-handled conversations (admin); customer is `403`.
-- [ ] `GET /api/v1/conversations/:id` returns `{ conversation, messages }` sorted ascending, includes AI messages, enforces the widened authorization rule, and returns `403`/`404`/`400` correctly.
-- [ ] An assigned agent can send a message via `conversation:message`; it is persisted with `senderType: "agent"` and broadcast to the customer instantly, without re-triggering the AI branch.
-- [ ] A staff nav entry "Chats" is visible to agent + admin and leads to `/chats`.
-- [ ] `/chats` lists the caller's active conversations; each row links to `/chats/[id]`.
-- [ ] `/chats/[id]` renders the full transcript (customer, ai, agent, system) and offers a working composer that emits `conversation:message`.
-- [ ] Composer is disabled when `conversation.status === "resolved"` (forward-compatible with Story 19); a `// TODO(Story 19)` anchor for the resolve button is left in place.
-- [ ] All new + updated tests pass; existing socket tests still pass.
+- [x] `isAuthorizedOnConversation` accepts a `{ id, role }` object and grants admins bypass; both call sites in `chat.socket.ts` updated; the customer-only guards in `conversation:escalate` and `conversation:close` handlers are **unchanged**. — `conversation:close`'s guard was later widened by Story 19 (its own, later scope); untouched by this story.
+- [x] `GET /api/v1/conversations` returns the caller's assigned active conversations (agent) or all active human-handled conversations (admin); customer is `403`.
+- [x] `GET /api/v1/conversations/:id` returns `{ conversation, messages }` sorted ascending, includes AI messages, enforces the widened authorization rule, and returns `403`/`404`/`400` correctly.
+- [x] An assigned agent can send a message via `conversation:message`; it is persisted with `senderType: "agent"` and broadcast to the customer instantly, without re-triggering the AI branch.
+- [x] A staff nav entry "Chats" is visible to agent + admin and leads to `/chats`.
+- [x] `/chats` lists the caller's active conversations; each row links to `/chats/[id]`.
+- [x] `/chats/[id]` renders the full transcript (customer, ai, agent, system) and offers a working composer that emits `conversation:message`.
+- [x] Composer is disabled when `conversation.status === "resolved"` (forward-compatible with Story 19); a `// TODO(Story 19)` anchor for the resolve button is left in place. — the TODO and its comment were replaced by the real "Mark resolved" button once Story 19 shipped.
+- [x] All new + updated tests pass; existing socket tests still pass.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 19.**

@@ -192,11 +192,11 @@ Implementation: inside the mutex, call `pickNextAvailableAgent()`; if it returns
 
 ## Done Criteria
 
-- [ ] `backend/src/services/assignment.service.ts` exports `pickAndClaimAgentForConversation(conversationId)` with an in-module mutex documented in a comment.
-- [ ] `pickNextAvailableAgent()` load tiebreak now counts open conversations (`status: "with_agent"`) alongside open tickets, with no signature change.
-- [ ] `backend/src/sockets/chat.socket.ts` calls `pickAndClaimAgentForConversation` after the escalate emit, emits `conversation:assigned` on success and `conversation:no-agent-available` on failure (caller-only), and reverts status to `"ai_handling"` when no agent is available.
-- [ ] `backend/src/sockets/chat.socket.ts` handles a customer-only `conversation:close` event validated via `conversationClosePayloadSchema` in `backend/src/validation/conversation.schema.ts`.
-- [ ] `frontend/app/chat/LiveChatPanel.tsx` listens for `conversation:assigned`, `conversation:no-agent-available`, and `conversation:closed`, rendering the no-agent hint with two functional actions.
-- [ ] English + Arabic localization keys added for the no-agent hint and its buttons.
-- [ ] Extended unit + socket tests cover: successful assignment, no-agent revert, concurrent two-escalations non-double-assignment, and the new close event.
-- [ ] `USER_STORIES.md` Story 17 acceptance-criteria wording updated to match the revised "no agent available" UX (keep-chatting-with-AI or close), replacing the old "email/ticket path" copy.
+- [x] `backend/src/services/assignment.service.ts` exports `pickAndClaimAgentForConversation(conversationId)` with an in-module mutex documented in a comment.
+- [x] `pickNextAvailableAgent()` load tiebreak now counts open conversations (`status: "with_agent"`) alongside open tickets, with no signature change.
+- [x] `backend/src/sockets/chat.socket.ts` calls `pickAndClaimAgentForConversation` after the escalate emit, emits `conversation:assigned` on success and `conversation:no-agent-available` on failure (caller-only), and reverts status to `"ai_handling"` when no agent is available.
+- [x] `backend/src/sockets/chat.socket.ts` handles a customer-only `conversation:close` event validated via `conversationClosePayloadSchema` in `backend/src/validation/conversation.schema.ts`. — later widened by Story 19 to also allow the assigned agent/admin; customer-only was this story's own scope and shipped as such.
+- [x] `frontend/app/chat/LiveChatPanel.tsx` listens for `conversation:assigned`, `conversation:no-agent-available`, and `conversation:closed`, rendering the no-agent hint with two functional actions.
+- [x] English + Arabic localization keys added for the no-agent hint and its buttons.
+- [x] Extended unit + socket tests cover: successful assignment, no-agent revert, concurrent two-escalations non-double-assignment, and the new close event.
+- [x] `USER_STORIES.md` Story 17 acceptance-criteria wording updated to match the revised "no agent available" UX (keep-chatting-with-AI or close), replacing the old "email/ticket path" copy.

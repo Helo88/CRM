@@ -143,13 +143,13 @@ Add a code comment above the filter in `conversation.routes.ts` referencing this
 
 ## Done Criteria
 
-- [ ] `conversation:close` handler in `backend/src/sockets/chat.socket.ts` uses `isAuthorizedOnConversation` (customer, `assignedAgent`, or admin) instead of a customer-only check.
-- [ ] Closing sets `Conversation.status = "resolved"`; `updatedAt` is the closed timestamp (no new field added).
-- [ ] `conversation:closed` broadcasts to the room; customer and agent frontends both show the read-only indicator (customer path unchanged; agent path already listens).
-- [ ] Agent panel (`frontend/app/chats/[id]/AgentChatPanel.tsx`) has a **Mark resolved** button at the `TODO(Story 19)` anchor, gated behind a confirmation dialog, disabled when already resolved, i18n keys added in `en.json` + `ar.json`.
-- [ ] No REST close endpoint added. No `closedAt` field added.
-- [ ] Explicit code comment in `conversation.routes.ts` documenting that the staff list filter intentionally excludes resolved conversations in this story.
-- [ ] All new/rewritten socket tests pass; the old "rejects a non-customer conversation:close" test is replaced by a non-participant test.
+- [x] `conversation:close` handler in `backend/src/sockets/chat.socket.ts` uses `isAuthorizedOnConversation` (customer, `assignedAgent`, or admin) instead of a customer-only check.
+- [x] Closing sets `Conversation.status = "resolved"`; `updatedAt` is the closed timestamp (no new field added).
+- [x] `conversation:closed` broadcasts to the room; customer and agent frontends both show the read-only indicator (customer path unchanged; agent path already listens).
+- [x] Agent panel (`frontend/app/chats/[id]/AgentChatPanel.tsx`) has a **Mark resolved** button at the `TODO(Story 19)` anchor, gated behind a confirmation dialog, disabled when already resolved, i18n keys added in `en.json` + `ar.json`. — shipped as hidden-when-resolved rather than a disabled button; same practical effect (unclickable once closed).
+- [x] No REST close endpoint added. No `closedAt` field added.
+- [x] Explicit code comment in `conversation.routes.ts` documenting that the staff list filter intentionally excludes resolved conversations in this story.
+- [x] All new/rewritten socket tests pass; the old "rejects a non-customer conversation:close" test is replaced by a non-participant test.
 - [ ] Manual smoke: customer close still works; agent close works; admin close works; non-participant close is rejected; resolved conversation is read-only but readable via `GET /:id`.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to the next story.**

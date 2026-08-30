@@ -244,16 +244,16 @@ ticketSuggestion?: {
 
 ## Done Criteria
 
-- [ ] `evaluateTicketSuggestion` (or equivalent) added to `backend/src/services/liveChatAi.service.ts`, uses `gemini.service.ts`'s wrapped call, returns `null` on any failure.
-- [ ] `backend/src/sockets/chat.socket.ts` AI branch runs the classifier in parallel with `getAiReply`, attaches `ticketSuggestion` to the `conversation:message` payload when appropriate, and honours `aiTicketSuggestionDeclined`.
-- [ ] `conversation:ai-suggestion-declined` socket handler added, customer-only, idempotent.
-- [ ] `Ticket.sourceConversation`, `Conversation.aiTicketSuggestionDeclined`, and `Message.aiTicketSuggestion` fields added, all optional with defaults.
-- [ ] Create-ticket route + validation accept `sourceConversation`, verify ownership, and persist it.
-- [ ] `frontend/app/chat/LiveChatPanel.tsx` renders the inline suggestion card with editable subject/description, category picker (active list, default `UNSPECIFIED_CATEGORY`), Open-a-ticket and Keep-chatting buttons.
-- [ ] `frontend/app/chat/actions.ts` exposes `createTicketFromConversation(...)`; category list is fetched via the existing `listActiveTicketCategories()`.
-- [ ] Decline hides all suggestion cards, sets server + local flag, and no further suggestions appear in the same conversation.
-- [ ] All backend tests listed in the Test Plan pass; manual verification steps completed in both English and Arabic locales.
-- [ ] Gemini failure never blocks a customer from continuing the chat.
-- [ ] No changes to Story 16 escalation code paths.
+- [x] `evaluateTicketSuggestion` (or equivalent) added to `backend/src/services/liveChatAi.service.ts`, uses `gemini.service.ts`'s wrapped call, returns `null` on any failure.
+- [x] `backend/src/sockets/chat.socket.ts` AI branch runs the classifier in parallel with `getAiReply`, attaches `ticketSuggestion` to the `conversation:message` payload when appropriate, and honours `aiTicketSuggestionDeclined`. — shipped as `aiTicketSuggestion` (matching the persisted `Message` field name 1:1, consistent with how every other message field is emitted raw) rather than a differently-named wire field.
+- [x] `conversation:ai-suggestion-declined` socket handler added, customer-only, idempotent.
+- [x] `Ticket.sourceConversation`, `Conversation.aiTicketSuggestionDeclined`, and `Message.aiTicketSuggestion` fields added, all optional with defaults.
+- [x] Create-ticket route + validation accept `sourceConversation`, verify ownership, and persist it.
+- [x] `frontend/app/chat/LiveChatPanel.tsx` renders the inline suggestion card with editable subject/description, category picker (active list, default `UNSPECIFIED_CATEGORY`), Open-a-ticket and Keep-chatting buttons.
+- [x] `frontend/app/chat/actions.ts` exposes `createTicketFromConversation(...)`; category list is fetched via the existing `listActiveTicketCategories()`.
+- [x] Decline hides all suggestion cards, sets server + local flag, and no further suggestions appear in the same conversation.
+- [ ] All backend tests listed in the Test Plan pass; manual verification steps completed in both English and Arabic locales. — automated backend tests pass; manual browser/Gemini-live verification was not performed this session.
+- [x] Gemini failure never blocks a customer from continuing the chat.
+- [x] No changes to Story 16 escalation code paths.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 02.**
