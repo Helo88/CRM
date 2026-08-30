@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { Message } from "../../src/models/Message";
+import { Conversation } from "../../src/models/Conversation";
+import { User } from "../../src/models/User";
 import * as geminiService from "../../src/services/gemini.service";
 import { getAiReply, evaluateTicketSuggestion } from "../../src/services/liveChatAi.service";
 
@@ -18,6 +20,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await Message.deleteMany({});
+  await Conversation.deleteMany({});
+  await User.deleteMany({});
   vi.restoreAllMocks();
 });
 
@@ -114,6 +118,41 @@ describe("liveChatAi.service.ts getAiReply (Story 15)", () => {
 
     expect(reply).toBeNull();
   });
+
+  it("includes the customer's identity in the prompt so the AI never has to ask for it", async () => {
+    const customer = await User.create({
+      name: "Sara Ahmed",
+      email: "sara@example.com",
+      passwordHash: "irrelevant-for-these-tests",
+      role: "customer",
+    });
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    await Message.create({
+      parentType: "conversation",
+      parentId: conversation._id,
+      senderType: "customer",
+      senderId: customer._id,
+      text: "I need help",
+    });
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(conversation.id);
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).toContain("Sara Ahmed");
+    expect(prompt).toContain(customer.membershipNumber);
+    expect(prompt).toMatch(/never ask them for/i);
+  });
+
+  it("omits the identity line (no crash) when the conversation/customer can't be found", async () => {
+    await seedMessage("customer", "Hello?");
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(parentId.toHexString());
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).not.toContain("Customer identity");
+  });
 });
 
 describe("liveChatAi.service.ts evaluateTicketSuggestion (Story 62)", () => {
@@ -177,5 +216,23 @@ describe("liveChatAi.service.ts evaluateTicketSuggestion (Story 62)", () => {
 
     expect(suggestion).toBeNull();
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("also includes the customer's identity in the classifier prompt", async () => {
+    const customer = await User.create({
+      name: "Sara Ahmed",
+      email: "sara@example.com",
+      passwordHash: "irrelevant-for-these-tests",
+      role: "customer",
+    });
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    const spy = vi
+      .spyOn(geminiService, "generateText")
+      .mockResolvedValue('{"suggest": false, "subject": "", "description": ""}');
+
+    await evaluateTicketSuggestion(conversation.id, false);
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).toContain("Sara Ahmed");
   });
 });

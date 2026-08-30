@@ -1,4 +1,5 @@
 import { Message } from "../models/Message";
+import { Conversation } from "../models/Conversation";
 import { generateText } from "./gemini.service";
 
 /**
@@ -18,7 +19,11 @@ const SENDER_LABELS: Record<string, string> = {
 
 const SYSTEM_PREAMBLE =
   "You are the AI support agent for a customer service platform. Reply concisely " +
-  "and helpfully to the customer's latest message, in at most 2-3 short sentences.";
+  "and helpfully to the customer's latest message, in at most 2-3 short sentences. " +
+  "The customer is already signed in and identified below -- never ask them for " +
+  "their name, account/membership number, or email to 'verify' or 'look up' their " +
+  "account; you already have it. Only ask for details specific to the problem " +
+  "itself (e.g. an order number, a screenshot, steps to reproduce).";
 
 async function fetchTranscript(conversationId: string): Promise<string> {
   const history = await Message.find({ parentType: "conversation", parentId: conversationId })
@@ -33,10 +38,32 @@ async function fetchTranscript(conversationId: string): Promise<string> {
     .join("\n");
 }
 
+// The customer is already authenticated for the whole chat session -- feed
+// their identity into the prompt so the AI never has to ask for it (the gap
+// that prompted this: without this, Gemini had no way to know who it was
+// talking to and asked for an account number mid-conversation). Best-effort:
+// a lookup failure just means the identity line is omitted, never a hard
+// failure of the AI reply itself.
+async function fetchCustomerContext(conversationId: string): Promise<string> {
+  try {
+    const conversation = await Conversation.findById(conversationId).populate<{
+      customer: { name: string; membershipNumber: string } | null;
+    }>("customer", "name membershipNumber");
+    const customer = conversation?.customer;
+    if (!customer) return "";
+    return `Customer identity (already verified, do not ask for this again): name "${customer.name}", membership number ${customer.membershipNumber}.\n\n`;
+  } catch {
+    return "";
+  }
+}
+
 export async function getAiReply(conversationId: string): Promise<string | null> {
   try {
-    const transcript = await fetchTranscript(conversationId);
-    const prompt = `${SYSTEM_PREAMBLE}\n\n${transcript}\nAI Agent:`;
+    const [customerContext, transcript] = await Promise.all([
+      fetchCustomerContext(conversationId),
+      fetchTranscript(conversationId),
+    ]);
+    const prompt = `${SYSTEM_PREAMBLE}\n\n${customerContext}${transcript}\nAI Agent:`;
 
     const reply = await generateText(prompt);
     if (!reply || reply.trim().length === 0) {
@@ -106,8 +133,11 @@ export async function evaluateTicketSuggestion(
   if (alreadyDeclined) return null;
 
   try {
-    const transcript = await fetchTranscript(conversationId);
-    const prompt = `${SUGGESTION_SYSTEM_PREAMBLE}\n\nConversation so far:\n${transcript}`;
+    const [customerContext, transcript] = await Promise.all([
+      fetchCustomerContext(conversationId),
+      fetchTranscript(conversationId),
+    ]);
+    const prompt = `${SUGGESTION_SYSTEM_PREAMBLE}\n\n${customerContext}Conversation so far:\n${transcript}`;
 
     const raw = await generateText(prompt);
     if (!raw) return null;
