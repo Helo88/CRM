@@ -54,7 +54,7 @@ export default async function TicketsPage({
     redirect("/");
   }
 
-  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const { id: viewerId, role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
   const isStaff = viewerRole === "agent" || viewerRole === "admin" || viewerRole === "subadmin";
 
   const listQuery = new URLSearchParams(currentQuery);
@@ -125,6 +125,7 @@ export default async function TicketsPage({
           canReassign={canReassign}
           canDelete={canDelete}
           currentQuery={currentQuery.toString()}
+          currentUserId={viewerId}
         />
       </main>
     </div>

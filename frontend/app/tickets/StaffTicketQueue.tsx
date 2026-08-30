@@ -30,6 +30,10 @@ interface StaffTicketQueueProps {
   canReassign: boolean;
   canDelete: boolean;
   currentQuery: string;
+  // So a row assigned to the viewer themself can read "You" instead of
+  // their own name — seeing your own name in a list you're browsing reads
+  // oddly, the same reasoning as any chat/email client's "You" label.
+  currentUserId?: string;
 }
 
 const STATUS_KEY: Record<StaffTicketRow["status"], string> = {
@@ -79,6 +83,7 @@ export async function StaffTicketQueue({
   canReassign,
   canDelete,
   currentQuery,
+  currentUserId,
 }: StaffTicketQueueProps) {
   const t = await getTranslations("Tickets");
 
@@ -177,7 +182,9 @@ export async function StaffTicketQueue({
                     </TableCell>
                     {canViewAll && (
                       <TableCell className="text-sm text-muted-foreground">
-                        {ticket.assignedAgent?.name ?? t("unassigned")}
+                        {ticket.assignedAgent?.id === currentUserId
+                          ? t("assignedToYou")
+                          : (ticket.assignedAgent?.name ?? t("unassigned"))}
                       </TableCell>
                     )}
                     <TableCell className="text-sm text-muted-foreground">
