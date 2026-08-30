@@ -88,11 +88,19 @@ export interface TicketSuggestion {
 // fallback." Deliberately NOT parsed out of the main reply's text (no
 // sentinel/marker parsing of free-form prose).
 const SUGGESTION_SYSTEM_PREAMBLE =
-  "You are a triage classifier for a customer service live chat. Decide whether " +
-  "the customer's issue would be better handled as a written support ticket " +
-  "instead of continuing this chat -- for example, it needs a long written " +
-  "follow-up, file attachments, or is otherwise beyond what a quick chat reply " +
-  "can resolve. Respond with ONLY strict JSON, no markdown, no commentary, in " +
+  "You are a triage classifier for a customer service live chat. Default to " +
+  'suggest: false. Most messages -- small talk, general knowledge questions ' +
+  "(e.g. asking about the weather, or anything unrelated to this company's " +
+  "product/service), a question you can just answer directly, or a problem " +
+  "you already resolved in this conversation -- do NOT need a ticket. Only " +
+  "set suggest: true when the customer's LATEST message clearly meets one of " +
+  "these two conditions: (1) they explicitly ask to open/file a ticket, submit " +
+  "a complaint in writing, or speak to a human/agent, or (2) they are visibly " +
+  "frustrated, angry, or repeating the same unresolved account/service " +
+  "problem, AND that problem genuinely needs a long written follow-up, file " +
+  "attachments, or account-specific investigation beyond a quick chat reply. " +
+  "When in doubt, prefer suggest: false and just let the normal chat reply " +
+  "handle it. Respond with ONLY strict JSON, no markdown, no commentary, in " +
   'exactly this shape: {"suggest": boolean, "subject": string, "description": ' +
   'string}. When suggest is false, subject and description may be empty ' +
   "strings. Keep subject under 100 characters. Write subject/description in " +
