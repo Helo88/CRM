@@ -21,13 +21,13 @@ export async function StaffSidebar({ active }: { active?: StaffNavKey }) {
   // Unverified peek, same pattern as SiteHeader/customers-new-page — a UI
   // nicety only; the backend's requireRole/requirePermission is the real boundary.
   const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
-  const { role } = accessToken ? peekJwtPayload(accessToken) : {};
-  const visibleItems = visibleStaffNavItems(role);
+  const { role, permissions = [] } = accessToken ? peekJwtPayload(accessToken) : {};
+  const visibleItems = visibleStaffNavItems(role, permissions);
 
   return (
     <>
       <div className="hidden w-20 shrink-0 md:block" aria-hidden />
-      <aside className="group/rail fixed inset-y-0 start-0 z-30 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
+      <aside className="group/rail fixed inset-y-0 start-0 z-50 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
         <nav className="flex flex-col gap-1">
           {visibleItems.map((item) => {
             const Icon = item.icon;

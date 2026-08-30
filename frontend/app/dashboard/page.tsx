@@ -2,15 +2,94 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Users, ShieldUser, BarChart3, ArrowRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Users, Ticket, ShieldUser, BarChart3, ArrowRight, Lock } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
+import { cn } from "@/lib/utils";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Dashboard");
   return { title: t("heading"), robots: { index: false, follow: false } };
+}
+
+// A tile a viewer lacks permission for stays visible but inert — greyed
+// out, not a Link, lock icon instead of the arrow — rather than
+// disappearing outright, so the dashboard's shape reflects what the
+// platform offers even to a viewer who can't reach every part of it.
+function DashboardTile({
+  href,
+  enabled,
+  icon: Icon,
+  accent,
+  title,
+  body,
+  note,
+  disabledNote,
+}: {
+  href: string;
+  enabled: boolean;
+  icon: LucideIcon;
+  accent: "--primary" | "--chart-2" | "--chart-3";
+  title: string;
+  body: string;
+  note: string;
+  disabledNote: string;
+}) {
+  const className = cn(
+    "group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border p-5 shadow-soft transition-all duration-200",
+    enabled ? "border-border hover:-translate-y-0.5 hover:shadow-card" : "border-border/60 opacity-60"
+  );
+  const style = {
+    background: `linear-gradient(150deg, color-mix(in oklch, var(${accent}) ${enabled ? 14 : 6}%, var(--card)), var(--card))`,
+  };
+  const content = (
+    <>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-8 -end-8 size-36 rounded-full opacity-50"
+        style={{
+          background: `radial-gradient(circle at 30% 30%, color-mix(in oklch, var(${accent}) ${enabled ? 55 : 25}%, transparent), transparent 70%)`,
+        }}
+      />
+      <div
+        className="grid size-10 place-items-center rounded-xl"
+        style={
+          enabled
+            ? { background: `color-mix(in oklch, var(${accent}) 20%, var(--card))`, color: `var(${accent})` }
+            : undefined
+        }
+      >
+        <Icon className={cn("size-5", !enabled && "text-muted-foreground")} />
+      </div>
+      <div>
+        <h2 className="text-base font-bold">{title}</h2>
+        <p className="mt-0.5 max-w-[30ch] text-sm text-muted-foreground">{body}</p>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{enabled ? note : disabledNote}</span>
+        <span className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground transition-transform group-hover/tile:translate-x-0.5 rtl:group-hover/tile:-translate-x-0.5">
+          {enabled ? <ArrowRight className="size-3.5 rtl:-scale-x-100" /> : <Lock className="size-3.5" />}
+        </span>
+      </div>
+    </>
+  );
+
+  if (!enabled) {
+    return (
+      <div className={className} style={style} aria-disabled="true">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link href={href} className={className} style={style}>
+      {content}
+    </Link>
+  );
 }
 
 // Staff landing page. Not shown to customers: there's no natural 403 to
@@ -75,8 +154,12 @@ export default async function DashboardPage({
   // a sub-admin only with a customers:manage delegation (see
   // backend/src/routes/customer.routes.ts's staffOrDelegatedSubadmin);
   // /admin/users needs staff:view_list, which only admin or a delegated
-  // sub-admin can ever hold (see SUBADMIN_ONLY_PERMISSIONS). Showing a tile
-  // a viewer can't actually use would just bounce them right back here.
+  // sub-admin can ever hold (see SUBADMIN_ONLY_PERMISSIONS). A viewer
+  // without the gate still sees the tile (per feedback: dashboard sections
+  // the viewer lacks permission for stay visible but unclickable, not
+  // hidden) — DashboardTile renders it disabled instead of omitting it.
+  // /tickets has no such gate — every staff role reaches a working queue.
+  const canViewTickets = true;
   const canViewCustomers = role === "agent" || role === "admin" || permissions.includes("customers:manage");
   const canViewAccounts = role === "admin" || permissions.includes("staff:view_list");
 
@@ -92,65 +175,38 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {canViewCustomers && (
-            <Link
-              href="/customers"
-              className="group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-border p-5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card"
-              style={{ background: "linear-gradient(150deg, color-mix(in oklch, var(--primary) 14%, var(--card)), var(--card))" }}
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -bottom-8 -end-8 size-36 rounded-full opacity-50"
-                style={{ background: "radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--primary) 55%, transparent), transparent 70%)" }}
-              />
-              <div
-                className="grid size-10 place-items-center rounded-xl"
-                style={{ background: "color-mix(in oklch, var(--primary) 20%, var(--card))", color: "var(--primary)" }}
-              >
-                <Users className="size-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold">{tNav("customers")}</h2>
-                <p className="mt-0.5 max-w-[30ch] text-sm text-muted-foreground">{t("customersTileBody")}</p>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{t("customersTileNote")}</span>
-                <span className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground transition-transform group-hover/tile:translate-x-0.5 rtl:group-hover/tile:-translate-x-0.5">
-                  <ArrowRight className="size-3.5 rtl:-scale-x-100" />
-                </span>
-              </div>
-            </Link>
-          )}
+          <DashboardTile
+            href="/tickets"
+            enabled={canViewTickets}
+            icon={Ticket}
+            accent="--chart-3"
+            title={tNav("tickets")}
+            body={t("ticketsTileBody")}
+            note={t("ticketsTileNote")}
+            disabledNote={t("noAccessNote")}
+          />
 
-          {canViewAccounts && (
-            <Link
-              href="/admin/users"
-              className="group/tile relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-border p-5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card"
-              style={{ background: "linear-gradient(150deg, color-mix(in oklch, var(--chart-2) 12%, var(--card)), var(--card))" }}
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -bottom-8 -end-8 size-36 rounded-full opacity-50"
-                style={{ background: "radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--chart-2) 50%, transparent), transparent 70%)" }}
-              />
-              <div
-                className="grid size-10 place-items-center rounded-xl"
-                style={{ background: "color-mix(in oklch, var(--chart-2) 20%, var(--card))", color: "var(--chart-2)" }}
-              >
-                <ShieldUser className="size-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold">{tNav("accounts")}</h2>
-                <p className="mt-0.5 max-w-[30ch] text-sm text-muted-foreground">{t("accountsTileBody")}</p>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{t("accountsTileNote")}</span>
-                <span className="grid size-8 place-items-center rounded-full border border-border bg-card text-foreground transition-transform group-hover/tile:translate-x-0.5 rtl:group-hover/tile:-translate-x-0.5">
-                  <ArrowRight className="size-3.5 rtl:-scale-x-100" />
-                </span>
-              </div>
-            </Link>
-          )}
+          <DashboardTile
+            href="/customers"
+            enabled={canViewCustomers}
+            icon={Users}
+            accent="--primary"
+            title={tNav("customers")}
+            body={t("customersTileBody")}
+            note={t("customersTileNote")}
+            disabledNote={t("noAccessNote")}
+          />
+
+          <DashboardTile
+            href="/admin/users"
+            enabled={canViewAccounts}
+            icon={ShieldUser}
+            accent="--chart-2"
+            title={tNav("accounts")}
+            body={t("accountsTileBody")}
+            note={t("accountsTileNote")}
+            disabledNote={t("noAccessNote")}
+          />
 
           <div className="relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-dashed border-border p-5 opacity-70">
             <div className="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">

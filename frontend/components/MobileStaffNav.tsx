@@ -14,11 +14,11 @@ import { visibleStaffNavItems, activeStaffNavKey } from "@/lib/staffNav";
 // rendered once from SiteHeader (inline with the other header icons, not a
 // separate bar) so it's a Client Component that works out which nav item is
 // "active" itself, from the URL, instead of needing a per-page prop.
-export function MobileStaffNav({ role }: { role?: string }) {
+export function MobileStaffNav({ role, permissions = [] }: { role?: string; permissions?: string[] }) {
   const t = useTranslations("Nav");
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const visibleItems = visibleStaffNavItems(role);
+  const visibleItems = visibleStaffNavItems(role, permissions);
   const active = activeStaffNavKey(pathname);
 
   return (
