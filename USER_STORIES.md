@@ -216,7 +216,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 ### Story 17: Auto-assign an escalated chat to an available agent
 **As the** system, **I want to** automatically assign an escalated chat to the first agent marked online, **so that** no chat waits for someone to notice it manually.
 - Assignment happens within seconds of escalation.
-- If no agent is online, the customer is told to expect a delay and offered the email/ticket path instead.
+- If no agent is online, the customer sees a "no agent available right now" hint with two options: keep chatting with the AI agent, or close the conversation.
 - Two escalations at the same instant don't get double-assigned to the same agent.
 - Chat ownership, like ticket ownership, can be manually reassigned later (Story 25).
 

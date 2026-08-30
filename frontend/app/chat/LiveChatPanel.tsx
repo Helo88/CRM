@@ -38,10 +38,11 @@ const STATUS_BADGE_CLASS: Record<ChatTicketSummary["status"], string> = {
 };
 
 type ConnectionStatus = "connecting" | "connected" | "error";
-// Story 16: orthogonal to ConnectionStatus (socket up/down) — this tracks
+// Story 16/17: orthogonal to ConnectionStatus (socket up/down) — this tracks
 // whether the customer has asked to talk to a human, independent of the
-// underlying connection ever dropping/reconnecting.
-type EscalationState = "idle" | "requesting" | "escalated";
+// underlying connection ever dropping/reconnecting. "escalated" = waiting
+// for Story 17's auto-assign; "assigned" = a human agent has joined.
+type EscalationState = "idle" | "requesting" | "escalated" | "assigned";
 
 // Story 14: the access token is passed down once, purely so the Socket.io
 // handshake can authenticate (there is no other way for a WebSocket
@@ -58,6 +59,11 @@ export function LiveChatPanel({ token }: { token: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiTyping, setAiTyping] = useState(false);
   const [escalationState, setEscalationState] = useState<EscalationState>("idle");
+  // Story 17: shown when escalation finds no online agent — offers the two
+  // options (keep chatting with AI, or close) instead of the old
+  // email/ticket suggestion.
+  const [noAgentAvailable, setNoAgentAvailable] = useState(false);
+  const [conversationClosed, setConversationClosed] = useState(false);
   const [previousTicketsOpen, setPreviousTicketsOpen] = useState(false);
   const [previousTicketsLoading, setPreviousTicketsLoading] = useState(false);
   const [previousTickets, setPreviousTickets] = useState<ChatTicketSummary[] | null>(null);
@@ -123,6 +129,23 @@ export function LiveChatPanel({ token }: { token: string }) {
         setAiTyping(false);
         clearAiTypingTimeout();
       });
+      socket.on("conversation:assigned", () => {
+        if (cancelled) return;
+        setEscalationState("assigned");
+        setNoAgentAvailable(false);
+      });
+      socket.on("conversation:no-agent-available", () => {
+        if (cancelled) return;
+        // Backend already reverted status to ai_handling — reset to "idle"
+        // so "Talk to a human" is reachable again once the hint is dismissed.
+        setEscalationState("idle");
+        setNoAgentAvailable(true);
+      });
+      socket.on("conversation:closed", () => {
+        if (cancelled) return;
+        setConversationClosed(true);
+        setNoAgentAvailable(false);
+      });
       socket.on("conversation:error", (payload: { error: string }) => {
         if (!cancelled) {
           setStatus("error");
@@ -177,6 +200,18 @@ export function LiveChatPanel({ token }: { token: string }) {
     socketRef.current.emit("conversation:escalate", { conversationId: conversationIdRef.current });
   }
 
+  // Story 17: dismiss the no-agent hint — nothing to emit, the backend
+  // already reverted status to ai_handling, so the next message the
+  // customer sends naturally hits the Story 15 AI branch again.
+  function handleKeepChattingWithAi() {
+    setNoAgentAvailable(false);
+  }
+
+  function handleCloseConversation() {
+    if (!socketRef.current || !conversationIdRef.current) return;
+    socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
+  }
+
   async function handleTogglePreviousTickets() {
     if (previousTicketsOpen) {
       setPreviousTicketsOpen(false);
@@ -215,6 +250,37 @@ export function LiveChatPanel({ token }: { token: string }) {
           <Alert>
             <MessageSquareWarning />
             <AlertDescription>{t("escalatedWaiting")}</AlertDescription>
+          </Alert>
+        )}
+        {escalationState === "assigned" && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription>{t("agentJoined")}</AlertDescription>
+          </Alert>
+        )}
+        {noAgentAvailable && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription className="flex flex-col gap-2">
+              <div>
+                <p className="font-medium">{t("noAgentAvailableTitle")}</p>
+                <p>{t("noAgentAvailableBody")}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={handleKeepChattingWithAi}>
+                  {t("noAgentKeepChattingAi")}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={handleCloseConversation}>
+                  {t("noAgentClose")}
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        {conversationClosed && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{t("closed")}</AlertDescription>
           </Alert>
         )}
         {messages.map((message) => {
@@ -292,7 +358,7 @@ export function LiveChatPanel({ token }: { token: string }) {
             type="button"
             variant="outline"
             size="sm"
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             onClick={() => handleIntentChip(t("complaintMessage"))}
           >
             <MessageSquareWarning className="size-3.5" />
@@ -302,7 +368,7 @@ export function LiveChatPanel({ token }: { token: string }) {
             type="button"
             variant="outline"
             size="sm"
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             onClick={() => handleIntentChip(t("inquiryMessage"))}
           >
             <CircleHelp className="size-3.5" />
@@ -318,7 +384,7 @@ export function LiveChatPanel({ token }: { token: string }) {
             <Ticket className="size-3.5" />
             {t("previousTicketsChip")}
           </Button>
-          {escalationState !== "escalated" && (
+          {(escalationState === "idle" || escalationState === "requesting") && !conversationClosed && (
             <Button
               type="button"
               variant="outline"
@@ -343,10 +409,15 @@ export function LiveChatPanel({ token }: { token: string }) {
             }}
             placeholder={t("composerPlaceholder")}
             rows={1}
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             className="min-h-9"
           />
-          <Button type="button" size="icon" disabled={status !== "connected" || draft.trim().length === 0} onClick={handleSend}>
+          <Button
+            type="button"
+            size="icon"
+            disabled={status !== "connected" || conversationClosed || draft.trim().length === 0}
+            onClick={handleSend}
+          >
             <Send className="size-4" />
             <span className="sr-only">{t("send")}</span>
           </Button>

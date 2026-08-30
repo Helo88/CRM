@@ -517,7 +517,12 @@
     "previousTicketsClose": "إغلاق",
     "talkToHuman": "التحدث مع موظف",
     "talkToHumanRequesting": "جارٍ تحويلك إلى موظف دعم…",
-    "escalatedWaiting": "أنت الآن في قائمة الانتظار لموظف دعم. سينضم أحدهم إلى هذه المحادثة قريبًا."
+    "escalatedWaiting": "أنت الآن في قائمة الانتظار لموظف دعم. سينضم أحدهم إلى هذه المحادثة قريبًا.",
+    "agentJoined": "انضم موظف دعم إلى المحادثة.",
+    "noAgentAvailableTitle": "لا يوجد موظف دعم متاح حاليًا",
+    "noAgentAvailableBody": "يمكنك متابعة المحادثة مع المساعد الذكي، أو إغلاق هذه المحادثة.",
+    "noAgentKeepChattingAi": "متابعة المحادثة مع الذكاء الاصطناعي",
+    "noAgentClose": "إغلاق المحادثة"
   },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",

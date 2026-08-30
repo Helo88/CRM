@@ -4,8 +4,13 @@ import type { JwtPayload } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
 import { objectIdSchema } from "../validation/common";
-import { conversationMessagePayloadSchema, conversationEscalatePayloadSchema } from "../validation/conversation.schema";
+import {
+  conversationMessagePayloadSchema,
+  conversationEscalatePayloadSchema,
+  conversationClosePayloadSchema,
+} from "../validation/conversation.schema";
 import { getAiReply } from "../services/liveChatAi.service";
+import { pickAndClaimAgentForConversation } from "../services/assignment.service";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
@@ -215,6 +220,70 @@ export function registerChatHandlers(io: Server): void {
       io.to(`conversation:${conversationId}`).emit("conversation:escalated", {
         conversationId,
         status: "escalated",
+      });
+
+      // Story 17: immediately try to pick + claim an online agent. Never
+      // lets a failure here undo the escalation the customer already saw
+      // succeed above — only logged, never rethrown.
+      try {
+        const pickedAgentId = await pickAndClaimAgentForConversation(conversationId);
+        if (pickedAgentId) {
+          io.to(`conversation:${conversationId}`).emit("conversation:assigned", {
+            conversationId,
+            agentId: pickedAgentId.toString(),
+            status: "with_agent",
+          });
+        } else {
+          // No online agent: revert to ai_handling (guarded so a conversation
+          // already moved on — e.g. closed concurrently — is left alone) and
+          // tell only the escalating customer, so the Story 15 AI branch
+          // resumes on their next message.
+          await Conversation.findOneAndUpdate(
+            { _id: conversationId, status: "escalated" },
+            { $set: { status: "ai_handling" } }
+          );
+          socket.emit("conversation:no-agent-available", { conversationId });
+        }
+      } catch (err) {
+        console.error("[chat.socket] auto-assign on escalate failed:", (err as Error).message);
+      }
+    });
+
+    // Story 17: minimal customer-triggered close, offered from the "no
+    // agent available" hint. Story 19 ("Close a live chat conversation")
+    // replaces this with the full agent-facing close flow — this handler
+    // only needs to be functional, not polished.
+    socket.on("conversation:close", async (payload: { conversationId: string }) => {
+      const parsed = conversationClosePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid close payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      if (socket.data.user.id !== String(conversation.customer)) {
+        socket.emit("conversation:error", { error: "You do not have permission to close this conversation" });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:closed", { conversationId, status: "resolved" });
+        return;
+      }
+
+      // assignedAgent is intentionally left untouched — history keeps it.
+      conversation.status = "resolved";
+      await conversation.save();
+
+      io.to(`conversation:${conversationId}`).emit("conversation:closed", {
+        conversationId,
+        status: "resolved",
       });
     });
 

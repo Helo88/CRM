@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { User } from "../../src/models/User";
 import { Ticket } from "../../src/models/Ticket";
-import { pickNextAvailableAgent } from "../../src/services/assignment.service";
+import { Conversation } from "../../src/models/Conversation";
+import { pickNextAvailableAgent, pickAndClaimAgentForConversation } from "../../src/services/assignment.service";
 
 let mongod: MongoMemoryServer;
 
@@ -19,6 +20,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await User.deleteMany({});
   await Ticket.deleteMany({});
+  await Conversation.deleteMany({});
 });
 
 async function seedAgent(overrides: Partial<{ isOnline: boolean; isActive: boolean; isDeleted: boolean; role: string; createdAt: Date }> = {}) {
@@ -44,6 +46,16 @@ async function seedTicket(assignedAgent: mongoose.Types.ObjectId, status: string
     customer: new mongoose.Types.ObjectId(),
     assignedAgent,
     status,
+  });
+}
+
+async function seedConversation(
+  overrides: Partial<{ assignedAgent: mongoose.Types.ObjectId | null; status: string }> = {}
+) {
+  return Conversation.create({
+    customer: new mongoose.Types.ObjectId(),
+    assignedAgent: overrides.assignedAgent ?? null,
+    status: overrides.status ?? "escalated",
   });
 }
 
@@ -108,5 +120,72 @@ describe("assignment.service.ts pickNextAvailableAgent (Story 10)", () => {
     const picked = await pickNextAvailableAgent();
     expect(picked?.toString()).toBe(older.id);
     expect(picked?.toString()).not.toBe(newer.id);
+  });
+
+  it("counts open (with_agent) conversations toward load too (Story 17)", async () => {
+    const busyWithChat = await seedAgent();
+    const free = await seedAgent();
+    await seedConversation({ assignedAgent: busyWithChat._id, status: "with_agent" });
+
+    const picked = await pickNextAvailableAgent();
+    expect(picked?.toString()).toBe(free.id);
+  });
+
+  it("does not count ai_handling/escalated/resolved conversations toward load", async () => {
+    const busy = await seedAgent();
+    const looksBusyButIsnt = await seedAgent();
+    await seedTicket(busy._id, "new");
+    await seedConversation({ assignedAgent: looksBusyButIsnt._id, status: "ai_handling" });
+    await seedConversation({ assignedAgent: looksBusyButIsnt._id, status: "escalated" });
+    await seedConversation({ assignedAgent: looksBusyButIsnt._id, status: "resolved" });
+
+    const picked = await pickNextAvailableAgent();
+    expect(picked?.toString()).toBe(looksBusyButIsnt.id);
+  });
+});
+
+describe("assignment.service.ts pickAndClaimAgentForConversation (Story 17)", () => {
+  it("returns null when no agent is online", async () => {
+    const conversation = await seedConversation({ status: "escalated" });
+    expect(await pickAndClaimAgentForConversation(conversation.id)).toBeNull();
+    expect((await Conversation.findById(conversation.id))!.status).toBe("escalated");
+  });
+
+  it("claims the picked agent atomically", async () => {
+    const agent = await seedAgent();
+    const conversation = await seedConversation({ status: "escalated" });
+
+    const picked = await pickAndClaimAgentForConversation(conversation.id);
+    expect(picked?.toString()).toBe(agent.id);
+
+    const reloaded = await Conversation.findById(conversation.id);
+    expect(reloaded!.status).toBe("with_agent");
+    expect(reloaded!.assignedAgent?.toString()).toBe(agent.id);
+  });
+
+  it("returns null and leaves the conversation untouched when it's no longer escalated", async () => {
+    await seedAgent();
+    const conversation = await seedConversation({ status: "resolved" });
+
+    expect(await pickAndClaimAgentForConversation(conversation.id)).toBeNull();
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+  });
+
+  it("assigns two concurrent escalations to two different online agents, not the same one", async () => {
+    const agentA = await seedAgent();
+    const agentB = await seedAgent();
+    const conversationA = await seedConversation({ status: "escalated" });
+    const conversationB = await seedConversation({ status: "escalated" });
+
+    const [pickedA, pickedB] = await Promise.all([
+      pickAndClaimAgentForConversation(conversationA.id),
+      pickAndClaimAgentForConversation(conversationB.id),
+    ]);
+
+    expect(pickedA).not.toBeNull();
+    expect(pickedB).not.toBeNull();
+    expect(pickedA?.toString()).not.toBe(pickedB?.toString());
+    expect([agentA.id, agentB.id]).toContain(pickedA?.toString());
+    expect([agentA.id, agentB.id]).toContain(pickedB?.toString());
   });
 });

@@ -517,7 +517,12 @@
     "previousTicketsClose": "Close",
     "talkToHuman": "Talk to a human",
     "talkToHumanRequesting": "Connecting you to a human agent…",
-    "escalatedWaiting": "You're in the queue for a human agent. Someone will join this chat shortly."
+    "escalatedWaiting": "You're in the queue for a human agent. Someone will join this chat shortly.",
+    "agentJoined": "A human agent has joined the conversation.",
+    "noAgentAvailableTitle": "No agent is available right now",
+    "noAgentAvailableBody": "You can keep chatting with our AI assistant, or close this conversation.",
+    "noAgentKeepChattingAi": "Keep chatting with AI",
+    "noAgentClose": "Close conversation"
   },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",

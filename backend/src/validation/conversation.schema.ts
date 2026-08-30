@@ -17,3 +17,10 @@ export const conversationMessagePayloadSchema = z.object({
 export const conversationEscalatePayloadSchema = z.object({
   conversationId: objectIdSchema("Invalid conversation id"),
 });
+
+// Used server-side to validate an inbound conversation:close socket payload
+// (live-chat Story 17 — the minimal customer-triggered close offered from
+// the "no agent available" hint; Story 19 replaces this with the full flow).
+export const conversationClosePayloadSchema = z.object({
+  conversationId: objectIdSchema("Invalid conversation id"),
+});

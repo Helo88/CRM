@@ -10,6 +10,7 @@ Entry point for the **live-chat** feature. Stories execute in order by their `NN
 | 16 | `16-story-start-a-live-chat.md` | Start a live chat | start-a-live-chat | — |
 | 17 | `17-story-ai-agent-responds-first-google-gemini.md` | AI agent responds first (Google Gemini) | ai-agent-responds-first-google-gemini | — |
 | 21 | `21-story-escalate-to-a-human-agent.md` | Escalate to a human agent | escalate-to-a-human-agent | — |
+| 22 | `22-story-auto-assign-an-escalated-chat-to-an-available-agent.md` | Auto-assign an escalated chat to an available agent | auto-assign-an-escalated-chat-to-an-available-agent | — |
 
 ## Dependency notes
 
