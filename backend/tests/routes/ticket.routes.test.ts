@@ -7,6 +7,7 @@ import { User } from "../../src/models/User";
 import { Ticket } from "../../src/models/Ticket";
 import { TicketCategory } from "../../src/models/TicketCategory";
 import { Message } from "../../src/models/Message";
+import { Conversation } from "../../src/models/Conversation";
 import * as emailService from "../../src/services/email.service";
 
 const app = createApp();
@@ -27,6 +28,7 @@ beforeEach(async () => {
   await Ticket.deleteMany({});
   await TicketCategory.deleteMany({});
   await Message.deleteMany({});
+  await Conversation.deleteMany({});
 });
 
 function tokenFor(user: { id: string; role: string }) {
@@ -329,6 +331,62 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.assignedAgent?.toString()).toBe(agent.id);
+  });
+});
+
+describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
+  it("persists sourceConversation when it belongs to the caller", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken", sourceConversation: conversation.id });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.sourceConversation?.toString()).toBe(conversation.id);
+  });
+
+  it("returns 403 when sourceConversation belongs to a different customer", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: owner } = await seedUser();
+    const { token: otherToken } = await seedUser();
+    const conversation = await Conversation.create({ customer: owner._id, status: "ai_handling" });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .send({ subject: "Help", description: "It's broken", sourceConversation: conversation.id });
+
+    expect(res.status).toBe(403);
+    expect(await Ticket.countDocuments()).toBe(0);
+  });
+
+  it("returns 400 for a malformed sourceConversation", async () => {
+    const { token } = await seedUser();
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken", sourceConversation: "not-an-object-id" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("still creates a ticket with sourceConversation null when omitted (backward-compat)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.sourceConversation).toBeNull();
   });
 });
 

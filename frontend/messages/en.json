@@ -526,7 +526,20 @@
     "noAgentAvailableTitle": "No agent is available right now",
     "noAgentAvailableBody": "You can keep chatting with our AI assistant, or close this conversation.",
     "noAgentKeepChattingAi": "Keep chatting with AI",
-    "noAgentClose": "Close conversation"
+    "noAgentClose": "Close conversation",
+    "suggestionTitle": "This looks like it might be better as a ticket",
+    "suggestionSubjectLabel": "Subject",
+    "suggestionDescriptionLabel": "Description",
+    "suggestionCategoryLabel": "Category",
+    "suggestionUnspecifiedCategory": "Not sure / unspecified",
+    "suggestionOpenTicket": "Open a ticket",
+    "suggestionKeepChatting": "Keep chatting",
+    "suggestionSubmit": "Submit ticket",
+    "suggestionCreating": "Creating…",
+    "suggestionRetry": "Retry",
+    "suggestionCategoriesFailed": "Couldn't load categories.",
+    "suggestionCreateFailed": "Couldn't create the ticket. Try again.",
+    "suggestionCreated": "Ticket {reference} created"
   },
   "AgentChats": {
     "metaTitle": "Chats",

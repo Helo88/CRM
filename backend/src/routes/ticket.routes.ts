@@ -5,6 +5,7 @@ import { requireAuth, requirePermission, requireRole } from "../middleware/auth"
 import { Ticket, ITicket } from "../models/Ticket";
 import { Message, IMessage } from "../models/Message";
 import { User } from "../models/User";
+import { Conversation } from "../models/Conversation";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
 import { pickNextAvailableAgent } from "../services/assignment.service";
 import type { PermissionKey } from "../constants/permissions";
@@ -105,12 +106,27 @@ router.post(
       }
     }
 
+    // Story 62: accepting the AI's "open a ticket" suggestion from a live
+    // chat sends the conversation id along — verify it exists and belongs
+    // to this same customer before linking it, so one customer can't graft
+    // their ticket onto another's conversation.
+    let sourceConversationId: Types.ObjectId | null = null;
+    if (req.body?.sourceConversation) {
+      const conversation = await Conversation.findById(req.body.sourceConversation);
+      if (!conversation || conversation.customer.toString() !== customer._id.toString()) {
+        res.status(403).json({ error: "You do not have permission to link this conversation" });
+        return;
+      }
+      sourceConversationId = conversation._id;
+    }
+
     const ticket = await Ticket.create({
       subject,
       description,
       customer: customer._id,
       category,
       priority,
+      sourceConversation: sourceConversationId,
     });
 
     // Story 60: a human-friendly "TCK-<n>" reference for anything shown to a

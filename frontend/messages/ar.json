@@ -526,7 +526,20 @@
     "noAgentAvailableTitle": "لا يوجد موظف دعم متاح حاليًا",
     "noAgentAvailableBody": "يمكنك متابعة المحادثة مع المساعد الذكي، أو إغلاق هذه المحادثة.",
     "noAgentKeepChattingAi": "متابعة المحادثة مع الذكاء الاصطناعي",
-    "noAgentClose": "إغلاق المحادثة"
+    "noAgentClose": "إغلاق المحادثة",
+    "suggestionTitle": "يبدو أن هذا الأمر قد يكون أنسب كتذكرة",
+    "suggestionSubjectLabel": "الموضوع",
+    "suggestionDescriptionLabel": "الوصف",
+    "suggestionCategoryLabel": "الفئة",
+    "suggestionUnspecifiedCategory": "غير محدد",
+    "suggestionOpenTicket": "فتح تذكرة",
+    "suggestionKeepChatting": "متابعة المحادثة",
+    "suggestionSubmit": "إرسال التذكرة",
+    "suggestionCreating": "جارٍ الإنشاء…",
+    "suggestionRetry": "إعادة المحاولة",
+    "suggestionCategoriesFailed": "تعذر تحميل الفئات.",
+    "suggestionCreateFailed": "تعذر إنشاء التذكرة. حاول مرة أخرى.",
+    "suggestionCreated": "تم إنشاء التذكرة {reference}"
   },
   "AgentChats": {
     "metaTitle": "المحادثات",

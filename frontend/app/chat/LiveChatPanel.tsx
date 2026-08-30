@@ -9,16 +9,31 @@ import { API_URL } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { createConversation, getMyRecentTickets, type ChatTicketSummary } from "./actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UNSPECIFIED_CATEGORY } from "@/app/tickets/new/constants";
+import { listActiveTicketCategories } from "@/app/tickets/new/actions";
+import {
+  createConversation,
+  getMyRecentTickets,
+  createTicketFromConversation,
+  type ChatTicketSummary,
+} from "./actions";
+
+interface TicketSuggestion {
+  subject: string;
+  description: string;
+}
 
 interface ChatMessage {
   _id: string;
   text: string;
   senderType: "customer" | "agent" | "ai" | "system";
   createdAt: string;
+  aiTicketSuggestion?: TicketSuggestion | null;
 }
 
 const STATUS_KEY: Record<ChatTicketSummary["status"], string> = {
@@ -44,6 +59,129 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 // for Story 17's auto-assign; "assigned" = a human agent has joined.
 type EscalationState = "idle" | "requesting" | "escalated" | "assigned";
 
+// Story 62: the inline "open a ticket" suggestion card rendered under an AI
+// message that carries one. Manages its own expand/category/submit state —
+// LiveChatPanel only needs to know the outcome (accepted → ticket id/
+// reference; declined → hide every card in this conversation).
+function TicketSuggestionCard({
+  suggestion,
+  conversationId,
+  onAccepted,
+  onDecline,
+}: {
+  suggestion: TicketSuggestion;
+  conversationId: string;
+  onAccepted: (ticketId: string, reference: string) => void;
+  onDecline: () => void;
+}) {
+  const t = useTranslations("Chat");
+  const [expanded, setExpanded] = useState(false);
+  const [subject, setSubject] = useState(suggestion.subject);
+  const [description, setDescription] = useState(suggestion.description);
+  const [categories, setCategories] = useState<string[] | null>(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [category, setCategory] = useState(UNSPECIFIED_CATEGORY);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function handleOpenClick() {
+    setExpanded(true);
+    if (categories !== null) return;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const result = await listActiveTicketCategories();
+      setCategories(result);
+    } catch {
+      setCategoriesError(t("suggestionCategoriesFailed"));
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!subject.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    const result = await createTicketFromConversation({
+      conversationId,
+      subject: subject.trim(),
+      description: description.trim(),
+      category: category === UNSPECIFIED_CATEGORY ? "" : category,
+    });
+    setCreating(false);
+    if (!result.ok) {
+      setCreateError(result.error);
+      return;
+    }
+    onAccepted(result.ticketId, result.reference);
+  }
+
+  return (
+    <div className="flex w-full max-w-[90%] flex-col gap-2 self-start rounded-xl border border-border bg-card p-3 text-sm">
+      <p className="font-medium">{t("suggestionTitle")}</p>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">{t("suggestionSubjectLabel")}</label>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={creating} />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">{t("suggestionDescriptionLabel")}</label>
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          disabled={creating}
+        />
+      </div>
+      {expanded && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">{t("suggestionCategoryLabel")}</label>
+          {categoriesLoading ? (
+            <p className="text-xs text-muted-foreground">{t("connecting")}</p>
+          ) : categoriesError ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-destructive">{categoriesError}</p>
+              <Button type="button" variant="outline" size="sm" onClick={handleOpenClick}>
+                {t("suggestionRetry")}
+              </Button>
+            </div>
+          ) : (
+            <Select value={category} onValueChange={setCategory} disabled={creating}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSPECIFIED_CATEGORY}>{t("suggestionUnspecifiedCategory")}</SelectItem>
+                {categories?.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+      {createError && <p className="text-xs text-destructive">{createError}</p>}
+      <div className="flex gap-2">
+        {expanded ? (
+          <Button type="button" size="sm" disabled={creating || !subject.trim()} onClick={handleSubmit}>
+            {creating ? t("suggestionCreating") : t("suggestionSubmit")}
+          </Button>
+        ) : (
+          <Button type="button" size="sm" onClick={handleOpenClick}>
+            {t("suggestionOpenTicket")}
+          </Button>
+        )}
+        <Button type="button" variant="outline" size="sm" disabled={creating} onClick={onDecline}>
+          {t("suggestionKeepChatting")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // Story 14: the access token is passed down once, purely so the Socket.io
 // handshake can authenticate (there is no other way for a WebSocket
 // connection to carry the httpOnly session cookie) — it is never written to
@@ -64,6 +202,12 @@ export function LiveChatPanel({ token }: { token: string }) {
   // email/ticket suggestion.
   const [noAgentAvailable, setNoAgentAvailable] = useState(false);
   const [conversationClosed, setConversationClosed] = useState(false);
+  // Story 62: once the customer declines one suggestion, every suggestion
+  // card in this conversation hides (mirrors the server's
+  // aiTicketSuggestionDeclined flag, which stops the classifier from being
+  // called again — this local flag just keeps the UI in sync immediately).
+  const [suggestionDeclined, setSuggestionDeclined] = useState(false);
+  const [acceptedTickets, setAcceptedTickets] = useState<Record<string, { id: string; reference: string }>>({});
   const [previousTicketsOpen, setPreviousTicketsOpen] = useState(false);
   const [previousTicketsLoading, setPreviousTicketsLoading] = useState(false);
   const [previousTickets, setPreviousTickets] = useState<ChatTicketSummary[] | null>(null);
@@ -212,6 +356,21 @@ export function LiveChatPanel({ token }: { token: string }) {
     socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
   }
 
+  // Story 62: declining hides every suggestion card in this conversation and
+  // tells the server so the classifier stops being called here again.
+  function handleDeclineSuggestion() {
+    setSuggestionDeclined(true);
+    if (socketRef.current && conversationIdRef.current) {
+      socketRef.current.emit("conversation:ai-suggestion-declined", {
+        conversationId: conversationIdRef.current,
+      });
+    }
+  }
+
+  function handleSuggestionAccepted(messageId: string, ticketId: string, reference: string) {
+    setAcceptedTickets((prev) => ({ ...prev, [messageId]: { id: ticketId, reference } }));
+  }
+
   async function handleTogglePreviousTickets() {
     if (previousTicketsOpen) {
       setPreviousTicketsOpen(false);
@@ -285,18 +444,40 @@ export function LiveChatPanel({ token }: { token: string }) {
         )}
         {messages.map((message) => {
           const isCustomer = message.senderType === "customer";
+          const acceptedTicket = acceptedTickets[message._id];
           return (
-            <div key={message._id} className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>
-              {/* TODO(story-16/18): label "agent" messages once agent replies land */}
-              {message.senderType === "ai" && (
-                <span className="text-[11px] font-medium text-muted-foreground">{t("aiAgentLabel")}</span>
-              )}
-              <div className={`rounded-xl px-3 py-2 text-sm ${isCustomer ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                {message.text}
+            <div key={message._id} className="contents">
+              <div className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>
+                {/* TODO(story-16/18): label "agent" messages once agent replies land */}
+                {message.senderType === "ai" && (
+                  <span className="text-[11px] font-medium text-muted-foreground">{t("aiAgentLabel")}</span>
+                )}
+                <div className={`rounded-xl px-3 py-2 text-sm ${isCustomer ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                  {message.text}
+                </div>
+                <span dir="ltr" className="text-[11px] text-muted-foreground">
+                  {new Date(message.createdAt).toLocaleString()}
+                </span>
               </div>
-              <span dir="ltr" className="text-[11px] text-muted-foreground">
-                {new Date(message.createdAt).toLocaleString()}
-              </span>
+              {message.aiTicketSuggestion &&
+                (acceptedTicket ? (
+                  <Link
+                    href={`/tickets/${acceptedTicket.id}`}
+                    className="w-full max-w-[90%] self-start rounded-xl border border-success/30 bg-success/10 p-3 text-sm text-success hover:underline"
+                  >
+                    {t("suggestionCreated", { reference: acceptedTicket.reference })}
+                  </Link>
+                ) : (
+                  !suggestionDeclined &&
+                  conversationIdRef.current && (
+                    <TicketSuggestionCard
+                      suggestion={message.aiTicketSuggestion}
+                      conversationId={conversationIdRef.current}
+                      onAccepted={(ticketId, reference) => handleSuggestionAccepted(message._id, ticketId, reference)}
+                      onDecline={handleDeclineSuggestion}
+                    />
+                  )
+                ))}
             </div>
           );
         })}

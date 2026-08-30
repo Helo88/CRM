@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { Message } from "../../src/models/Message";
 import * as geminiService from "../../src/services/gemini.service";
-import { getAiReply } from "../../src/services/liveChatAi.service";
+import { getAiReply, evaluateTicketSuggestion } from "../../src/services/liveChatAi.service";
 
 let mongod: MongoMemoryServer;
 
@@ -113,5 +113,69 @@ describe("liveChatAi.service.ts getAiReply (Story 15)", () => {
     const reply = await getAiReply(parentId.toHexString());
 
     expect(reply).toBeNull();
+  });
+});
+
+describe("liveChatAi.service.ts evaluateTicketSuggestion (Story 62)", () => {
+  it("returns a suggestion when Gemini returns valid JSON with suggest: true", async () => {
+    await seedMessage("customer", "I need to attach three screenshots and a long log.");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(
+      '{"suggest": true, "subject": "Attach screenshots and logs", "description": "Customer needs to attach files."}'
+    );
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toEqual({
+      subject: "Attach screenshots and logs",
+      description: "Customer needs to attach files.",
+    });
+  });
+
+  it("returns null when Gemini returns suggest: false", async () => {
+    await seedMessage("customer", "What are your hours?");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue('{"suggest": false, "subject": "", "description": ""}');
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("strips a markdown code fence before parsing", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(
+      '```json\n{"suggest": true, "subject": "S", "description": "D"}\n```'
+    );
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toEqual({ subject: "S", description: "D" });
+  });
+
+  it("returns null when generateText resolves to null (timeout/failure)", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(null);
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("returns null on malformed / non-JSON Gemini output", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue("Sure, here's some prose, not JSON.");
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("returns null immediately, without calling Gemini, when alreadyDeclined is true", async () => {
+    await seedMessage("customer", "Help");
+    const spy = vi.spyOn(geminiService, "generateText");
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), true);
+
+    expect(suggestion).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

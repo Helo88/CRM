@@ -13,6 +13,7 @@ import * as liveChatAiService from "../../src/services/liveChatAi.service";
 
 vi.mock("../../src/services/liveChatAi.service", () => ({
   getAiReply: vi.fn(),
+  evaluateTicketSuggestion: vi.fn(),
 }));
 
 let mongod: MongoMemoryServer;
@@ -45,6 +46,8 @@ beforeEach(async () => {
   await Conversation.deleteMany({});
   await Message.deleteMany({});
   vi.mocked(liveChatAiService.getAiReply).mockReset();
+  vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockReset();
+  vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
 });
 
 function tokenFor(user: { id: string; role: string }) {
@@ -622,6 +625,156 @@ describe("chat.socket.ts agent/admin reply (Story 18)", () => {
     socket.emit("conversation:join", conversation.id);
 
     await expect(errored).resolves.toEqual({ error: "You do not have permission to join this conversation" });
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts AI ticket suggestion (Story 62)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("includes aiTicketSuggestion on the AI message when the classifier suggests one", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue({
+      subject: "Attach logs",
+      description: "Needs file attachments.",
+    });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    const aiMessage = await secondMessage;
+    expect(aiMessage.aiTicketSuggestion).toEqual({ subject: "Attach logs", description: "Needs file attachments." });
+
+    socket.disconnect();
+  });
+
+  it("omits aiTicketSuggestion (null) when the classifier does not suggest one", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    const aiMessage = await secondMessage;
+    expect(aiMessage.aiTicketSuggestion).toBeNull();
+
+    socket.disconnect();
+  });
+
+  it("skips the classifier once the conversation is flagged as declined", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({
+      customer: user._id,
+      status: "ai_handling",
+      aiTicketSuggestionDeclined: true,
+    });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("ok");
+    const socket = await joinedSocket(conversation.id, token);
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.evaluateTicketSuggestion).toHaveBeenCalledWith(conversation.id, true);
+
+    socket.disconnect();
+  });
+
+  it("still emits the normal AI reply when the classifier call rejects", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockRejectedValue(new Error("classifier down"));
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    // Promise.all rejects if either promise rejects, so the outer catch's
+    // fallback path fires -- still a graceful, non-blocking result.
+    const aiMessage = await secondMessage;
+    expect(aiMessage.senderType).toBe("ai");
+    expect(aiMessage.text).toMatch(/trouble answering/i);
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts conversation:ai-suggestion-declined (Story 62)", () => {
+  it("sets aiTicketSuggestionDeclined for the conversation's own customer", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await connect(token);
+
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(true);
+
+    socket.disconnect();
+  });
+
+  it("is idempotent when already declined", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({
+      customer: user._id,
+      status: "ai_handling",
+      aiTicketSuggestionDeclined: true,
+    });
+    const socket = await connect(token);
+
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(true);
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-owning caller and leaves the flag unset", async () => {
+    const { user: owner } = await seedUser();
+    const { token: otherToken } = await seedUser();
+    const conversation = await Conversation.create({ customer: owner._id, status: "ai_handling" });
+    const socket = await connect(otherToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "You do not have permission to update this conversation",
+    });
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(false);
 
     socket.disconnect();
   });

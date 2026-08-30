@@ -24,3 +24,10 @@ export const conversationEscalatePayloadSchema = z.object({
 export const conversationClosePayloadSchema = z.object({
   conversationId: objectIdSchema("Invalid conversation id"),
 });
+
+// Used server-side to validate an inbound conversation:ai-suggestion-declined
+// socket payload (live-chat Story 62 — customer declines the AI's "open a
+// ticket" suggestion).
+export const conversationAiSuggestionDeclinedPayloadSchema = z.object({
+  conversationId: objectIdSchema("Invalid conversation id"),
+});

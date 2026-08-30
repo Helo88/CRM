@@ -8,8 +8,9 @@ import {
   conversationMessagePayloadSchema,
   conversationEscalatePayloadSchema,
   conversationClosePayloadSchema,
+  conversationAiSuggestionDeclinedPayloadSchema,
 } from "../validation/conversation.schema";
-import { getAiReply } from "../services/liveChatAi.service";
+import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
 import { pickAndClaimAgentForConversation } from "../services/assignment.service";
 
 const AI_FALLBACK_TEXT =
@@ -155,13 +156,21 @@ export function registerChatHandlers(io: Server): void {
         io.to(roomKey).emit("conversation:ai-typing", { conversationId });
 
         try {
-          const reply = await getAiReply(conversationId);
+          // Story 62: the ticket-suggestion classifier runs alongside the
+          // normal reply, not instead of it -- each is independently
+          // safe/non-throwing (see liveChatAi.service.ts), so a Promise.all
+          // here never lets one call's failure affect the other.
+          const [reply, ticketSuggestion] = await Promise.all([
+            getAiReply(conversationId),
+            evaluateTicketSuggestion(conversationId, conversation.aiTicketSuggestionDeclined),
+          ]);
           const aiMessage = await Message.create({
             parentType: "conversation",
             parentId: conversation._id,
             senderType: "ai",
             senderId: null,
             text: reply ?? AI_FALLBACK_TEXT,
+            aiTicketSuggestion: ticketSuggestion,
           });
           io.to(roomKey).emit("conversation:message", aiMessage);
         } catch (err) {
@@ -179,6 +188,34 @@ export function registerChatHandlers(io: Server): void {
             console.error("[chat.socket] fallback persistence also failed:", (innerErr as Error).message);
           }
         }
+      }
+    });
+
+    // Story 62: customer declines the AI's "open a ticket" suggestion —
+    // records it so the classifier stops being called for this conversation
+    // (evaluateTicketSuggestion's alreadyDeclined short-circuit above). No
+    // broadcast needed; the declining client already updates its own local
+    // state on click, and no one else needs to know.
+    socket.on("conversation:ai-suggestion-declined", async (payload: { conversationId: string }) => {
+      const parsed = conversationAiSuggestionDeclinedPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+      if (socket.data.user.id !== String(conversation.customer)) {
+        socket.emit("conversation:error", { error: "You do not have permission to update this conversation" });
+        return;
+      }
+      if (!conversation.aiTicketSuggestionDeclined) {
+        conversation.aiTicketSuggestionDeclined = true;
+        await conversation.save();
       }
     });
 

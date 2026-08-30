@@ -12,6 +12,7 @@ Entry point for the **live-chat** feature. Stories execute in order by their `NN
 | 21 | `21-story-escalate-to-a-human-agent.md` | Escalate to a human agent | escalate-to-a-human-agent | — |
 | 22 | `22-story-auto-assign-an-escalated-chat-to-an-available-agent.md` | Auto-assign an escalated chat to an available agent | auto-assign-an-escalated-chat-to-an-available-agent | — |
 | 23 | `23-story-agent-replies-to-a-live-chat-in-real-time.md` | Agent replies to a live chat in real time | agent-replies-to-a-live-chat-in-real-time | — |
+| 24 | `24-story-ai-agent-suggests-opening-a-ticket.md` | AI agent suggests opening a ticket | ai-agent-suggests-opening-a-ticket | — |
 
 ## Dependency notes
 

@@ -17,6 +17,9 @@ export interface IConversation extends Document {
   assignedAgent: Types.ObjectId | null;
   status: ConversationStatus;
   sla: IConversationSla;
+  // Story 62: once the customer declines the AI's "open a ticket" suggestion
+  // once, the AI must not suggest again in this same conversation.
+  aiTicketSuggestionDeclined: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +39,8 @@ const conversationSchema = new Schema<IConversation>(
       responseTargetAt: Date,
       breached: { type: Boolean, default: false },
     },
+
+    aiTicketSuggestionDeclined: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

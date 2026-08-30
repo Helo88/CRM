@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requiredString } from "./common";
+import { requiredString, objectIdSchema } from "./common";
 
 export const SUBJECT_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 4000;
@@ -34,6 +34,10 @@ export const createTicketBodySchema = z
       `description must be at most ${DESCRIPTION_MAX_LENGTH} characters`
     ),
     category: categoryFieldSchema,
+    // Story 62: set when the customer accepted the AI's "open a ticket"
+    // suggestion from a live chat — provenance only, validated here as a
+    // well-formed id; ownership of the conversation is checked in the route.
+    sourceConversation: objectIdSchema("sourceConversation must be a valid id").optional(),
   })
   // customerId/priority/notifyCustomer are staff-only fields this schema
   // doesn't know about (see ticket.routes.ts) — passthrough so validateBody
