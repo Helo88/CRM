@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 interface ConversationRow {
   _id: string;
-  customer: string;
+  customer: { _id: string; name: string };
   assignedAgent: string | null;
   status: "ai_handling" | "escalated" | "with_agent" | "resolved";
   updatedAt: string;
@@ -91,6 +91,7 @@ export default async function ChatsPage({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>{t("columnCustomer")}</TableHead>
                   <TableHead>{t("columnStatus")}</TableHead>
                   <TableHead>{t("columnUpdated")}</TableHead>
                   <TableHead />
@@ -99,6 +100,14 @@ export default async function ChatsPage({
               <TableBody>
                 {data.conversations.map((conversation) => (
                   <TableRow key={conversation._id}>
+                    <TableCell>
+                      <Link
+                        href={`/customers/${conversation.customer._id}`}
+                        className="text-sm font-medium hover:underline"
+                      >
+                        {conversation.customer.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={STATUS_BADGE_CLASS[conversation.status]}>
                         {t(STATUS_KEY[conversation.status])}

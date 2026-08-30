@@ -501,6 +501,7 @@
   },
   "Chat": {
     "heading": "Live chat",
+    "endChat": "End chat",
     "notSignedIn": "You need to be signed in to start a chat.",
     "connecting": "Connecting…",
     "connected": "You're connected. Type a message to start.",
@@ -546,6 +547,7 @@
     "detailMetaTitle": "Chat",
     "heading": "Chats",
     "empty": "No active chats.",
+    "columnCustomer": "Customer",
     "columnStatus": "Status",
     "columnUpdated": "Updated",
     "open": "Open",

@@ -62,7 +62,12 @@ router.get("/", requireAuth, requireRole("agent", "admin"), async (req: Request,
     req.user!.role === "admin"
       ? { status: { $in: ["escalated", "with_agent"] } }
       : { assignedAgent: new Types.ObjectId(req.user!.id), status: { $in: ["escalated", "with_agent"] } };
-  const conversations = await Conversation.find(filter).sort({ updatedAt: -1 }).lean();
+  // Populated so the staff list can show who the agent is actually talking
+  // to, not just a status/timestamp row.
+  const conversations = await Conversation.find(filter)
+    .populate<{ customer: { _id: Types.ObjectId; name: string } }>("customer", "name")
+    .sort({ updatedAt: -1 })
+    .lean();
   res.status(200).json({ conversations });
 });
 

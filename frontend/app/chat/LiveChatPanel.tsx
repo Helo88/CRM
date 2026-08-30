@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
 import { useTranslations } from "next-intl";
 import { CircleAlert, Send, MessageSquareWarning, CircleHelp, Ticket, X } from "lucide-react";
@@ -189,6 +190,7 @@ function TicketSuggestionCard({
 // model everywhere else; it only lives in this component's state for the
 // life of the page.
 export function LiveChatPanel({ token }: { token: string }) {
+  const router = useRouter();
   const t = useTranslations("Chat");
   const tt = useTranslations("Tickets");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -351,9 +353,13 @@ export function LiveChatPanel({ token }: { token: string }) {
     setNoAgentAvailable(false);
   }
 
+  // The customer ending the chat on their own (header X button, or the
+  // no-agent hint's close option) lands them on their tickets list — there's
+  // nothing more to do in this widget once they've decided to leave.
   function handleCloseConversation() {
     if (!socketRef.current || !conversationIdRef.current) return;
     socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
+    router.push("/tickets");
   }
 
   // Story 62: declining hides every suggestion card in this conversation and
@@ -390,13 +396,28 @@ export function LiveChatPanel({ token }: { token: string }) {
 
   return (
     <Card className="flex h-[70vh] w-full max-w-lg flex-col">
-      <CardHeader>
-        <CardTitle>{t("heading")}</CardTitle>
-        <CardDescription>
-          {status === "connecting" && t("connecting")}
-          {status === "connected" && t("connected")}
-          {status === "error" && t("error")}
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle>{t("heading")}</CardTitle>
+          <CardDescription>
+            {status === "connecting" && t("connecting")}
+            {status === "connected" && t("connected")}
+            {status === "error" && t("error")}
+          </CardDescription>
+        </div>
+        {!conversationClosed && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            title={t("endChat")}
+            onClick={handleCloseConversation}
+          >
+            <X className="size-4" />
+            <span className="sr-only">{t("endChat")}</span>
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2 overflow-y-auto">
         {errorMessage && (

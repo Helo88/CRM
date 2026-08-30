@@ -501,6 +501,7 @@
   },
   "Chat": {
     "heading": "الدردشة المباشرة",
+    "endChat": "إنهاء المحادثة",
     "notSignedIn": "يجب تسجيل الدخول لبدء محادثة.",
     "connecting": "جارٍ الاتصال…",
     "connected": "تم الاتصال. اكتب رسالة للبدء.",
@@ -546,6 +547,7 @@
     "detailMetaTitle": "المحادثة",
     "heading": "المحادثات",
     "empty": "لا توجد محادثات نشطة.",
+    "columnCustomer": "العميل",
     "columnStatus": "الحالة",
     "columnUpdated": "آخر تحديث",
     "open": "فتح",
