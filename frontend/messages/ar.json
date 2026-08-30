@@ -563,7 +563,12 @@
     "youLabel": "أنت",
     "agentLabel": "موظف الدعم",
     "composerPlaceholder": "اكتب ردك…",
-    "send": "إرسال"
+    "send": "إرسال",
+    "markResolved": "وضع علامة كمُنجَزة",
+    "markResolvedConfirmTitle": "إغلاق هذه المحادثة؟",
+    "markResolvedConfirmBody": "لن يتمكن العميل بعد الآن من إرسال رسائل. لا يمكن التراجع عن هذا الإجراء.",
+    "markResolvedCancel": "إلغاء",
+    "markResolvedConfirm": "وضع علامة كمُنجَزة"
   },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",

@@ -212,4 +212,23 @@ describe("GET /api/v1/conversations/:id (Story 18)", () => {
       .set("Authorization", `Bearer ${otherCustomerToken}`);
     expect(res.status).toBe(403);
   });
+
+  it("stays readable after close (resolved) for the customer, the assigned agent, and an admin (Story 19)", async () => {
+    const { user: customer, token: customerToken } = await seedUser();
+    const { user: agent, token: agentToken } = await seedUser({ role: "agent" });
+    const { token: adminToken } = await seedUser({ role: "admin" });
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "resolved",
+    });
+
+    for (const token of [customerToken, agentToken, adminToken]) {
+      const res = await request(app)
+        .get(`/api/v1/conversations/${conversation.id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.conversation.status).toBe("resolved");
+    }
+  });
 });

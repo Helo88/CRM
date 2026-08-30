@@ -295,10 +295,9 @@ export function registerChatHandlers(io: Server): void {
       }
     });
 
-    // Story 17: minimal customer-triggered close, offered from the "no
-    // agent available" hint. Story 19 ("Close a live chat conversation")
-    // replaces this with the full agent-facing close flow — this handler
-    // only needs to be functional, not polished.
+    // Story 19: widened from customer-only (Story 17's minimal version) to
+    // isAuthorizedOnConversation — customer, assignedAgent, or admin can all
+    // mark a chat resolved now.
     socket.on("conversation:close", async (payload: { conversationId: string }) => {
       const parsed = conversationClosePayloadSchema.safeParse(payload);
       if (!parsed.success) {
@@ -313,7 +312,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (socket.data.user.id !== String(conversation.customer)) {
+      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
         socket.emit("conversation:error", { error: "You do not have permission to close this conversation" });
         return;
       }

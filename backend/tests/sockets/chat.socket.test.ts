@@ -511,15 +511,59 @@ describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
     socket.disconnect();
   });
 
-  it("rejects a non-customer conversation:close with conversation:error", async () => {
-    const { user: customer } = await seedUser("customer");
+  it("lets the assigned agent close via conversation:close (Story 19)", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
     const { user: agent, token: agentToken } = await seedUser("agent");
     const conversation = await Conversation.create({
       customer: customer._id,
       assignedAgent: agent._id,
       status: "with_agent",
     });
-    const socket = await joinedSocket(conversation.id, agentToken);
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    const closedForCustomer = new Promise((resolve) => customerSocket.on("conversation:closed", resolve));
+    agentSocket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closedForCustomer).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("lets an admin close any conversation via conversation:close (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent } = await seedUser("agent");
+    const { token: adminToken } = await seedUser("admin");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, adminToken);
+
+    const closed = new Promise((resolve) => socket.on("conversation:closed", resolve));
+    socket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closed).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-participant agent's conversation:close with conversation:error (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: assignedAgent } = await seedUser("agent");
+    const { token: otherAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: assignedAgent._id,
+      status: "with_agent",
+    });
+    // Not joinedSocket() -- this agent isn't authorized to join the
+    // conversation either, so waiting on "conversation:joined" would hang.
+    const socket = await connect(otherAgentToken);
 
     const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
     socket.emit("conversation:close", { conversationId: conversation.id });
@@ -528,6 +572,52 @@ describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
       error: "You do not have permission to close this conversation",
     });
     expect((await Conversation.findById(conversation.id))!.status).toBe("with_agent");
+
+    socket.disconnect();
+  });
+
+  it("closing an already-resolved conversation emits conversation:closed to the caller but does not re-broadcast (Story 19)", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "resolved",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    let customerBroadcasts = 0;
+    customerSocket.on("conversation:closed", () => {
+      customerBroadcasts += 1;
+    });
+    const closedForAgent = new Promise((resolve) => agentSocket.on("conversation:closed", resolve));
+    agentSocket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closedForAgent).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    // Give the (absent) room broadcast a tick to have arrived if it wrongly fired.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(customerBroadcasts).toBe(0);
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("rejects an agent's message on a resolved conversation, same as a customer's (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "resolved",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    await expect(errored).resolves.toEqual({ error: "This conversation is closed" });
+    expect(await Message.countDocuments()).toBe(0);
 
     socket.disconnect();
   });

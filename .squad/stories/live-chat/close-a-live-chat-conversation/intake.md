@@ -60,19 +60,21 @@ None.
 
 ## Dependencies
 
-- **Blocked by / related ids:** Story 18 (agent replies in real time).
-- **Depends on code areas or other stories:** `backend/src/models/Conversation.ts` (`status: ConversationStatus` — `"resolved"` already in the enum; `timestamps: true` on the schema already gives `updatedAt`, which can serve as the "closed timestamp," or a dedicated field can be added if a distinct semantic is needed — note which).
+- **Blocked by / related ids:** Story 18 (agent replies in real time) — **shipped**. Story 17 (auto-assign an escalated chat) — **shipped**, and already built a *minimal* `conversation:close` socket handler (`backend/src/sockets/chat.socket.ts`) as part of its own "no agent available → keep chatting or close" hint, scoped **customer-only** at the time. This story is what widens that same handler so the assigned agent (or admin) can also mark a chat resolved — the actual "As a human agent, I want to mark a live chat as resolved" acceptance criterion this story is named for was NOT satisfied by Story 17's narrower version. Do not build a second close mechanism; widen the existing one.
+- **Depends on code areas or other stories:** `backend/src/models/Conversation.ts` (`status: ConversationStatus` — `"resolved"` already in the enum; `timestamps: true` on the schema already gives `updatedAt`, already used as the "closed timestamp" — no dedicated field needed, matches how `Ticket` does it). `backend/src/sockets/chat.socket.ts`'s `isAuthorizedOnConversation(user, conversation)` (Story 18) — the customer, its `assignedAgent`, or any admin — is the exact authorization rule this story's widened close check should reuse, rather than the narrower "must be the customer" check the current handler has. `frontend/app/chats/[id]/AgentChatPanel.tsx` (Story 18) already has a `// TODO(Story 19): mark-resolved button goes in the header row` comment marking where this story's UI lands, and already disables its composer + shows "This conversation is closed" when `conversation.status === "resolved"` — reuse that, don't rebuild it.
 
 ## Extra notes (optional)
 
-- "Customer sees a closed indicator" needs a real-time push — reuse the same Socket.io room (`conversation:${conversationId}`, already used by `conversation:join`/`conversation:message` in `chat.socket.ts`) to emit a status-change event, rather than requiring the customer to poll or refresh.
-- "Remain viewable read-only" — no delete endpoint exists on conversations, so this mainly means: once `status === "resolved"`, further `conversation:message` sends for that conversation should be rejected (or at least not treated as active), not that a new endpoint is needed to "view" it (the existing read path, once Story 18 defines one, already covers this).
+- "Customer sees a closed indicator" — **already shipped** by Story 17: `frontend/app/chat/LiveChatPanel.tsx` listens for `conversation:closed` and renders a destructive alert with `t("closed")`. Verify only.
+- "Remain viewable read-only" — **already shipped**: `chat.socket.ts`'s `conversation:message` handler already rejects sends once `status === "resolved"`; `GET /api/v1/conversations/:id` (Story 18) has no status restriction, so a resolved conversation's transcript stays readable. The one real gap: `GET /api/v1/conversations` (Story 18's staff list) filters to `{ status: { $in: ["escalated", "with_agent"] } }` — a resolved conversation drops out of that list entirely once closed, so an agent/admin who doesn't already have the URL loses the discovery path to it. Decide explicitly whether this story needs to widen that list (e.g. an "include resolved" filter/tab) or whether that's acceptable to leave for a later history-specific story — don't leave it silently unaddressed either way.
+- The actual net-new work for this story is narrow: (1) widen the `conversation:close` handler's authorization from customer-only to `isAuthorizedOnConversation`-equivalent (customer, assignedAgent, or admin), and (2) add the agent-facing "Mark resolved" button in `AgentChatPanel.tsx` at the TODO anchor, emitting the same `conversation:close` event the customer path already uses.
 
 ## Technical hints (optional)
 
 - Repos/roots: `.`. Primary language: `typescript`.
-- `requireAuth`, `requireRole("agent","admin")` for the close/resolve endpoint.
+- Do **not** add a REST endpoint for this — live-chat's established pattern (Stories 16/17) is socket-only for every conversation-state-changing action; a REST `close/resolve` endpoint would be a second parallel mechanism for the same concern.
 
 ## Out of scope
 
 - Customer feedback/rating after resolution (Story 38, `customer-portal` feature, separate, much later story).
+- A full "closed chats" history page/tab — only decide (per Extra notes) whether the existing staff list needs to surface resolved conversations at all; building a polished history view is later scope.

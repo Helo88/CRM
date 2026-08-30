@@ -563,7 +563,12 @@
     "youLabel": "You",
     "agentLabel": "Agent",
     "composerPlaceholder": "Type your reply…",
-    "send": "Send"
+    "send": "Send",
+    "markResolved": "Mark resolved",
+    "markResolvedConfirmTitle": "Close this conversation?",
+    "markResolvedConfirmBody": "The customer will no longer be able to send messages. This can't be undone.",
+    "markResolvedCancel": "Cancel",
+    "markResolvedConfirm": "Mark resolved"
   },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",

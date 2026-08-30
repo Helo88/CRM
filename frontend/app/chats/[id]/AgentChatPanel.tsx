@@ -9,6 +9,17 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export interface AgentChatMessage {
   _id: string;
@@ -61,10 +72,9 @@ export function AgentChatPanel({
       if (cancelled) return;
       setMessages((prev) => [...prev, message]);
     });
-    // Forward-compatible with Story 19 ("close a live chat"), which adds the
-    // actual "mark resolved" control — this just reflects the status
-    // change if it happens while the agent is looking at this page.
-    // TODO(Story 19): mark-resolved button goes in the header row below.
+    // Story 19: reflects the status change whether resolved from this
+    // panel's own "Mark resolved" button below or from elsewhere (customer
+    // close, another admin session).
     socket.on("conversation:closed", () => {
       if (!cancelled) setConversationStatus("resolved");
     });
@@ -95,19 +105,47 @@ export function AgentChatPanel({
     setDraft("");
   }
 
+  // Story 19: no optimistic local status flip — wait for the
+  // conversation:closed broadcast (handled above) to drive the UI, same as
+  // the customer side's own close path.
+  function handleMarkResolved() {
+    socketRef.current?.emit("conversation:close", { conversationId });
+  }
+
   const isClosed = conversationStatus === "resolved";
   const isDisabled = status !== "connected" || isClosed;
 
   return (
     <Card className="flex h-[70vh] w-full max-w-lg flex-col">
-      <CardHeader>
-        <CardTitle>{t("detailHeading")}</CardTitle>
-        <CardDescription>
-          {status === "connecting" && t("connecting")}
-          {status === "connected" && !isClosed && t("connected")}
-          {status === "connected" && isClosed && t("closed")}
-          {status === "error" && t("connectionError")}
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle>{t("detailHeading")}</CardTitle>
+          <CardDescription>
+            {status === "connecting" && t("connecting")}
+            {status === "connected" && !isClosed && t("connected")}
+            {status === "connected" && isClosed && t("closed")}
+            {status === "error" && t("connectionError")}
+          </CardDescription>
+        </div>
+        {!isClosed && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm" disabled={status !== "connected"}>
+                {t("markResolved")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("markResolvedConfirmTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("markResolvedConfirmBody")}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("markResolvedCancel")}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleMarkResolved}>{t("markResolvedConfirm")}</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2 overflow-y-auto">
         {errorMessage && (

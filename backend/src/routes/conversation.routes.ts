@@ -52,6 +52,11 @@ router.post(
 // Story 18: staff-scoped list of active conversations — an agent's own
 // assigned ones, or every active one for an admin. Not paginated yet
 // (platform Story 59 covers that consistently once it's this route's turn).
+// Story 19 (close a live chat) intentionally does NOT widen this filter to
+// include "resolved" — a closed conversation drops out of this list on
+// purpose; the agent who closed it still has the URL, and GET /:id stays
+// readable regardless of status. A polished "closed chats" history view is
+// separate, later scope, not a gap to silently "fix" here.
 router.get("/", requireAuth, requireRole("agent", "admin"), async (req: Request, res: Response) => {
   const filter =
     req.user!.role === "admin"
