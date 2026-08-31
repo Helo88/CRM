@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
@@ -59,7 +59,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 
   it("lets an agent create a customer with role always 'customer', never exposing passwordHash", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -88,7 +88,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 
   it("returns 400 when name/email/password are missing", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -97,7 +97,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 
   it("returns 400 for a too-short password", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -106,7 +106,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 
   it("returns 400 for an invalid phone", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -117,7 +117,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   // Regression: the old generic "7-15 digits" rule accepted this — a local
   // Egyptian number missing its leading 0, so not actually a real number.
   it("returns 400 for a 10-digit number missing the leading 0 (was wrongly accepted before)", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -126,7 +126,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 
   it("accepts a real Egyptian mobile number in local and international format", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const local = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -142,7 +142,7 @@ describe("POST /api/v1/customers (Story 55)", () => {
 
   it("returns 409 for a duplicate email", async () => {
     const { user: existing } = await seedUser({ email: "taken-2@example.com" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${token}`)
@@ -151,20 +151,32 @@ describe("POST /api/v1/customers (Story 55)", () => {
   });
 });
 
-// security-admin Story 46: subadmin is newly allowed here, delegable via
-// customers:manage — agent and admin access must stay UNCHANGED from before
-// this story (no regression against Story 55's already-working behavior).
+// security-admin Story 46 originally kept agent ungated here (no regression
+// against Story 55's already-working behavior). That bypass left
+// customers:manage exposed as a toggleable permission for agent accounts in
+// the admin UI while doing nothing — reversed since: agent now requires
+// customers:manage, same as subadmin.
 describe("GET/POST /api/v1/customers — Story 46 permission gating", () => {
-  it("agent passes with no customers:manage grant at all (no regression)", async () => {
-    const { token } = await seedUser({ role: "agent" });
-    const resGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${token}`);
-    expect(resGet.status).toBe(200);
+  it("agent now requires customers:manage, same as subadmin", async () => {
+    const { token: plainToken } = await seedUser({ role: "agent" });
+    const deniedGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${plainToken}`);
+    expect(deniedGet.status).toBe(403);
 
-    const resPost = await request(app)
+    const deniedPost = await request(app)
       .post("/api/v1/customers")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ name: "Walk-in", email: "agent-unaffected@example.com", password: "password123" });
-    expect(resPost.status).toBe(201);
+      .set("Authorization", `Bearer ${plainToken}`)
+      .send({ name: "Walk-in", email: "agent-no-permission@example.com", password: "password123" });
+    expect(deniedPost.status).toBe(403);
+
+    const { token: grantedToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
+    const grantedGet = await request(app).get("/api/v1/customers").set("Authorization", `Bearer ${grantedToken}`);
+    expect(grantedGet.status).toBe(200);
+
+    const grantedPost = await request(app)
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${grantedToken}`)
+      .send({ name: "Walk-in", email: "agent-granted@example.com", password: "password123" });
+    expect(grantedPost.status).toBe(201);
   });
 
   it("admin passes with no customers:manage grant at all (no regression)", async () => {
@@ -212,7 +224,7 @@ describe("GET /api/v1/customers/:id", () => {
   });
 
   it("returns 400 for a malformed id", async () => {
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app).get("/api/v1/customers/not-an-id").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(400);
   });
@@ -237,13 +249,13 @@ describe("GET /api/v1/customers/:id", () => {
 
   it("lets an agent read any customer", async () => {
     const { user: target } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app).get(`/api/v1/customers/${target.id}`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
   });
 
   it("lets an admin read an agent (staff reading staff is allowed for GET)", async () => {
-    const { user: target } = await seedUser({ role: "agent" });
+    const { user: target } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const { token } = await seedUser({ role: "admin" });
     const res = await request(app).get(`/api/v1/customers/${target.id}`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
@@ -307,7 +319,7 @@ describe("PATCH /api/v1/customers/:id", () => {
 
   it("lets an agent patch a customer", async () => {
     const { user: target } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .patch(`/api/v1/customers/${target.id}`)
       .set("Authorization", `Bearer ${token}`)
@@ -316,8 +328,8 @@ describe("PATCH /api/v1/customers/:id", () => {
   });
 
   it("returns 403 when an agent patches another agent (staff-on-staff blocked)", async () => {
-    const { user: target } = await seedUser({ role: "agent" });
-    const { token } = await seedUser({ role: "agent" });
+    const { user: target } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .patch(`/api/v1/customers/${target.id}`)
       .set("Authorization", `Bearer ${token}`)
@@ -346,7 +358,7 @@ describe("PATCH /api/v1/customers/:id", () => {
   it("returns 409 when staff PATCHes a customer's email to one already in use", async () => {
     const { user: other } = await seedUser({ role: "customer", email: "taken@example.com" });
     const { user: target } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .patch(`/api/v1/customers/${target.id}`)
       .set("Authorization", `Bearer ${token}`)
@@ -396,7 +408,7 @@ describe("internal notes (Story 7)", () => {
 
   it("agent can add a note; response has the hydrated author name", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith", permissions: ["customers:manage"] });
     const res = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${token}`)
@@ -408,7 +420,7 @@ describe("internal notes (Story 7)", () => {
 
   it("agent's subsequent GET /:id includes the note, newest first, with hydrated author", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const { token } = await seedUser({ role: "agent", name: "Agent Smith", permissions: ["customers:manage"] });
     await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${token}`)
@@ -427,7 +439,7 @@ describe("internal notes (Story 7)", () => {
 
   it("customer's own GET /:id never includes internalNotes", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -458,7 +470,7 @@ describe("internal notes (Story 7)", () => {
 
   it("rejects empty text and text over 4000 characters", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
 
     const empty = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
@@ -487,7 +499,7 @@ describe("general attachments (Story 7)", () => {
 
   it("agent uploads two files; response includes both, hydrated, pointing at the protected route", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith", permissions: ["customers:manage"] });
 
     const res = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
@@ -507,7 +519,7 @@ describe("general attachments (Story 7)", () => {
 
   it("a different customer (not staff, not the owner) gets 403; unauthenticated gets 401", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const uploadRes = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${token}`)
@@ -524,7 +536,7 @@ describe("general attachments (Story 7)", () => {
 
   it("repeated uploads accumulate", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${token}`)
@@ -540,7 +552,7 @@ describe("general attachments (Story 7)", () => {
 
   it("a file over 10 MB is rejected with 413", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const oversized = Buffer.alloc(11 * 1024 * 1024, "x");
     const res = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
@@ -551,7 +563,7 @@ describe("general attachments (Story 7)", () => {
 
   it("customer's own GET /:id includes their own attachments (not omitted)", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -575,7 +587,7 @@ describe("ID document (Story 7)", () => {
 
   it("agent uploads a PDF; PUT /:id/id-document returns the hydrated document", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith", permissions: ["customers:manage"] });
     const res = await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
       .set("Authorization", `Bearer ${token}`)
@@ -587,7 +599,7 @@ describe("ID document (Story 7)", () => {
 
   it("a second upload replaces the first — the first stored file is deleted from disk", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
 
     const first = await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
@@ -613,7 +625,7 @@ describe("ID document (Story 7)", () => {
 
   it("uploading a text file is rejected 400 UNSUPPORTED_FILE_TYPE", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
       .set("Authorization", `Bearer ${token}`)
@@ -627,7 +639,7 @@ describe("ID document (Story 7)", () => {
   // ID_DOCUMENT_ACCEPTED_TYPES.
   it("uploading a GIF or a video is rejected 400 UNSUPPORTED_FILE_TYPE", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
 
     const gif = await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
@@ -646,7 +658,7 @@ describe("ID document (Story 7)", () => {
 
   it("accepts a JPG in addition to PNG and PDF", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
       .set("Authorization", `Bearer ${token}`)
@@ -657,7 +669,7 @@ describe("ID document (Story 7)", () => {
 
   it("customer's own GET /:id includes their own idDocument", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     await request(app)
       .put(`/api/v1/customers/${customer.id}/id-document`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -672,7 +684,7 @@ describe("ID document (Story 7)", () => {
 describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
   it("agent can edit a note's text; response has the updated text and hydrated author", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith" });
+    const { token, user: agent } = await seedUser({ role: "agent", name: "Agent Smith", permissions: ["customers:manage"] });
     const created = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${token}`)
@@ -690,7 +702,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 
   it("the edit is reflected in a subsequent GET /:id", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const created = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${token}`)
@@ -706,7 +718,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 
   it("subadmin holding customers:manage can edit; without it, 403", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const created = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -729,7 +741,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 
   it("returns 404 for a note id that doesn't exist on that customer", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .patch(`/api/v1/customers/${customer.id}/notes/000000000000000000000000`)
       .set("Authorization", `Bearer ${token}`)
@@ -739,7 +751,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 
   it("rejects empty text and text over 4000 characters", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const created = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${token}`)
@@ -760,7 +772,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 
   it("a customer viewer gets 403 (editing is a staff-only write)", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const created = await request(app)
       .post(`/api/v1/customers/${customer.id}/notes`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -777,7 +789,7 @@ describe("PATCH /api/v1/customers/:id/notes/:noteId (edit a note)", () => {
 describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
   it("agent deletes an attachment; it's gone from the roster and the file is removed from disk", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const uploaded = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${token}`)
@@ -802,7 +814,7 @@ describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
 
   it("deleting one of several attachments leaves the others untouched", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const uploaded = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${token}`)
@@ -821,7 +833,7 @@ describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
 
   it("subadmin holding customers:manage can delete; without it, 403", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const uploaded = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${agentToken}`)
@@ -842,7 +854,7 @@ describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
 
   it("returns 404 for an attachment id that doesn't exist on that customer", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
-    const { token } = await seedUser({ role: "agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const res = await request(app)
       .delete(`/api/v1/customers/${customer.id}/attachments/000000000000000000000000`)
       .set("Authorization", `Bearer ${token}`);
@@ -851,7 +863,7 @@ describe("DELETE /api/v1/customers/:id/attachments/:attachmentId", () => {
 
   it("a customer viewer gets 403 (deleting is a staff-only write)", async () => {
     const { user: customer, token } = await seedUser({ role: "customer" });
-    const { token: agentToken } = await seedUser({ role: "agent" });
+    const { token: agentToken } = await seedUser({ role: "agent", permissions: ["customers:manage"] });
     const uploaded = await request(app)
       .post(`/api/v1/customers/${customer.id}/attachments`)
       .set("Authorization", `Bearer ${agentToken}`)

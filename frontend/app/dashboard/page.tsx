@@ -150,8 +150,8 @@ export default async function DashboardPage({
     redirect("/api/session/deactivated");
   }
 
-  // Mirrors the actual route gates: agent/admin always reach /customers,
-  // a sub-admin only with a customers:manage delegation (see
+  // Mirrors the actual route gates: admin always reaches /customers, agent
+  // and sub-admin both only with a customers:manage grant (see
   // backend/src/routes/customer.routes.ts's staffOrDelegatedSubadmin);
   // /admin/users needs staff:view_list, which only admin or a delegated
   // sub-admin can ever hold (see SUBADMIN_ONLY_PERMISSIONS). A viewer
@@ -160,7 +160,7 @@ export default async function DashboardPage({
   // hidden) — DashboardTile renders it disabled instead of omitting it.
   // /tickets has no such gate — every staff role reaches a working queue.
   const canViewTickets = true;
-  const canViewCustomers = role === "agent" || role === "admin" || permissions.includes("customers:manage");
+  const canViewCustomers = role === "admin" || permissions.includes("customers:manage");
   const canViewAccounts = role === "admin" || permissions.includes("staff:view_list");
 
   return (

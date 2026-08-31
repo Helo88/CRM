@@ -11,10 +11,15 @@ import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, 
 // with every permission granted) always got a real 403 there, and any agent
 // had unconditional access with no way to revoke it. It's now gated on
 // chats:manage instead, same as "accounts" — see isVisibleForRole below for
-// why one `permission` check now covers both cases correctly.
+// why one `permission` check now covers both cases correctly. "customers"
+// used to be unconditionally visible to any staff role too, back when an
+// agent's access to /customers was itself unconditional — now that
+// customer.routes.ts gates agent (not just sub-admin) on customers:manage,
+// this must gate on it as well, or an agent who's had it revoked gets a nav
+// entry/search result that just bounces them to /dashboard.
 export const STAFF_NAV_ITEMS = [
   { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
-  { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
+  { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: "customers:manage" },
   { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
   { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage" },
   { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list" },
@@ -67,9 +72,10 @@ export const STAFF_ACTION_ITEMS = [
   // even one lacking tickets:create_for_customer (the backend 403 surfaces
   // as an in-form alert, not a dead page).
   { key: "newTicket", href: "/tickets/new", icon: TicketPlus, agentOrAdminOnly: false, staffOnly: false, permission: undefined },
-  // customers/new/page.tsx redirects anyone who isn't exactly "agent" or
-  // "admin" (a subadmin included) — matches that exact check.
-  { key: "newCustomer", href: "/customers/new", icon: UserPlus, agentOrAdminOnly: true, staffOnly: false, permission: undefined },
+  // customers/new/page.tsx requires customers:manage (agent/subadmin) or
+  // admin, same gate its POST /customers ultimately enforces — matches
+  // that exactly.
+  { key: "newCustomer", href: "/customers/new", icon: UserPlus, agentOrAdminOnly: false, staffOnly: false, permission: "customers:manage" },
   // admin/users/new/page.tsx requires role "admin" or permission staff:edit
   // (a sub-admin delegated staff:edit, same key the POST itself requires).
   { key: "newStaffAccount", href: "/admin/users/new", icon: ShieldPlus, agentOrAdminOnly: false, staffOnly: true, permission: "staff:edit" },
