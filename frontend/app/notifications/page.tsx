@@ -3,9 +3,20 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import {
+  UserCheck,
+  ArrowUpCircle,
+  Repeat,
+  UserMinus,
+  TicketPlus,
+  Sparkles,
+  AlertTriangle,
+  RotateCcw,
+  type LucideIcon,
+} from "lucide-react";
 import { peekJwtPayload } from "@/lib/jwt";
 import { REFRESH_COOKIE, SESSION_COOKIE } from "@/lib/auth";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ListPagination } from "@/components/ListPagination";
@@ -27,6 +38,37 @@ const TYPE_KEY: Record<NotificationType, string> = {
   ticket_needs_assignment: "notificationTicketNeedsAssignment",
   ticket_reopened: "notificationTicketReopened",
   ticket_reopened_oversight: "notificationTicketReopenedOversight",
+};
+
+// Icon + semantic color per notification type — reused meanings, not new
+// colors: escalated stays destructive (same red the ticket's own "Escalated"
+// badge uses elsewhere), anything needing attention (unassigned work,
+// reopened) is warning, routine assignment/creation is primary, and the one
+// purely-informational type (lost your assignment) is muted. Icons echo the
+// ones already used for the same action elsewhere (ArrowUpCircle for
+// escalate, Repeat for reassign, TicketPlus for a new ticket).
+const TYPE_ICON: Record<NotificationType, LucideIcon> = {
+  ticket_assigned: UserCheck,
+  ticket_escalated: ArrowUpCircle,
+  ticket_reassigned: Repeat,
+  ticket_unassigned: UserMinus,
+  ticket_created: TicketPlus,
+  ticket_auto_assigned: Sparkles,
+  ticket_needs_assignment: AlertTriangle,
+  ticket_reopened: RotateCcw,
+  ticket_reopened_oversight: RotateCcw,
+};
+
+const TYPE_COLOR_CLASS: Record<NotificationType, string> = {
+  ticket_assigned: "bg-primary/10 text-primary",
+  ticket_escalated: "bg-destructive/10 text-destructive",
+  ticket_reassigned: "bg-primary/10 text-primary",
+  ticket_unassigned: "bg-muted text-muted-foreground",
+  ticket_created: "bg-primary/10 text-primary",
+  ticket_auto_assigned: "bg-primary/10 text-primary",
+  ticket_needs_assignment: "bg-warning/10 text-warning",
+  ticket_reopened: "bg-warning/10 text-warning",
+  ticket_reopened_oversight: "bg-warning/10 text-warning",
 };
 
 // The dedicated "view all" surface the notification bell's dropdown links
@@ -89,21 +131,38 @@ export default async function NotificationsPage({
           ) : (
             <>
               <div className="flex flex-col gap-2 md:hidden">
-                {result.notifications.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/tickets/${item.ticket.id}`}
-                    className="block rounded-xl border border-border p-4 hover:bg-muted/50"
-                  >
-                    <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
-                      {tNav(TYPE_KEY[item.type])}
-                    </span>
-                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                      {item.ticket.reference} — {item.ticket.subject}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</p>
-                  </Link>
-                ))}
+                {result.notifications.map((item) => {
+                  const Icon = TYPE_ICON[item.type];
+                  return (
+                    <Link
+                      key={item.id}
+                      href={`/tickets/${item.ticket.id}`}
+                      className={cn(
+                        "flex gap-3 rounded-xl border p-4 transition-colors hover:bg-muted/50",
+                        item.read ? "border-border" : "border-primary/30 bg-primary/5"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-8 shrink-0 items-center justify-center rounded-full",
+                          TYPE_COLOR_CLASS[item.type]
+                        )}
+                      >
+                        <Icon className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-semibold"}>
+                          {tNav(TYPE_KEY[item.type])}
+                        </span>
+                        <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                          {item.ticket.reference} — {item.ticket.subject}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</p>
+                      </div>
+                      {!item.read && <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" aria-hidden />}
+                    </Link>
+                  );
+                })}
               </div>
 
               <div className="hidden overflow-hidden rounded-2xl border border-border md:block">
@@ -116,23 +175,42 @@ export default async function NotificationsPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {result.notifications.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
-                          <Link href={`/tickets/${item.ticket.id}`} className="hover:underline">
-                            {tNav(TYPE_KEY[item.type])}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          <Link href={`/tickets/${item.ticket.id}`} className="hover:underline">
-                            {item.ticket.reference} — {item.ticket.subject}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(item.createdAt)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {result.notifications.map((item) => {
+                      const Icon = TYPE_ICON[item.type];
+                      return (
+                        <TableRow
+                          key={item.id}
+                          className={cn(
+                            !item.read && "border-s-2 border-s-primary bg-primary/5 hover:bg-primary/10"
+                          )}
+                        >
+                          <TableCell>
+                            <Link href={`/tickets/${item.ticket.id}`} className="flex items-center gap-2.5 hover:underline">
+                              <span
+                                className={cn(
+                                  "flex size-7 shrink-0 items-center justify-center rounded-full",
+                                  TYPE_COLOR_CLASS[item.type]
+                                )}
+                              >
+                                <Icon className="size-3.5" />
+                              </span>
+                              <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-semibold"}>
+                                {tNav(TYPE_KEY[item.type])}
+                              </span>
+                              {!item.read && <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            <Link href={`/tickets/${item.ticket.id}`} className="hover:underline">
+                              {item.ticket.reference} — {item.ticket.subject}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatDateTime(item.createdAt)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
