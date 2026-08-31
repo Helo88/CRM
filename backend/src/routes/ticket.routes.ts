@@ -8,7 +8,7 @@ import { User } from "../models/User";
 import { Conversation } from "../models/Conversation";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
 import { pickNextAvailableAgent } from "../services/assignment.service";
-import { createTicketNotification } from "../services/notification.service";
+import { createTicketNotification, notifyTicketOversight } from "../services/notification.service";
 import type { PermissionKey } from "../constants/permissions";
 import { hasPermission, isActiveAccount } from "../services/permissions";
 import { validateBody } from "../middleware/validate";
@@ -90,9 +90,26 @@ router.post(
         return;
       }
 
+      // tickets:create_for_customer alone only covers creating with defaults
+      // (no category, priority "medium") — setting either to something
+      // non-default up front needs the same per-field permission PATCH /:id
+      // already requires to change them later (see callerHasPermission
+      // below, defined further down this file but hoisted). `category` is
+      // already transform-normalized to null when omitted/blank by
+      // createTicketBodySchema, so a truthy check is equivalent to "was a
+      // real category provided."
+      if (category && !(await callerHasPermission(req, "tickets:categorize"))) {
+        res.status(403).json({ error: "You do not have permission to perform this action" });
+        return;
+      }
+
       if (req.body?.priority !== undefined) {
         if (!ALLOWED_PRIORITIES.includes(req.body.priority)) {
           res.status(400).json({ error: `priority must be one of: ${ALLOWED_PRIORITIES.join(", ")}` });
+          return;
+        }
+        if (!(await callerHasPermission(req, "tickets:change_priority"))) {
+          res.status(403).json({ error: "You do not have permission to perform this action" });
           return;
         }
         priority = req.body.priority;
@@ -136,6 +153,12 @@ router.post(
     const referenceNumber = `TCK-${ticket.ticketNumber}`;
     const shouldSendEmail = !isStaffCreated || notifyCustomer;
 
+    // Oversight nudge: every new ticket, regardless of how it was created or
+    // whether auto-assignment below succeeds, is visible to admins/permitted
+    // subadmins immediately — best effort, same reasoning as every other
+    // notification/email in this handler (never fails ticket creation).
+    await notifyTicketOversight({ type: "ticket_created", ticketId: ticket._id });
+
     // Story 10: attempt to auto-assign to an online agent (least-busy,
     // oldest-createdAt tiebreak). Never fail creation on a missing agent
     // or a DB hiccup — the ticket is the source of truth; assignment is a
@@ -150,6 +173,13 @@ router.post(
         // Story 54: in-app nudge alongside the assignment email below — best
         // effort, same reasoning as that email (never fails ticket creation).
         await createTicketNotification({ recipient: assignedAgentId, type: "ticket_assigned", ticketId: ticket._id });
+        await notifyTicketOversight({ type: "ticket_auto_assigned", ticketId: ticket._id });
+      } else {
+        // No agent was online to pick up the ticket at all — leaving it
+        // silently unassigned means nobody finds out until someone happens
+        // to look at the queue. Oversight needs the nudge since manual
+        // reassignment (Story 25) is the only way this ticket gets an agent.
+        await notifyTicketOversight({ type: "ticket_needs_assignment", ticketId: ticket._id });
       }
     } catch (err) {
       console.error("[tickets] auto-assignment failed", err);
@@ -288,7 +318,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 // hasPermission check) — duplicated rather than imported since it's a
 // 4-line helper and importing route-internal helpers across files adds
 // more coupling than it saves.
-async function callerHasPermission(req: Request, key: PermissionKey): Promise<boolean> {
+async function callerHasPermission(req: Pick<Request, "user">, key: PermissionKey): Promise<boolean> {
   if (req.user!.role === "admin") return isActiveAccount(req.user!.id);
   return hasPermission(req.user!.id, key);
 }
@@ -545,7 +575,7 @@ router.patch(
       await createTicketNotification({ recipient: newAgentId, type: "ticket_reassigned", ticketId: ticket._id });
     }
     if (previousAgentId && String(previousAgentId) !== String(newAgentId ?? ticket.assignedAgent)) {
-      await createTicketNotification({ recipient: previousAgentId, type: "ticket_reassigned", ticketId: ticket._id });
+      await createTicketNotification({ recipient: previousAgentId, type: "ticket_unassigned", ticketId: ticket._id });
     }
 
     // A single multi-path populate() call, not two chained calls — Document

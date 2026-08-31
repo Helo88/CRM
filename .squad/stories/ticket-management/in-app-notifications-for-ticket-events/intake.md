@@ -81,7 +81,7 @@ None yet — the notification badge/dropdown wasn't part of the "Ticket Views" m
 
 - Repos/roots: `.`. Primary language: `typescript`.
 - New model: `backend/src/models/Notification.ts` — minimal shape: `recipient: Types.ObjectId (ref User)`, `type: "ticket_assigned" | "ticket_escalated"`, `ticketId: Types.ObjectId (ref Ticket)`, `read: boolean (default false)`, timestamps. Index on `{ recipient: 1, read: 1, createdAt: 1 }` for the badge-count query, mirroring `Message.ts`'s existing indexing pattern.
-- New endpoints: `GET /api/v1/notifications` (mine, unread-first), `PATCH /api/v1/notifications/:id/read`. Both `requireAuth` only (no extra permission — every authenticated staff account manages its own notifications) — but see `[[feedback_every_route_needs_permission]]`: confirm with the user whether "own notifications" counts as the dashboard-style exception or still needs a permission key before finalizing.
+- New endpoints: resolved — mount these as self-scoped routes, `requireAuth` only, no `requirePermission` key. `backend/src/routes/me.routes.ts` already establishes this exact precedent for "my own data" endpoints (`GET /me/status`, `GET/PATCH /me/contact` — all `requireAuth`-only, no permission gate, per current code). "My notifications" is the same shape (every authenticated staff account reads/marks-read only its own notifications, never another user's), so add `GET /me/notifications` (unread-first) and `PATCH /me/notifications/:id/read` there rather than a new top-level `notifications.routes.ts` or inventing a permission key.
 
 ## Out of scope
 

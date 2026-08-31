@@ -8,7 +8,14 @@ import { refreshSession } from "@/lib/session";
 // same reasoning as actions/availability.ts — the notification bell lives
 // in the header (SiteHeader), not on a single page.
 
-export type NotificationType = "ticket_assigned" | "ticket_escalated" | "ticket_reassigned";
+export type NotificationType =
+  | "ticket_assigned"
+  | "ticket_escalated"
+  | "ticket_reassigned"
+  | "ticket_unassigned"
+  | "ticket_created"
+  | "ticket_auto_assigned"
+  | "ticket_needs_assignment";
 
 export interface NotificationItem {
   id: string;
@@ -28,6 +35,10 @@ async function getBearerToken(): Promise<string | null> {
 // Returns [] on any failure (signed out, network hiccup, backend down) —
 // the bell has no error state of its own; an empty/unchanged list is the
 // correct degraded behavior for a polling background fetch like this one.
+// The try/catch is load-bearing, not defensive boilerplate: fetch() itself
+// rejects (rather than resolving with a bad status) when the backend is
+// unreachable, which previously escaped as an unhandled "fetch failed"
+// TypeError that crashed the page render instead of degrading.
 export async function fetchNotifications(): Promise<NotificationItem[]> {
   const token = await getBearerToken();
   if (!token) return [];
@@ -38,14 +49,18 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
       cache: "no-store",
     });
 
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    const refreshedToken = await refreshSession();
-    if (!refreshedToken) return [];
-    res = await doFetch(refreshedToken);
+  try {
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession();
+      if (!refreshedToken) return [];
+      res = await doFetch(refreshedToken);
+    }
+    if (!res.ok) return [];
+    return (await res.json()) as NotificationItem[];
+  } catch {
+    return [];
   }
-  if (!res.ok) return [];
-  return (await res.json()) as NotificationItem[];
 }
 
 export async function markNotificationRead(id: string): Promise<boolean> {
@@ -58,11 +73,15 @@ export async function markNotificationRead(id: string): Promise<boolean> {
       headers: { Authorization: `Bearer ${bearer}` },
     });
 
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    const refreshedToken = await refreshSession();
-    if (!refreshedToken) return false;
-    res = await doFetch(refreshedToken);
+  try {
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession();
+      if (!refreshedToken) return false;
+      res = await doFetch(refreshedToken);
+    }
+    return res.ok;
+  } catch {
+    return false;
   }
-  return res.ok;
 }

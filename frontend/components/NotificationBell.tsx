@@ -22,6 +22,10 @@ const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_assigned: "notificationTicketAssigned",
   ticket_escalated: "notificationTicketEscalated",
   ticket_reassigned: "notificationTicketReassigned",
+  ticket_unassigned: "notificationTicketUnassigned",
+  ticket_created: "notificationTicketCreated",
+  ticket_auto_assigned: "notificationTicketAutoAssigned",
+  ticket_needs_assignment: "notificationTicketNeedsAssignment",
 };
 
 // Story 54: was a static "coming soon" placeholder — now fetches on mount,

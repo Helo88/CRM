@@ -140,10 +140,13 @@ describe("POST /api/v1/tickets (Story 8)", () => {
 });
 
 describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
-  it("lets an agent with tickets:create_for_customer create a ticket for an existing customer", async () => {
+  it("lets an agent with tickets:create_for_customer, tickets:categorize and tickets:change_priority create a ticket for an existing customer with a non-default category/priority", async () => {
     vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
     const { user: pickedCustomer } = await seedUser({ email: "picked@example.com" });
-    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:create_for_customer", "tickets:categorize", "tickets:change_priority"],
+    });
 
     const res = await request(app)
       .post("/api/v1/tickets")
@@ -164,6 +167,54 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
     expect(ticket!.category).toBe("billing");
     expect(ticket!.status).toBe("new");
     expect(ticket!.assignedAgent).toBeNull();
+  });
+
+  // Gap closed: tickets:create_for_customer alone used to be enough to set
+  // ANY category/priority on creation — no separate check against
+  // tickets:categorize/tickets:change_priority the way PATCH /:id already
+  // requires to change them later. Creating with defaults still needs
+  // nothing beyond tickets:create_for_customer; setting a non-default
+  // category or priority up front now needs the matching extra permission,
+  // same as PATCH /:id.
+  it("agent with only tickets:create_for_customer can create with defaults, but 403s if they try to set category or priority", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: pickedCustomer } = await seedUser({ email: "picked-defaults@example.com" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const withDefaults = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        subject: "No category or priority set",
+        description: "Should still work with defaults.",
+        customerId: pickedCustomer.id,
+      });
+    expect(withDefaults.status).toBe(201);
+    const defaultTicket = await Ticket.findById(withDefaults.body.id);
+    expect(defaultTicket!.category).toBeNull();
+    expect(defaultTicket!.priority).toBe("medium");
+
+    const withCategory = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        subject: "Tries to set category",
+        description: "Should be rejected.",
+        customerId: pickedCustomer.id,
+        category: "billing",
+      });
+    expect(withCategory.status).toBe(403);
+
+    const withPriority = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        subject: "Tries to set priority",
+        description: "Should be rejected.",
+        customerId: pickedCustomer.id,
+        priority: "high",
+      });
+    expect(withPriority.status).toBe(403);
   });
 
   it("lets an admin create a ticket for a customer without any explicit permission grant (implicit admin pass)", async () => {
@@ -363,6 +414,111 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.assignedAgent?.toString()).toBe(agent.id);
+  });
+});
+
+describe("POST /api/v1/tickets — oversight notifications for admins/subadmins", () => {
+  it("notifies admins and tickets:view_all subadmins of a new ticket, but not a plain agent or an unpermitted subadmin", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: admin } = await seedUser({ role: "admin" });
+    const { user: permittedSubadmin } = await seedUser({ role: "subadmin", permissions: ["tickets:view_all"] });
+    const { user: unpermittedSubadmin } = await seedUser({ role: "subadmin", permissions: [] });
+    const { user: plainAgent } = await seedUser({ role: "agent" });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const recipients = (await Notification.find({ type: "ticket_created" })).map((n) => n.recipient.toString());
+    expect(recipients.sort()).toEqual([admin.id, permittedSubadmin.id].sort());
+    expect(recipients).not.toContain(unpermittedSubadmin.id);
+    expect(recipients).not.toContain(plainAgent.id);
+  });
+
+  it("does not notify a deactivated admin", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    await seedUser({ role: "admin", isActive: false });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    expect(await Notification.countDocuments({ type: "ticket_created" })).toBe(0);
+  });
+
+  it("also notifies admins/permitted subadmins with ticket_auto_assigned when an agent picks it up", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const agent = await seedOnlineAgent();
+    const { user: admin } = await seedUser({ role: "admin" });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const adminNotifications = await Notification.find({ recipient: admin._id }).sort({ type: 1 });
+    const types = adminNotifications.map((n) => n.type).sort();
+    expect(types).toEqual(["ticket_auto_assigned", "ticket_created"]);
+    // The agent itself only gets the assignee-facing type, never the oversight one.
+    const agentTypes = (await Notification.find({ recipient: agent._id })).map((n) => n.type);
+    expect(agentTypes).toEqual(["ticket_assigned"]);
+  });
+
+  it("does not send ticket_auto_assigned when no agent is online", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    await seedUser({ role: "admin" });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    expect(await Notification.countDocuments({ type: "ticket_auto_assigned" })).toBe(0);
+  });
+
+  it("notifies admins/permitted subadmins with ticket_needs_assignment when no agent is online to auto-assign", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: admin } = await seedUser({ role: "admin" });
+    const { user: permittedSubadmin } = await seedUser({ role: "subadmin", permissions: ["tickets:view_all"] });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.assignedAgent).toBeNull();
+    const recipients = (await Notification.find({ type: "ticket_needs_assignment" })).map((n) =>
+      n.recipient.toString()
+    );
+    expect(recipients.sort()).toEqual([admin.id, permittedSubadmin.id].sort());
+  });
+
+  it("does not send ticket_needs_assignment when an agent was successfully auto-assigned", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    await seedOnlineAgent();
+    await seedUser({ role: "admin" });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    expect(await Notification.countDocuments({ type: "ticket_needs_assignment" })).toBe(0);
   });
 });
 
@@ -883,7 +1039,7 @@ describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
     expect(notifications[0].type).toBe("ticket_reassigned");
   });
 
-  it("notifies both the previous and the new assignee on a real reassignment", async () => {
+  it("notifies both the previous and the new assignee on a real reassignment, each with the correct type", async () => {
     const previousAgent = await seedActiveAgent({ isOnline: true });
     const ticket = await seedTicket({ assignedAgent: previousAgent._id });
     const newAgent = await seedActiveAgent({ isOnline: true });
@@ -894,8 +1050,10 @@ describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ assignedAgent: newAgent.id });
 
-    const recipients = (await Notification.find({})).map((n) => n.recipient.toString()).sort();
-    expect(recipients).toEqual([newAgent.id, previousAgent.id].sort());
+    const notifications = await Notification.find({});
+    const byRecipient = new Map(notifications.map((n) => [n.recipient.toString(), n.type]));
+    expect(byRecipient.get(newAgent.id)).toBe("ticket_reassigned");
+    expect(byRecipient.get(previousAgent.id)).toBe("ticket_unassigned");
   });
 
   it("does not notify anyone when reassigning to the already-assigned agent (no-op)", async () => {

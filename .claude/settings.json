@@ -32,7 +32,17 @@
       "Bash(command -v npx)",
       "Read(//d//**)",
       "Bash(git commit -m ' *)",
-      "Bash(curl -s -H \"Cookie: session_token=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIiwicm9sZSI6ImFnZW50IiwibmFtZSI6IkFsZXggQ2FydGVyIiwiZW1haWwiOiJhbGV4QHRlc3QuZGV2In0.sig\" http://localhost:3000/_scratch-layout-check -o /tmp/scratch.html)"
+      "Bash(curl -s -H \"Cookie: session_token=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIiwicm9sZSI6ImFnZW50IiwibmFtZSI6IkFsZXggQ2FydGVyIiwiZW1haWwiOiJhbGV4QHRlc3QuZGV2In0.sig\" http://localhost:3000/_scratch-layout-check -o /tmp/scratch.html)",
+      "Bash(grep -o '.\\\\{0,20\\\\}aside.\\\\{0,200\\\\}' /tmp/scratch.html)",
+      "Bash(curl -s -H \"Cookie: session_token=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIiwicm9sZSI6ImFnZW50IiwibmFtZSI6IkFsZXggQ2FydGVyIiwiZW1haWwiOiJhbGV4QHRlc3QuZGV2In0.sig\" http://localhost:3000/scratch-layout-check -o /tmp/scratch.html)",
+      "Bash(npm ls *)",
+      "Bash(npm root *)",
+      "Bash(node -e \"require.resolve\\('playwright'\\)\")",
+      "Bash(curl -s -o /tmp/tickets-test.html -w \"%{http_code}\\\\n\" http://localhost:3000/tickets/nonexistent-id)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/v1/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:4000/)",
+      "Bash(git diff *)",
+      "Bash(gh pr *)"
     ]
   }
 }
