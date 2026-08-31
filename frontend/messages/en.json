@@ -364,6 +364,7 @@
       "tickets:reply": "Reply to tickets",
       "tickets:change_status": "Change ticket status",
       "tickets:close_reopen": "Close and reopen tickets",
+      "tickets:escalate": "Escalate tickets",
       "chats:manage": "Access live chat",
       "sla:configure": "Configure SLA targets",
       "kb:publish": "Publish knowledge base articles",

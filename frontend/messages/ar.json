@@ -364,6 +364,7 @@
       "tickets:reply": "الرد على التذاكر",
       "tickets:change_status": "تغيير حالة التذكرة",
       "tickets:close_reopen": "إغلاق التذاكر وإعادة فتحها",
+      "tickets:escalate": "تصعيد التذاكر",
       "chats:manage": "الوصول إلى الدردشة المباشرة",
       "sla:configure": "تكوين أهداف اتفاقية مستوى الخدمة",
       "kb:publish": "نشر مقالات قاعدة المعرفة",
