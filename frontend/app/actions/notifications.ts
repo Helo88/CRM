@@ -65,6 +65,55 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
   }
 }
 
+export interface NotificationHistoryResult {
+  notifications: NotificationItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+const HISTORY_LIMIT = 20;
+
+// Backs the dedicated "view all notifications" page — unlike
+// fetchNotifications() above (bell dropdown: unread-first, capped at 50,
+// plain array), this always requests the backend's paginated/date-filtered
+// history mode (GET /me/notifications switches into it whenever ANY of
+// page/limit/from/to is present) by always sending `page`. Returns an
+// empty page (not throwing) on any failure — same "degrade gracefully"
+// convention as every other action in this file.
+export async function fetchNotificationHistory(params: {
+  page: number;
+  from?: string;
+  to?: string;
+}): Promise<NotificationHistoryResult> {
+  const empty: NotificationHistoryResult = { notifications: [], total: 0, page: params.page, limit: HISTORY_LIMIT };
+  const token = await getBearerToken();
+  if (!token) return empty;
+
+  const query = new URLSearchParams({ page: String(params.page), limit: String(HISTORY_LIMIT) });
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/me/notifications?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  try {
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession();
+      if (!refreshedToken) return empty;
+      res = await doFetch(refreshedToken);
+    }
+    if (!res.ok) return empty;
+    return (await res.json()) as NotificationHistoryResult;
+  } catch {
+    return empty;
+  }
+}
+
 export async function markNotificationRead(id: string): Promise<boolean> {
   const token = await getBearerToken();
   if (!token) return false;

@@ -86,7 +86,7 @@ export default async function TicketDetailPage({
     redirect("/");
   }
 
-  const { role, permissions: viewerPermissions = [] } = peekJwtPayload(accessToken);
+  const { id: viewerId, role, permissions: viewerPermissions = [] } = peekJwtPayload(accessToken);
   const isStaffViewer = role === "agent" || role === "admin" || role === "subadmin";
   if (!isStaffViewer && role !== "customer") {
     redirect("/dashboard");
@@ -219,6 +219,7 @@ export default async function TicketDetailPage({
                     priority={ticket.priority}
                     assignedAgent={ticket.assignedAgent}
                     escalatedTo={ticket.escalatedTo}
+                    currentUserId={viewerId}
                     canCategorize={canCategorize}
                     canChangePriority={canChangePriority}
                     canReassign={canReassign}

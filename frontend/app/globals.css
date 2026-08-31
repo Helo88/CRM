@@ -316,6 +316,32 @@ html {
     @apply font-sans;
   }
 
+  /* Every scrollable area (page body, dropdown/select content, dialogs)
+     otherwise falls back to the OS/browser's own scrollbar chrome, which
+     reads as a stark light-grey bar against this app's warm dark/light
+     surfaces. Applied globally via `html`/`*`, not per-component, so a
+     future scrollable list doesn't need to remember to opt in. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+
   /* Browsers force their own autofill background (usually white/yellow),
      ignoring the input's own bg — this makes it match the theme instead.
      The huge transition delay is the standard trick to stop Chrome from

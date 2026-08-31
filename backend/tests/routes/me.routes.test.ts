@@ -314,6 +314,104 @@ describe("GET /api/v1/me/notifications (Story 54)", () => {
   });
 });
 
+describe("GET /api/v1/me/notifications?page=... — history mode", () => {
+  it("returns a plain array (unread-first) when no page/limit/from/to param is present, unchanged", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticket._id });
+
+    const res = await request(app).get("/api/v1/me/notifications").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it("switches to { notifications, total, page, limit } once ?page is present", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    for (let i = 0; i < 5; i++) {
+      const ticket = await seedTicket(customer._id);
+      await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticket._id });
+    }
+
+    const res = await request(app)
+      .get("/api/v1/me/notifications?page=1&limit=2")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.notifications).toHaveLength(2);
+    expect(res.body.total).toBe(5);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(2);
+  });
+
+  it("sorts newest-first regardless of read state in history mode", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticketOld = await seedTicket(customer._id);
+    const ticketNew = await seedTicket(customer._id);
+    const older = await Notification.create({
+      recipient: user._id,
+      type: "ticket_assigned",
+      ticketId: ticketOld._id,
+      read: true,
+    });
+    await Notification.findByIdAndUpdate(older._id, { createdAt: new Date(Date.now() - 60_000) });
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketNew._id, read: false });
+
+    const res = await request(app)
+      .get("/api/v1/me/notifications?page=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.notifications[0].ticket.id).toBe(ticketNew.id);
+    expect(res.body.notifications[1].ticket.id).toBe(ticketOld.id);
+  });
+
+  it("filters by from/to date range", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticketOld = await seedTicket(customer._id);
+    const ticketRecent = await seedTicket(customer._id);
+    const old = await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketOld._id });
+    // Bypass mongoose's timestamps plugin (which otherwise re-stamps
+    // createdAt/updatedAt on every save/update) via the raw driver, so this
+    // notification's createdAt is genuinely backdated for the filter below.
+    await Notification.collection.updateOne(
+      { _id: old._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketRecent._id });
+
+    const res = await request(app)
+      .get("/api/v1/me/notifications?page=1&from=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.notifications[0].ticket.id).toBe(ticketRecent.id);
+  });
+
+  it("never returns another user's notifications in history mode", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const { user: otherAgent } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    await Notification.create({ recipient: otherAgent._id, type: "ticket_assigned", ticketId: ticket._id });
+
+    const res = await request(app)
+      .get("/api/v1/me/notifications?page=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+  });
+
+  it("returns 400 for an invalid page value", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app)
+      .get("/api/v1/me/notifications?page=0")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("PATCH /api/v1/me/notifications/:id/read (Story 54)", () => {
   it("returns 401 without a token", async () => {
     const res = await request(app).patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`);

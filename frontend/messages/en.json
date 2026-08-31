@@ -10,6 +10,7 @@
     "searchPlaceholderShort": "Search…",
     "notifications": "Notifications",
     "notificationsEmpty": "No notifications yet",
+    "viewAllNotifications": "View all notifications",
     "notificationTicketAssigned": "A ticket was assigned to you",
     "notificationTicketEscalated": "A ticket was escalated to you",
     "notificationTicketReassigned": "A ticket was reassigned to you",
@@ -530,7 +531,8 @@
     "escalateConfirm": "Escalate",
     "escalateConfirmPending": "Escalating…",
     "escalatedToLabel": "Escalated to",
-    "alreadyEscalated": "This ticket is already escalated to someone else."
+    "alreadyEscalated": "This ticket is already escalated to someone else.",
+    "youLabel": "You"
   },
   "Chat": {
     "heading": "Live chat",
@@ -657,5 +659,16 @@
     "agentOfflineHint": "Offline",
     "loading": "Loading…",
     "noAssignableAgents": "No agents available"
+  },
+  "NotificationsPage": {
+    "metaTitle": "Notifications",
+    "heading": "Notifications",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "resetFilters": "Reset filters",
+    "columnType": "Notification",
+    "columnTicket": "Ticket",
+    "columnDate": "Date",
+    "empty": "No notifications found."
   }
 }

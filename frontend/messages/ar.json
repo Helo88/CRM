@@ -10,6 +10,7 @@
     "searchPlaceholderShort": "بحث…",
     "notifications": "الإشعارات",
     "notificationsEmpty": "لا توجد إشعارات بعد",
+    "viewAllNotifications": "عرض جميع الإشعارات",
     "notificationTicketAssigned": "تم إسناد تذكرة إليك",
     "notificationTicketEscalated": "تم تصعيد تذكرة إليك",
     "notificationTicketReassigned": "تمت إعادة إسناد تذكرة إليك",
@@ -530,7 +531,8 @@
     "escalateConfirm": "تصعيد",
     "escalateConfirmPending": "جارٍ التصعيد…",
     "escalatedToLabel": "مُصعَّدة إلى",
-    "alreadyEscalated": "هذه التذكرة مُصعَّدة بالفعل إلى شخص آخر."
+    "alreadyEscalated": "هذه التذكرة مُصعَّدة بالفعل إلى شخص آخر.",
+    "youLabel": "أنت"
   },
   "Chat": {
     "heading": "الدردشة المباشرة",
@@ -657,5 +659,16 @@
     "agentOfflineHint": "غير متصل",
     "loading": "جارٍ التحميل…",
     "noAssignableAgents": "لا يوجد موظفون متاحون"
+  },
+  "NotificationsPage": {
+    "metaTitle": "الإشعارات",
+    "heading": "الإشعارات",
+    "filterFrom": "من",
+    "filterTo": "إلى",
+    "resetFilters": "إعادة تعيين عوامل التصفية",
+    "columnType": "الإشعار",
+    "columnTicket": "التذكرة",
+    "columnDate": "التاريخ",
+    "empty": "لا توجد إشعارات."
   }
 }

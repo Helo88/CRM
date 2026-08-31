@@ -85,6 +85,7 @@ export function TicketDetailSidebar({
   priority,
   assignedAgent,
   escalatedTo,
+  currentUserId,
   canCategorize,
   canChangePriority,
   canReassign,
@@ -102,6 +103,10 @@ export function TicketDetailSidebar({
   // ticket-management Story 12: who the ticket is currently escalated to, if
   // it is — null whenever status !== "escalated".
   escalatedTo: { id: string; name: string } | null;
+  // So the Assigned Agent / Escalated To fields can read "You" instead of
+  // the viewer's own name — same convention StaffTicketQueue.tsx's queue
+  // table already uses for "assignedToYou".
+  currentUserId?: string;
   canCategorize: boolean;
   canChangePriority: boolean;
   canReassign: boolean;
@@ -373,7 +378,7 @@ export function TicketDetailSidebar({
                   value={agent.id}
                   disabled={!viewerIsUnrestrictedReassigner && !agent.isOnline}
                 >
-                  {agent.name}
+                  {agent.id === currentUserId ? t("youLabel") : agent.name}
                   {!agent.isOnline ? ` — ${t("agentOfflineHint")}` : ""}
                 </SelectItem>
               ))}
@@ -395,7 +400,9 @@ export function TicketDetailSidebar({
       {escalatedToValue ? (
         <div className="flex flex-col gap-1.5">
           <Label>{t("escalatedToLabel")}</Label>
-          <p className="text-sm font-medium text-destructive">{escalatedToValue.name}</p>
+          <p className="text-sm font-medium text-destructive">
+            {escalatedToValue.id === currentUserId ? t("youLabel") : escalatedToValue.name}
+          </p>
         </div>
       ) : (
         canEscalate &&
