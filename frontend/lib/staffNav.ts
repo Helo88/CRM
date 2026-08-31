@@ -5,28 +5,50 @@ import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, 
 // in sync. "accounts" (/admin/users) is gated on the exact permission its
 // own GET requires — staff:view_list — not just the admin/subadmin role,
 // since a sub-admin without it gets a real 403 from that page (see
-// app/admin/users/page.tsx's own comment on this). "chats" (Story 18) uses
-// `agentOrAdminOnly` instead — its backend route is `requireRole("agent",
+// app/admin/users/page.tsx's own comment on this). "chats" (Story 18) used
+// to be `agentOrAdminOnly` — its backend route was `requireRole("agent",
 // "admin")` with no permission-delegation path at all, so a sub-admin (even
-// with every permission granted) still gets a real 403 there; the nav item
-// must never be offered to one.
+// with every permission granted) always got a real 403 there, and any agent
+// had unconditional access with no way to revoke it. It's now gated on
+// chats:manage instead, same as "accounts" — see isVisibleForRole below for
+// why one `permission` check now covers both cases correctly.
 export const STAFF_NAV_ITEMS = [
   { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
   { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
   { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
-  { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: true, permission: undefined },
+  { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage" },
   { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list" },
 ] as const;
 
 export type StaffNavKey = (typeof STAFF_NAV_ITEMS)[number]["key"];
 
-export function visibleStaffNavItems(role: string | undefined, permissions: string[] = []) {
-  return STAFF_NAV_ITEMS.filter((item) => {
-    if (item.agentOrAdminOnly) return role === "agent" || role === "admin";
-    if (!item.staffOnly) return true;
+// A `permission` key, when present, is checked the same way for every item
+// regardless of `staffOnly`: admin always passes; agent/subadmin need it in
+// their own granted list. This one rule already covers both existing shapes
+// — a sub-admin-only key like staff:view_list (an agent's permissions array
+// can never contain it; the backend rejects granting it to an agent
+// account, so the array-membership check alone excludes agents exactly like
+// the old staffOnly-specific branch did) and a key assignable to either role
+// like chats:manage (an agent *can* hold it, and should see the item when
+// they do). `agentOrAdminOnly`/`staffOnly` only still matter for the
+// permission-less items above (visible to any signed-in staff role).
+function isVisibleForRole(
+  item: { agentOrAdminOnly: boolean; staffOnly: boolean; permission?: string },
+  role: string | undefined,
+  permissions: string[]
+): boolean {
+  if (item.permission) {
     if (role === "admin") return true;
-    return role === "subadmin" && (!item.permission || permissions.includes(item.permission));
-  });
+    if (role === "agent" || role === "subadmin") return permissions.includes(item.permission);
+    return false;
+  }
+  if (item.agentOrAdminOnly) return role === "agent" || role === "admin";
+  if (!item.staffOnly) return true;
+  return role === "admin";
+}
+
+export function visibleStaffNavItems(role: string | undefined, permissions: string[] = []) {
+  return STAFF_NAV_ITEMS.filter((item) => isVisibleForRole(item, role, permissions));
 }
 
 // Quick-create actions surfaced in the header search (HeaderSearch), not
@@ -57,12 +79,7 @@ export const STAFF_ACTION_ITEMS = [
 ] as const;
 
 export function visibleStaffActionItems(role: string | undefined, permissions: string[] = []) {
-  return STAFF_ACTION_ITEMS.filter((item) => {
-    if (item.agentOrAdminOnly) return role === "agent" || role === "admin";
-    if (!item.staffOnly) return true;
-    if (role === "admin") return true;
-    return role === "subadmin" && (!item.permission || permissions.includes(item.permission));
-  });
+  return STAFF_ACTION_ITEMS.filter((item) => isVisibleForRole(item, role, permissions));
 }
 
 // Derives which nav item is "active" from the current URL instead of a

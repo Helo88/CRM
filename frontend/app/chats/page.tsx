@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { API_URL, REFRESH_COOKIE, SESSION_COOKIE } from "@/lib/auth";
-import { peekJwtPayload } from "@/lib/jwt";
 import { formatDateTime } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -58,11 +57,6 @@ export default async function ChatsPage({
     redirect("/");
   }
 
-  const { role } = peekJwtPayload(token);
-  if (role !== "agent" && role !== "admin") {
-    redirect("/dashboard");
-  }
-
   const res = await fetch(`${API_URL}/api/v1/conversations`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
@@ -74,6 +68,10 @@ export default async function ChatsPage({
     redirect("/login");
   }
   if (!res.ok) {
+    // Covers 403 too — a staff persona without chats:manage never gets a
+    // working link to this page (see lib/staffNav.ts), so reaching it and
+    // being turned away belongs on the dashboard, same convention
+    // admin/users/page.tsx uses for staff:view_list.
     redirect("/dashboard");
   }
   const data: { conversations: ConversationRow[] } = await res.json();

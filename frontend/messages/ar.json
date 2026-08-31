@@ -325,6 +325,7 @@
       "config": "الإعدادات",
       "customers": "العملاء",
       "tickets": "التذاكر",
+      "chats": "الدردشة المباشرة",
       "sla": "اتفاقية مستوى الخدمة",
       "kb": "قاعدة المعرفة",
       "reports": "التقارير",
@@ -348,6 +349,10 @@
       "tickets:categories_create": "إضافة فئات تذاكر",
       "tickets:categories_edit": "إعادة تسمية فئات التذاكر",
       "tickets:categories_toggle_status": "تفعيل/تعطيل فئات التذاكر",
+      "tickets:categorize": "تصنيف التذاكر",
+      "tickets:change_priority": "تغيير أولوية التذكرة",
+      "tickets:reply": "الرد على التذاكر",
+      "chats:manage": "الوصول إلى الدردشة المباشرة",
       "sla:configure": "تكوين أهداف اتفاقية مستوى الخدمة",
       "kb:publish": "نشر مقالات قاعدة المعرفة",
       "reports:view": "عرض التقارير",
@@ -616,7 +621,6 @@
     "resetFilters": "إعادة تعيين عوامل التصفية",
     "viewDetails": "عرض التفاصيل",
     "empty": "لا توجد تذاكر مطابقة لعوامل التصفية هذه.",
-    "scopedNotice": "معروضة فقط التذاكر المسندة إليك — اطلب من المسؤول منح صلاحية tickets:view_all لرؤية كل التذاكر.",
     "reply": "رد",
     "escalate": "تصعيد"
   }

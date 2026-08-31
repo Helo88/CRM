@@ -72,6 +72,10 @@ async function seedOnlineAgent() {
     role: "agent",
     isOnline: true,
     isActive: true,
+    // chats:manage is now required to be an auto-assignment candidate for a
+    // conversation (assignment.service.ts's pickAndClaimAgentForConversation)
+    // — this helper's whole purpose is seeding an agent meant to be picked.
+    permissions: ["chats:manage"],
   });
 }
 

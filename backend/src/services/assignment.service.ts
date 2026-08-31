@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { User } from "../models/User";
 import { Ticket } from "../models/Ticket";
 import { Conversation } from "../models/Conversation";
+import type { PermissionKey } from "../constants/permissions";
 
 // Open statuses count against an agent's "current load" for the
 // least-busy tiebreaker below. "answered" and "closed" tickets do not
@@ -18,14 +19,26 @@ const OPEN_CONVERSATION_STATUSES = ["with_agent"] as const;
  * assigned tickets + conversations, breaking ties by oldest createdAt.
  * Returns null when no agent matches — the caller decides whether
  * "unassigned" is fatal.
+ *
+ * `requiredPermission`, when given, narrows candidates to agents holding
+ * that permission — used by the live-chat caller below to pass
+ * `"chats:manage"` so an agent who's had chat access revoked stops
+ * receiving new chat assignments without affecting their ticket
+ * eligibility (tickets have no equivalent gate, so that caller omits it).
+ * The least-busy tiebreak still counts an agent's TOTAL load (tickets +
+ * conversations) regardless of this filter — narrowing candidates doesn't
+ * change what "busy" means.
  */
-export async function pickNextAvailableAgent(): Promise<Types.ObjectId | null> {
-  const candidates = await User.find({
+export async function pickNextAvailableAgent(requiredPermission?: PermissionKey): Promise<Types.ObjectId | null> {
+  const filter: Record<string, unknown> = {
     role: "agent",
     isOnline: true,
     isActive: true,
     isDeleted: false,
-  })
+  };
+  if (requiredPermission) filter.permissions = requiredPermission;
+
+  const candidates = await User.find(filter)
     .select("_id createdAt")
     .sort({ createdAt: 1 })
     .lean();
@@ -88,7 +101,7 @@ export async function pickAndClaimAgentForConversation(
   conversationId: Types.ObjectId | string
 ): Promise<Types.ObjectId | null> {
   const run = assignmentMutex.then(async () => {
-    const pickedId = await pickNextAvailableAgent();
+    const pickedId = await pickNextAvailableAgent("chats:manage");
     if (!pickedId) return null;
 
     const claimed = await Conversation.findOneAndUpdate(

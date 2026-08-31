@@ -30,12 +30,13 @@ function tokenFor(user: { id: string; role: string }) {
   return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET as string);
 }
 
-async function seedUser(overrides: Partial<{ role: string; email: string; name: string }> = {}) {
+async function seedUser(overrides: Partial<{ role: string; email: string; name: string; permissions: string[] }> = {}) {
   const user = await User.create({
     name: overrides.name ?? "Test Customer",
     email: overrides.email ?? `user-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
     passwordHash: "irrelevant-for-these-tests",
     role: overrides.role ?? "customer",
+    permissions: overrides.permissions ?? [],
   });
   return { user, token: tokenFor({ id: user.id, role: user.role }) };
 }
@@ -91,10 +92,16 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.status).toBe(403);
   });
 
+  it("returns 403 for an agent without chats:manage", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
   it("scopes an agent's list to their own assigned escalated/with_agent conversations", async () => {
     const { user: customer } = await seedUser();
-    const { user: agent, token: agentToken } = await seedUser({ role: "agent" });
-    const { user: otherAgent } = await seedUser({ role: "agent" });
+    const { user: agent, token: agentToken } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
+    const { user: otherAgent } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
     const mine = await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "with_agent" });
     await Conversation.create({ customer: customer._id, assignedAgent: otherAgent._id, status: "with_agent" });
     await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "resolved" });

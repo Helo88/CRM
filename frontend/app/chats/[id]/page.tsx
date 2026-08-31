@@ -37,10 +37,7 @@ export default async function ChatDetailPage({
     redirect("/");
   }
 
-  const { id: currentUserId, role } = peekJwtPayload(token);
-  if (role !== "agent" && role !== "admin") {
-    redirect("/dashboard");
-  }
+  const { id: currentUserId } = peekJwtPayload(token);
 
   const res = await fetch(`${API_URL}/api/v1/conversations/${id}`, {
     headers: { Authorization: `Bearer ${token}` },

@@ -23,7 +23,7 @@ beforeEach(async () => {
   await Conversation.deleteMany({});
 });
 
-async function seedAgent(overrides: Partial<{ isOnline: boolean; isActive: boolean; isDeleted: boolean; role: string; createdAt: Date }> = {}) {
+async function seedAgent(overrides: Partial<{ isOnline: boolean; isActive: boolean; isDeleted: boolean; role: string; createdAt: Date; permissions: string[] }> = {}) {
   const user = await User.create({
     name: "Agent",
     email: `agent-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
@@ -32,6 +32,7 @@ async function seedAgent(overrides: Partial<{ isOnline: boolean; isActive: boole
     isOnline: overrides.isOnline ?? true,
     isActive: overrides.isActive ?? true,
     isDeleted: overrides.isDeleted ?? false,
+    permissions: overrides.permissions ?? [],
   });
   if (overrides.createdAt) {
     await User.updateOne({ _id: user._id }, { $set: { createdAt: overrides.createdAt } });
@@ -152,7 +153,7 @@ describe("assignment.service.ts pickAndClaimAgentForConversation (Story 17)", ()
   });
 
   it("claims the picked agent atomically", async () => {
-    const agent = await seedAgent();
+    const agent = await seedAgent({ permissions: ["chats:manage"] });
     const conversation = await seedConversation({ status: "escalated" });
 
     const picked = await pickAndClaimAgentForConversation(conversation.id);
@@ -164,7 +165,7 @@ describe("assignment.service.ts pickAndClaimAgentForConversation (Story 17)", ()
   });
 
   it("returns null and leaves the conversation untouched when it's no longer escalated", async () => {
-    await seedAgent();
+    await seedAgent({ permissions: ["chats:manage"] });
     const conversation = await seedConversation({ status: "resolved" });
 
     expect(await pickAndClaimAgentForConversation(conversation.id)).toBeNull();
@@ -172,8 +173,8 @@ describe("assignment.service.ts pickAndClaimAgentForConversation (Story 17)", ()
   });
 
   it("assigns two concurrent escalations to two different online agents, not the same one", async () => {
-    const agentA = await seedAgent();
-    const agentB = await seedAgent();
+    const agentA = await seedAgent({ permissions: ["chats:manage"] });
+    const agentB = await seedAgent({ permissions: ["chats:manage"] });
     const conversationA = await seedConversation({ status: "escalated" });
     const conversationB = await seedConversation({ status: "escalated" });
 

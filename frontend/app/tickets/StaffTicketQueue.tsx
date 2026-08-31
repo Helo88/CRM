@@ -101,8 +101,6 @@ export async function StaffTicketQueue({
 
       <TicketFilterBar categories={categories} />
 
-      {!canViewAll && <p className="mb-4 text-sm text-muted-foreground">{t("scopedNotice")}</p>}
-
       {tickets.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">{t("empty")}</p>
       ) : (

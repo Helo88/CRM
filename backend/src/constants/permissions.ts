@@ -31,6 +31,7 @@ export const PERMISSION_KEYS = [
   "tickets:categorize",
   "tickets:change_priority",
   "tickets:reply",
+  "chats:manage",
   "sla:configure",
   "kb:publish",
   "reports:view",
@@ -82,6 +83,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionK
     "tickets:categorize",
     "tickets:change_priority",
     "tickets:reply",
+    "chats:manage",
   ],
   subadmin: [],
 };

@@ -12,6 +12,7 @@ import {
 } from "../validation/conversation.schema";
 import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
 import { pickAndClaimAgentForConversation } from "../services/assignment.service";
+import { hasPermission } from "../services/permissions";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
@@ -34,14 +35,22 @@ interface ConversationMessagePayload {
 const conversationIdSchema = objectIdSchema("Invalid conversation id");
 
 // Whether `user` may act on `conversation` — the conversation's own customer,
-// its assignedAgent, or (Story 18) any admin regardless of assignment, so an
+// its assignedAgent, (Story 18) any admin regardless of assignment so an
 // admin can take over/respond to any live chat per that story's acceptance
-// criteria.
-function isAuthorizedOnConversation(
+// criteria, or a sub-admin holding chats:manage (same any-conversation scope
+// as admin — mirrors conversation.routes.ts's callerAuthorizedOnConversation,
+// duplicated rather than imported so this module stays independent of the
+// REST route file, same reasoning that file gives for not importing this
+// one). Async because of that live permission lookup — a stale JWT-carried
+// permissions snapshot must never gate a live socket action (same rule
+// requirePermission enforces for REST; socket.data.user deliberately carries
+// only { id, role }, never permissions, to make that mistake impossible).
+async function isAuthorizedOnConversation(
   user: { id: string; role: string },
   conversation: { customer: unknown; assignedAgent: unknown }
-): boolean {
+): Promise<boolean> {
   if (user.role === "admin") return true;
+  if (user.role === "subadmin") return hasPermission(user.id, "chats:manage");
   return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
 }
 
@@ -93,7 +102,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
         socket.emit("conversation:error", { error: "You do not have permission to join this conversation" });
         return;
       }
@@ -119,7 +128,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
         socket.emit("conversation:error", {
           error: "You do not have permission to send messages in this conversation",
         });
@@ -312,7 +321,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user, conversation)) {
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
         socket.emit("conversation:error", { error: "You do not have permission to close this conversation" });
         return;
       }

@@ -325,6 +325,7 @@
       "config": "Config",
       "customers": "Customers",
       "tickets": "Tickets",
+      "chats": "Live chat",
       "sla": "SLA",
       "kb": "Knowledge base",
       "reports": "Reports",
@@ -348,6 +349,10 @@
       "tickets:categories_create": "Add ticket categories",
       "tickets:categories_edit": "Rename ticket categories",
       "tickets:categories_toggle_status": "Activate/deactivate ticket categories",
+      "tickets:categorize": "Categorize tickets",
+      "tickets:change_priority": "Change ticket priority",
+      "tickets:reply": "Reply to tickets",
+      "chats:manage": "Access live chat",
       "sla:configure": "Configure SLA targets",
       "kb:publish": "Publish knowledge base articles",
       "reports:view": "View reports",
@@ -616,7 +621,6 @@
     "resetFilters": "Reset filters",
     "viewDetails": "View details",
     "empty": "No tickets match these filters.",
-    "scopedNotice": "Scoped to tickets assigned to you — ask an admin for tickets:view_all to see the full queue.",
     "reply": "Reply",
     "escalate": "Escalate"
   }
