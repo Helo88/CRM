@@ -8,6 +8,7 @@ import { User } from "../models/User";
 import { Conversation } from "../models/Conversation";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
 import { pickNextAvailableAgent } from "../services/assignment.service";
+import { createTicketNotification } from "../services/notification.service";
 import type { PermissionKey } from "../constants/permissions";
 import { hasPermission, isActiveAccount } from "../services/permissions";
 import { validateBody } from "../middleware/validate";
@@ -146,6 +147,9 @@ router.post(
       if (assignedAgentId) {
         ticket.assignedAgent = assignedAgentId;
         await ticket.save();
+        // Story 54: in-app nudge alongside the assignment email below — best
+        // effort, same reasoning as that email (never fails ticket creation).
+        await createTicketNotification({ recipient: assignedAgentId, type: "ticket_assigned", ticketId: ticket._id });
       }
     } catch (err) {
       console.error("[tickets] auto-assignment failed", err);
@@ -289,21 +293,43 @@ async function callerHasPermission(req: Request, key: PermissionKey): Promise<bo
   return hasPermission(req.user!.id, key);
 }
 
-// Populate() replaces `customer` with the populated document, so this takes
-// only the fields it actually reads off `ticket` rather than the full
-// ITicket (whose `customer: Types.ObjectId` no longer matches after populate).
+// Story 25 (agent-workspace): backs the reassign dropdown, both on the
+// ticket-detail page and inline in the queue table. Registered before
+// GET /:id below so Express doesn't swallow this path as an :id — deliberately
+// its own minimal endpoint (id + name only) rather than reusing
+// GET /admin/users?role=agent: that one is gated on staff:view_list, which a
+// sub-admin holding only tickets:reassign has no reason to also hold (same
+// "narrow, ticket-scoped" reasoning ticketCategory.routes.ts already gives
+// for not routing category management through the much later `platform`
+// feature). Every active agent is returned regardless of isOnline — manual
+// reassignment is explicitly for handing a ticket to someone offline, unlike
+// auto-assignment (assignment.service.ts), which only ever considers online
+// agents. `isOnline` rides along so the frontend can grey out offline
+// targets for a plain-agent caller (who is restricted to online targets —
+// see PATCH /:id below), while admin/sub-admin see every option enabled.
+router.get(
+  "/assignable-agents",
+  requireAuth,
+  requirePermission("tickets:reassign"),
+  async (_req: Request, res: Response) => {
+    const agents = await User.find({ role: "agent", isActive: true, isDeleted: false })
+      .select("_id name isOnline")
+      .sort({ name: 1 })
+      .lean();
+    res
+      .status(200)
+      .json(agents.map((a) => ({ id: a._id.toString(), name: a.name, isOnline: Boolean(a.isOnline) })));
+  }
+);
+
+// Populate() replaces `customer`/`assignedAgent` with the populated document,
+// so this takes only the fields it actually reads off `ticket` rather than
+// the full ITicket (whose `customer`/`assignedAgent: Types.ObjectId | null`
+// no longer match after populate).
 type TicketDetailFields = Pick<
   ITicket,
-  | "ticketNumber"
-  | "subject"
-  | "description"
-  | "status"
-  | "category"
-  | "priority"
-  | "assignedAgent"
-  | "createdAt"
-  | "updatedAt"
-> & { _id: Types.ObjectId };
+  "ticketNumber" | "subject" | "description" | "status" | "category" | "priority" | "createdAt" | "updatedAt"
+> & { _id: Types.ObjectId; assignedAgent: { _id: Types.ObjectId; name: string } | null };
 
 function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: string; name: string; email: string }) {
   return {
@@ -315,7 +341,9 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
     category: ticket.category,
     priority: ticket.priority,
     customer,
-    assignedAgent: ticket.assignedAgent,
+    assignedAgent: ticket.assignedAgent
+      ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
+      : null,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
   };
@@ -363,9 +391,13 @@ router.get(
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
-    const ticket = await Ticket.findById(req.params.id).populate<{
-      customer: { _id: Types.ObjectId; name: string; email: string };
-    }>("customer", "name email");
+    const ticket = await Ticket.findById(req.params.id)
+      .populate<{
+        customer: { _id: Types.ObjectId; name: string; email: string };
+      }>("customer", "name email")
+      .populate<{
+        assignedAgent: { _id: Types.ObjectId; name: string } | null;
+      }>("assignedAgent", "name");
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
@@ -392,6 +424,13 @@ router.get(
 // requirePermission can't gate this route at the middleware level since the
 // required key depends on which fields are present in this specific
 // request body.
+//
+// TODO(Story 12 — escalate a ticket): once that story adds a status
+// transition to "escalated" (whether inline here or a dedicated route),
+// call createTicketNotification({ recipient: <escalatedTo>, type:
+// "ticket_escalated", ticketId: ticket._id }) right after that write
+// succeeds, mirroring the reassignment call below. No such transition
+// exists yet — this PATCH only ever touches category/priority/assignedAgent.
 router.patch(
   "/:id",
   requireAuth,
@@ -417,7 +456,7 @@ router.patch(
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
       return;
     }
-    const { category, priority } = parsed.data;
+    const { category, priority, assignedAgent } = parsed.data;
 
     if ("category" in rawBody && !(await callerHasPermission(req, "tickets:categorize"))) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
@@ -426,6 +465,53 @@ router.patch(
     if ("priority" in rawBody && !(await callerHasPermission(req, "tickets:change_priority"))) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
       return;
+    }
+    if ("assignedAgent" in rawBody && !(await callerHasPermission(req, "tickets:reassign"))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+
+    // Story 25: manual reassignment. `previousAgentId`/`newAgentId` are
+    // tracked separately from the mutation so the notifications after
+    // save() only fire on an actual change, not a no-op "reassign to the
+    // same agent" — and so both the outgoing and incoming assignee can be
+    // notified independently.
+    let previousAgentId: Types.ObjectId | null = null;
+    let newAgentId: Types.ObjectId | null = null;
+    if ("assignedAgent" in rawBody) {
+      previousAgentId = ticket.assignedAgent;
+      if (assignedAgent === null) {
+        ticket.assignedAgent = null;
+      } else {
+        // Availability rule: admin/sub-admin may reassign to any active
+        // agent regardless of isOnline — that's the whole point of a manual
+        // reassign (handing off from/to someone offline). A plain agent
+        // holding tickets:reassign (peer-level reassignment) is restricted
+        // to another agent currently marked online, unlike admin/sub-admin —
+        // matches USER_STORIES.md Story 25's own distinction.
+        const isUnrestrictedCaller = req.user!.role === "admin" || req.user!.role === "subadmin";
+        const targetAgent = await User.findOne({
+          _id: assignedAgent,
+          role: "agent",
+          isActive: true,
+          isDeleted: false,
+        }).select("_id isOnline");
+        if (!targetAgent) {
+          res.status(400).json({ error: "assignedAgent does not match an active agent" });
+          return;
+        }
+        if (!isUnrestrictedCaller && !targetAgent.isOnline) {
+          res.status(400).json({ error: "assignedAgent must be online for you to reassign to them" });
+          return;
+        }
+        if (String(ticket.assignedAgent) !== String(targetAgent._id)) {
+          newAgentId = targetAgent._id;
+        }
+        ticket.assignedAgent = targetAgent._id;
+      }
+      console.info(
+        `[ticket-reassigned] ticket=${req.params.id} from=${previousAgentId ?? "null"} to=${ticket.assignedAgent ?? "null"} by=${req.user!.id} at=${new Date().toISOString()}`
+      );
     }
 
     if ("category" in rawBody) {
@@ -448,10 +534,30 @@ router.patch(
     }
 
     await ticket.save();
-    const populated = await ticket.populate<{ customer: { _id: Types.ObjectId; name: string; email: string } }>(
-      "customer",
-      "name email"
-    );
+
+    // Story 25/54: notify both sides of an actual reassignment — best
+    // effort, same reasoning as the auto-assignment notification in POST /
+    // above (never fails the reassignment itself). previousAgentId only
+    // fires when it existed and differs from the new one, so unassigning an
+    // already-unassigned ticket (or reassigning to the same agent) is a
+    // silent no-op, not a spurious notification.
+    if (newAgentId) {
+      await createTicketNotification({ recipient: newAgentId, type: "ticket_reassigned", ticketId: ticket._id });
+    }
+    if (previousAgentId && String(previousAgentId) !== String(newAgentId ?? ticket.assignedAgent)) {
+      await createTicketNotification({ recipient: previousAgentId, type: "ticket_reassigned", ticketId: ticket._id });
+    }
+
+    // A single multi-path populate() call, not two chained calls — Document
+    // (unlike Query) doesn't reliably carry a merged generic across a second
+    // `.populate()` invoked on the first call's resolved result.
+    const populated = await ticket.populate<{
+      customer: { _id: Types.ObjectId; name: string; email: string };
+      assignedAgent: { _id: Types.ObjectId; name: string } | null;
+    }>([
+      { path: "customer", select: "name email" },
+      { path: "assignedAgent", select: "name" },
+    ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {
         id: populated.customer._id.toString(),

@@ -8,6 +8,7 @@ Entry point for the **agent-workspace** feature. Stories execute in order by the
 |----|------|-------|------------|------------|
 | _add rows as stories are planned_ |
 | 19 | `19-story-agent-availability-toggle.md` | Agent availability toggle | agent-availability-toggle | — |
+| 27 | `27-story-manually-reassign-a-ticket.md` | Manually reassign a ticket | manually-reassign-a-ticket | — |
 
 ## Dependency notes
 

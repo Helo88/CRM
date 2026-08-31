@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { MessageSquare, ArrowUpCircle, Repeat, Trash2 } from "lucide-react";
+import { MessageSquare, ArrowUpCircle, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ListPagination } from "@/components/ListPagination";
 import { formatDateTime } from "@/lib/utils";
 import { TicketFilterBar } from "./TicketFilterBar";
+import { ReassignAgentMenu } from "./ReassignAgentMenu";
 
 export interface StaffTicketRow {
   id: string;
@@ -29,6 +30,14 @@ interface StaffTicketQueueProps {
   canViewAll: boolean;
   canReassign: boolean;
   canDelete: boolean;
+  // Story 25: gates whether the "Assigned to" name links to that agent's
+  // account page — never render a link a click would just bounce off of
+  // (see frontend/lib/staffNav.ts's convention for this exact reasoning).
+  canViewStaffAccount: boolean;
+  // Story 25's availability rule: admin/sub-admin may reassign to any
+  // active agent regardless of isOnline; a plain agent holding
+  // tickets:reassign is restricted to another agent currently online.
+  viewerIsUnrestrictedReassigner: boolean;
   currentQuery: string;
   // So a row assigned to the viewer themself can read "You" instead of
   // their own name — seeing your own name in a list you're browsing reads
@@ -82,6 +91,8 @@ export async function StaffTicketQueue({
   canViewAll,
   canReassign,
   canDelete,
+  canViewStaffAccount,
+  viewerIsUnrestrictedReassigner,
   currentQuery,
   currentUserId,
 }: StaffTicketQueueProps) {
@@ -180,9 +191,17 @@ export async function StaffTicketQueue({
                     </TableCell>
                     {canViewAll && (
                       <TableCell className="text-sm text-muted-foreground">
-                        {ticket.assignedAgent?.id === currentUserId
-                          ? t("assignedToYou")
-                          : (ticket.assignedAgent?.name ?? t("unassigned"))}
+                        {(() => {
+                          if (!ticket.assignedAgent) return t("unassigned");
+                          if (ticket.assignedAgent.id === currentUserId) return t("assignedToYou");
+                          return canViewStaffAccount ? (
+                            <Link href={`/admin/users/${ticket.assignedAgent.id}/edit`} className="hover:underline">
+                              {ticket.assignedAgent.name}
+                            </Link>
+                          ) : (
+                            ticket.assignedAgent.name
+                          );
+                        })()}
                       </TableCell>
                     )}
                     <TableCell className="text-sm text-muted-foreground">
@@ -215,9 +234,11 @@ export async function StaffTicketQueue({
                           </Link>
                         </Button>
                         {canReassign && (
-                          <Button variant="ghost" size="icon" disabled title="Coming soon" className="text-muted-foreground">
-                            <Repeat className="size-4" />
-                          </Button>
+                          <ReassignAgentMenu
+                            ticketId={ticket.id}
+                            currentAgentId={ticket.assignedAgent?.id ?? null}
+                            viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
+                          />
                         )}
                         {canDelete && (
                           <Button

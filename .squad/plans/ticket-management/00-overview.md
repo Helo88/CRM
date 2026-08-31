@@ -15,6 +15,7 @@ Entry point for the **ticket-management** feature. Stories execute in order by t
 | 15 | `15-story-reply-to-a-ticket.md` | Reply to a ticket | reply-to-a-ticket | Story 8/57 (ticket exists); Story 9 (`14-story-categorize-and-prioritize-a-ticket.md`, extends the same `/tickets/[id]` page) |
 | 18 | `18-story-view-and-filter-the-ticket-queue.md` | View and filter the ticket queue | view-and-filter-the-ticket-queue | — |
 | 20 | `20-story-auto-assign-a-ticket-to-an-available-agent.md` | Auto-assign a ticket to an available agent | auto-assign-a-ticket-to-an-available-agent | — |
+| 26 | `26-story-in-app-notifications-for-ticket-events.md` | In-app notifications for ticket events | in-app-notifications-for-ticket-events | — |
 
 ## Dependency notes
 

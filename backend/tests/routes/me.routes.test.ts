@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
+import { Ticket } from "../../src/models/Ticket";
+import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
 
 const app = createApp();
@@ -21,6 +23,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await User.deleteMany({});
+  await Ticket.deleteMany({});
+  await Notification.deleteMany({});
   vi.restoreAllMocks();
 });
 
@@ -262,5 +266,109 @@ describe("GET /api/v1/me/email/confirm", () => {
     expect(res.headers.location).toContain("status=conflict");
     const reloaded = await User.findById(userId);
     expect(reloaded!.pendingEmail).toBeNull();
+  });
+});
+
+async function seedTicket(customer: mongoose.Types.ObjectId) {
+  return Ticket.create({ subject: "s", description: "d", customer });
+}
+
+describe("GET /api/v1/me/notifications (Story 54)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/me/notifications");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the caller's notifications unread-first, newest-first within each bucket, and never someone else's", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const { user: otherAgent } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticketA = await seedTicket(customer._id);
+    const ticketB = await seedTicket(customer._id);
+    const ticketC = await seedTicket(customer._id);
+
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketA._id, read: true });
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketB._id, read: false });
+    await Notification.create({ recipient: user._id, type: "ticket_reassigned", ticketId: ticketC._id, read: false });
+    await Notification.create({ recipient: otherAgent._id, type: "ticket_assigned", ticketId: ticketA._id, read: false });
+
+    const res = await request(app).get("/api/v1/me/notifications").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(3);
+    expect(res.body.every((n: { read: boolean }) => typeof n.read === "boolean")).toBe(true);
+    // Unread ones (ticketB, ticketC) sort before the read one (ticketA).
+    expect(res.body[2].read).toBe(true);
+    expect(res.body[2].ticket.id).toBe(ticketA.id);
+  });
+
+  it("drops a notification whose ticket no longer resolves rather than erroring", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    await Notification.create({
+      recipient: user._id,
+      type: "ticket_assigned",
+      ticketId: new mongoose.Types.ObjectId(),
+    });
+    const res = await request(app).get("/api/v1/me/notifications").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(0);
+  });
+});
+
+describe("PATCH /api/v1/me/notifications/:id/read (Story 54)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app)
+      .patch("/api/v1/me/notifications/not-an-object-id/read")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("marks the caller's own notification read", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    const notification = await Notification.create({
+      recipient: user._id,
+      type: "ticket_assigned",
+      ticketId: ticket._id,
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${notification.id}/read`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.read).toBe(true);
+    expect((await Notification.findById(notification.id))!.read).toBe(true);
+  });
+
+  it("returns 404 (never 403) for someone else's notification, and does not mark it read", async () => {
+    const { user: owner } = await seedUser("owner@example.com", { role: "agent" });
+    const { token: otherToken } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    const notification = await Notification.create({
+      recipient: owner._id,
+      type: "ticket_assigned",
+      ticketId: ticket._id,
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${notification.id}/read`)
+      .set("Authorization", `Bearer ${otherToken}`);
+    expect(res.status).toBe(404);
+    expect((await Notification.findById(notification.id))!.read).toBe(false);
+  });
+
+  it("returns 404 for a non-existent notification id", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
   });
 });

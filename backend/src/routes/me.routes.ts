@@ -1,7 +1,9 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
+import { Types } from "mongoose";
 import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
+import { Notification } from "../models/Notification";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
 import { contactBodySchema, availabilityBodySchema } from "../validation/me.schema";
 
@@ -62,6 +64,63 @@ router.patch("/availability", requireAuth, async (req: Request, res: Response) =
   user.isOnline = parsed.data.isOnline;
   await user.save();
   res.status(200).json({ isOnline: user.isOnline });
+});
+
+// Story 54 (ticket-management): "my notifications" — every authenticated
+// staff account reads/marks-read only its own, same self-scoped shape as
+// /me/status and /me/contact above, so requireAuth only, no permission key
+// (see this story's intake for why: it's "my own data," not a resource
+// gated by role/permission). Unread-first, newest-first within each bucket,
+// capped at 50 — this backs a nav badge/dropdown, not a full history page.
+router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
+  const notifications = await Notification.find({ recipient: req.user!.id })
+    .sort({ read: 1, createdAt: -1 })
+    .limit(50)
+    .populate<{ ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null }>(
+      "ticketId",
+      "ticketNumber subject"
+    )
+    .lean();
+
+  res.status(200).json(
+    notifications
+      // A notification whose ticket was hard-deleted (never happens today —
+      // tickets are never hard-deleted — but populate() nulling a dangling
+      // ref is cheaper to guard than to assume away) is dropped rather than
+      // shown with a broken link.
+      .filter((n) => n.ticketId)
+      .map((n) => ({
+        id: n._id.toString(),
+        type: n.type,
+        read: n.read,
+        createdAt: n.createdAt,
+        ticket: {
+          id: (n.ticketId as { _id: Types.ObjectId })._id.toString(),
+          reference: `TCK-${(n.ticketId as { ticketNumber: number }).ticketNumber}`,
+          subject: (n.ticketId as { subject: string }).subject,
+        },
+      }))
+  );
+});
+
+router.patch("/notifications/:id/read", requireAuth, async (req: Request<{ id: string }>, res: Response) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+  // recipient must match the caller in the filter itself, not checked after
+  // the fact — a 404 either way (wrong id or someone else's notification)
+  // never reveals that another user's notification exists.
+  const notification = await Notification.findOneAndUpdate(
+    { _id: req.params.id, recipient: req.user!.id },
+    { $set: { read: true } },
+    { new: true }
+  );
+  if (!notification) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+  res.status(200).json({ id: notification._id.toString(), read: notification.read });
 });
 
 // GET /api/v1/me/contact — self-read, so the settings page (Task 5) has a

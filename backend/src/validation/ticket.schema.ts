@@ -58,6 +58,12 @@ export const updateTicketBodySchema = z.object({
   priority: z
     .enum(ALLOWED_PRIORITIES, { error: `priority must be one of: ${ALLOWED_PRIORITIES.join(", ")}` })
     .optional(),
+  // Story 25 (agent-workspace): manual reassignment. Shape only, same
+  // reasoning as category above — "must be an active agent" is a DB lookup
+  // that stays inline in the route handler. Nullable (unlike category's
+  // transform, this passes null straight through) so a caller can
+  // explicitly unassign a ticket, not just move it between agents.
+  assignedAgent: objectIdSchema("assignedAgent must be a valid id").nullable().optional(),
 });
 
 // Story 60 (merged with customer-portal Story 36 + platform Story 59): query

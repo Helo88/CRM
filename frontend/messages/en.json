@@ -9,6 +9,10 @@
     "searchPlaceholderFull": "Jump to Customers, Accounts…",
     "searchPlaceholderShort": "Search…",
     "notifications": "Notifications",
+    "notificationsEmpty": "No notifications yet",
+    "notificationTicketAssigned": "A ticket was assigned to you",
+    "notificationTicketEscalated": "A ticket was escalated to you",
+    "notificationTicketReassigned": "A ticket was reassigned to you",
     "comingSoon": "coming soon",
     "toggleTheme": "Toggle theme",
     "toggleLanguage": "Toggle language",
@@ -502,7 +506,10 @@
     "replySent": "Reply sent.",
     "unsupportedFileType": "That file type isn't supported here.",
     "fileTooLarge": "That file is larger than the 3MB limit.",
-    "emailReplyComingSoon": "Customers can't reply to this thread by email yet — a new reply from them would need a new ticket, for now."
+    "emailReplyComingSoon": "Customers can't reply to this thread by email yet — a new reply from them would need a new ticket, for now.",
+    "assignedAgentLabel": "Assigned agent",
+    "unassignedOption": "Unassigned",
+    "agentOfflineHint": "Offline"
   },
   "Chat": {
     "heading": "Live chat",
@@ -622,6 +629,11 @@
     "viewDetails": "View details",
     "empty": "No tickets match these filters.",
     "reply": "Reply",
-    "escalate": "Escalate"
+    "escalate": "Escalate",
+    "reassign": "Reassign",
+    "unassignedOption": "Unassigned",
+    "agentOfflineHint": "Offline",
+    "loading": "Loading…",
+    "noAssignableAgents": "No agents available"
   }
 }

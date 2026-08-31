@@ -8,6 +8,7 @@ import { Ticket } from "../../src/models/Ticket";
 import { TicketCategory } from "../../src/models/TicketCategory";
 import { Message } from "../../src/models/Message";
 import { Conversation } from "../../src/models/Conversation";
+import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
 
 const app = createApp();
@@ -29,6 +30,7 @@ beforeEach(async () => {
   await TicketCategory.deleteMany({});
   await Message.deleteMany({});
   await Conversation.deleteMany({});
+  await Notification.deleteMany({});
 });
 
 function tokenFor(user: { id: string; role: string }) {
@@ -284,6 +286,36 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     expect(ticket!.assignedAgent).toBeNull();
   });
 
+  it("writes exactly one ticket_assigned notification for the picked agent (Story 54)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const agent = await seedOnlineAgent();
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    const notifications = await Notification.find({ recipient: agent._id });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].type).toBe("ticket_assigned");
+    expect(notifications[0].ticketId.toString()).toBe(res.body.id);
+  });
+
+  it("writes no notification when no agent is online", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Help", description: "It's broken" });
+
+    expect(res.status).toBe(201);
+    expect(await Notification.countDocuments()).toBe(0);
+  });
+
   it("sends an assignment email to the picked agent", async () => {
     const sendEmailMock = vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
     const agent = await seedOnlineAgent({ email: "agent@example.com" });
@@ -390,7 +422,9 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
   });
 });
 
-async function seedTicket(overrides: Partial<{ category: string | null; priority: string }> = {}) {
+async function seedTicket(
+  overrides: Partial<{ category: string | null; priority: string; assignedAgent: mongoose.Types.ObjectId | null }> = {}
+) {
   const { user: customer } = await seedUser();
   return Ticket.create({
     subject: "Something is broken",
@@ -398,6 +432,7 @@ async function seedTicket(overrides: Partial<{ category: string | null; priority
     customer: customer._id,
     category: overrides.category ?? null,
     priority: overrides.priority ?? "medium",
+    assignedAgent: overrides.assignedAgent ?? null,
   });
 }
 
@@ -686,6 +721,195 @@ describe("PATCH /api/v1/tickets/:id (Story 9)", () => {
       .send({ priority: "high" });
 
     expect(res.status).toBe(403);
+  });
+});
+
+async function seedActiveAgent(overrides: Partial<{ isOnline: boolean; email: string }> = {}) {
+  return User.create({
+    name: "Assignable Agent",
+    email: overrides.email ?? `assignable-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
+    passwordHash: "irrelevant-for-these-tests",
+    role: "agent",
+    isActive: true,
+    isOnline: overrides.isOnline ?? false,
+  });
+}
+
+describe("GET /api/v1/tickets/assignable-agents (Story 25)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/tickets/assignable-agents");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a caller without tickets:reassign", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+    const res = await request(app).get("/api/v1/tickets/assignable-agents").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns only active agents, online and offline alike, sorted by name", async () => {
+    await seedActiveAgent({ isOnline: false, email: "zed@example.com" });
+    await User.findOneAndUpdate({ email: "zed@example.com" }, { name: "Zed" });
+    await seedActiveAgent({ isOnline: true, email: "amy@example.com" });
+    await User.findOneAndUpdate({ email: "amy@example.com" }, { name: "Amy" });
+    await User.create({
+      name: "Inactive Agent",
+      email: "inactive@example.com",
+      passwordHash: "irrelevant-for-these-tests",
+      role: "agent",
+      isActive: false,
+    });
+    await seedUser({ role: "subadmin", email: "sub@example.com" }); // not an agent — must be excluded
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app).get("/api/v1/tickets/assignable-agents").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((a: { name: string }) => a.name)).toEqual(["Amy", "Zed"]);
+    expect(res.body.find((a: { name: string; isOnline: boolean }) => a.name === "Amy")!.isOnline).toBe(true);
+    expect(res.body.find((a: { name: string; isOnline: boolean }) => a.name === "Zed")!.isOnline).toBe(false);
+  });
+});
+
+describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
+  it("lets an admin reassign to an active but OFFLINE agent", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: false });
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assignedAgent).toEqual({ id: agent.id, name: agent.name });
+    expect((await Ticket.findById(ticket.id))!.assignedAgent?.toString()).toBe(agent.id);
+  });
+
+  it("lets a sub-admin holding tickets:reassign reassign to an OFFLINE agent, same as admin", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: false });
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:reassign"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a plain agent (holding tickets:reassign) reassigning to an OFFLINE agent", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: false });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:reassign"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(400);
+    expect((await Ticket.findById(ticket.id))!.assignedAgent).toBeNull();
+  });
+
+  it("lets a plain agent (holding tickets:reassign) reassign to an ONLINE agent", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: true });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:reassign"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("clears assignedAgent when set to null, no online check applies", async () => {
+    const agent = await seedActiveAgent({ isOnline: false });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.assignedAgent).toBeNull();
+  });
+
+  it("returns 400 for a target that isn't an active agent (wrong role, inactive, or nonexistent)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+    const { user: notAnAgent } = await seedUser({ role: "subadmin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: notAnAgent.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 403 for a caller without tickets:reassign and not admin", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: true });
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("notifies only the new assignee on a first-time assignment (no previous agent)", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: true });
+    const { token } = await seedUser({ role: "admin" });
+
+    await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    const notifications = await Notification.find({});
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].recipient.toString()).toBe(agent.id);
+    expect(notifications[0].type).toBe("ticket_reassigned");
+  });
+
+  it("notifies both the previous and the new assignee on a real reassignment", async () => {
+    const previousAgent = await seedActiveAgent({ isOnline: true });
+    const ticket = await seedTicket({ assignedAgent: previousAgent._id });
+    const newAgent = await seedActiveAgent({ isOnline: true });
+    const { token } = await seedUser({ role: "admin" });
+
+    await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: newAgent.id });
+
+    const recipients = (await Notification.find({})).map((n) => n.recipient.toString()).sort();
+    expect(recipients).toEqual([newAgent.id, previousAgent.id].sort());
+  });
+
+  it("does not notify anyone when reassigning to the already-assigned agent (no-op)", async () => {
+    const agent = await seedActiveAgent({ isOnline: true });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    expect(await Notification.countDocuments()).toBe(0);
   });
 });
 
