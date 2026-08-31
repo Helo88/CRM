@@ -60,8 +60,8 @@ export async function login(
   await setSessionCookies(data.token, data.refreshToken);
 
   // Staff land on the dashboard (their actual landing page — nav into
-  // customers/accounts); a customer has no dashboard, so /settings (their
-  // profile) is still the right landing page for them.
+  // customers/accounts); a customer lands on /support (start a chat or
+  // ticket), not their profile.
   const isStaff = data.user.role === "agent" || data.user.role === "admin" || data.user.role === "subadmin";
-  redirect(isStaff ? "/dashboard" : "/settings");
+  redirect(isStaff ? "/dashboard" : "/support");
 }

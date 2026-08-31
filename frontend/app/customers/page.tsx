@@ -85,12 +85,13 @@ export default async function CustomersListPage({
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
 
   // Mirrors backend/src/routes/customer.routes.ts's GET /:id gate exactly —
-  // agent/admin always, a sub-admin only with the same customers:manage
-  // delegation the roster itself required to load. A name/history link a
-  // click would just 403 on isn't a link — render as plain text instead.
+  // admin always, agent and sub-admin both only with the same
+  // customers:manage grant the roster itself required to load. A
+  // name/history link a click would just 403 on isn't a link — render as
+  // plain text instead.
   const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
   const canViewCustomerDetail =
-    viewerRole === "agent" || viewerRole === "admin" || viewerPermissions.includes("customers:manage");
+    viewerRole === "admin" || viewerPermissions.includes("customers:manage");
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">

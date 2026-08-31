@@ -11,23 +11,21 @@ import { validateBody, validateParams } from "../middleware/validate";
 import { userIdParamsSchema } from "../validation/common";
 import { createCustomerBodySchema, noteBodySchema, updateCustomerBodySchema } from "../validation/customer.schema";
 
-// security-admin Story 46: agent/admin access to the roster and creation
-// endpoints below is UNCHANGED from before this story — only the
-// newly-added subadmin role is actually gated on a permission, so a
-// delegated sub-admin gets exactly customers:manage, nothing more. This is
-// not `requireRole("agent","admin","subadmin"), requirePermission(...)`
-// composed as two chained middlewares, because that would also gate agent
-// (whose default permission set does not include customers:manage) —
-// see .squad/plans/security-admin/09-story-configure-roles-and-permissions.md
-// Task 4 for why that naive conversion is a regression.
+// customers:manage now gates agent AND subadmin identically — reversed from
+// this route's original design (security-admin Story 46 Task 4, which
+// explicitly kept agent ungated to avoid a regression when subadmin
+// delegation was added). That bypass left customers:manage exposed as a
+// toggleable permission in the admin UI for agent accounts while doing
+// nothing, which is confusing and wrong, so agent is gated for real now.
+// admin alone remains unconditional (still needs the live isActive check).
 function staffOrDelegatedSubadmin(key: Parameters<typeof requirePermission>[0]) {
   return async (req: Request, res: Response, next: import("express").NextFunction): Promise<void> => {
-    if (req.user!.role === "subadmin") {
+    if (req.user!.role === "agent" || req.user!.role === "subadmin") {
       requirePermission(key)(req, res, next);
       return;
     }
-    // agent/admin skip the permission-key check itself, but still need a
-    // live isActive lookup — see isActiveAccount's comment (services/
+    // admin skips the permission-key check itself, but still needs a live
+    // isActive lookup — see isActiveAccount's comment (services/
     // permissions.ts) for why this can't just rely on the JWT's role claim.
     if (!(await isActiveAccount(req.user!.id))) {
       res.status(403).json({ error: "You do not have permission to perform this action" });
@@ -49,18 +47,18 @@ type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 // Shared by GET/PATCH /:id and the two protected download routes (Story 7) —
 // a single definition so the "who can see a customer's full profile" rule
-// can't drift between call sites. Same scope as the roster (GET /): a
-// sub-admin needs the same customers:manage delegation the list itself
-// requires.
+// can't drift between call sites. Same scope as the roster (GET /): agent
+// and sub-admin both need the same customers:manage grant the list itself
+// requires; only admin is unconditional.
 async function isFullStaffViewer(caller: { id: string; role: string }): Promise<boolean> {
-  if (caller.role === "admin" || caller.role === "agent") {
-    // Same isActive re-check as staffOrDelegatedSubadmin above — these two
-    // roles don't need a permission key here, but do still need to be a
+  if (caller.role === "admin") {
+    // Same isActive re-check as staffOrDelegatedSubadmin above — admin
+    // doesn't need a permission key here, but does still need to be a
     // currently-active account, not just hold the right role claim in an
     // old still-unexpired token.
     return isActiveAccount(caller.id);
   }
-  if (caller.role === "subadmin") {
+  if (caller.role === "agent" || caller.role === "subadmin") {
     return hasPermission(caller.id, "customers:manage");
   }
   return false;

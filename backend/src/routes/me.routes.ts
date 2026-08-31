@@ -1,9 +1,11 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
+import { Types } from "mongoose";
 import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
+import { Notification } from "../models/Notification";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
-import { contactBodySchema } from "../validation/me.schema";
+import { contactBodySchema, availabilityBodySchema } from "../validation/me.schema";
 
 const router = express.Router();
 
@@ -20,12 +22,105 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 // the same staleness problem on the API-enforcement side). Self-scoped, so
 // no permission key needed — same reasoning as GET /contact below.
 router.get("/status", requireAuth, async (req: Request, res: Response) => {
-  const user = await User.findById(req.user!.id).select("role isActive permissions");
+  const user = await User.findById(req.user!.id).select("role isActive permissions isOnline");
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.status(200).json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [] });
+  res
+    .status(200)
+    .json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [], isOnline: user.isOnline });
+});
+
+// PATCH /api/v1/me/availability — agent self-flip of isOnline (Story 21,
+// scoped down to just the flag + a minimal toggle, not the full dashboard —
+// see .squad/stories/agent-workspace/agent-availability-toggle/intake.md).
+// Self-scoped, so requireAuth only (no permission key), matching
+// /me/contact's precedent. Guarded so only role === "agent" can go online:
+// admins/sub-admins/customers are never auto-assigned to tickets or chats,
+// so isOnline is meaningless for them; reject with 403 rather than silently
+// no-op'ing. Deactivated users (isActive === false) also cannot go online —
+// admin.routes.ts already forces isOnline=false on deactivation and this
+// must not let it bounce back on afterwards.
+router.patch("/availability", requireAuth, async (req: Request, res: Response) => {
+  const parsed = availabilityBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const user = await User.findById(req.user!.id);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (user.role !== "agent") {
+    res.status(403).json({ error: "Only agents can set availability" });
+    return;
+  }
+  if (parsed.data.isOnline && !user.isActive) {
+    res.status(403).json({ error: "Deactivated account cannot go online" });
+    return;
+  }
+  user.isOnline = parsed.data.isOnline;
+  await user.save();
+  res.status(200).json({ isOnline: user.isOnline });
+});
+
+// Story 54 (ticket-management): "my notifications" — every authenticated
+// staff account reads/marks-read only its own, same self-scoped shape as
+// /me/status and /me/contact above, so requireAuth only, no permission key
+// (see this story's intake for why: it's "my own data," not a resource
+// gated by role/permission). Unread-first, newest-first within each bucket,
+// capped at 50 — this backs a nav badge/dropdown, not a full history page.
+router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
+  const notifications = await Notification.find({ recipient: req.user!.id })
+    .sort({ read: 1, createdAt: -1 })
+    .limit(50)
+    .populate<{ ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null }>(
+      "ticketId",
+      "ticketNumber subject"
+    )
+    .lean();
+
+  res.status(200).json(
+    notifications
+      // A notification whose ticket was hard-deleted (never happens today —
+      // tickets are never hard-deleted — but populate() nulling a dangling
+      // ref is cheaper to guard than to assume away) is dropped rather than
+      // shown with a broken link.
+      .filter((n) => n.ticketId)
+      .map((n) => ({
+        id: n._id.toString(),
+        type: n.type,
+        read: n.read,
+        createdAt: n.createdAt,
+        ticket: {
+          id: (n.ticketId as { _id: Types.ObjectId })._id.toString(),
+          reference: `TCK-${(n.ticketId as { ticketNumber: number }).ticketNumber}`,
+          subject: (n.ticketId as { subject: string }).subject,
+        },
+      }))
+  );
+});
+
+router.patch("/notifications/:id/read", requireAuth, async (req: Request<{ id: string }>, res: Response) => {
+  if (!Types.ObjectId.isValid(req.params.id)) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+  // recipient must match the caller in the filter itself, not checked after
+  // the fact — a 404 either way (wrong id or someone else's notification)
+  // never reveals that another user's notification exists.
+  const notification = await Notification.findOneAndUpdate(
+    { _id: req.params.id, recipient: req.user!.id },
+    { $set: { read: true } },
+    { new: true }
+  );
+  if (!notification) {
+    res.status(404).json({ error: "Notification not found" });
+    return;
+  }
+  res.status(200).json({ id: notification._id.toString(), read: notification.read });
 });
 
 // GET /api/v1/me/contact — self-read, so the settings page (Task 5) has a

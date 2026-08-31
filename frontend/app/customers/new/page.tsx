@@ -13,9 +13,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // USER_STORIES.md customer-management Story 55. No backend call happens on
 // load (just a form), so there's no natural 401/403 response to gate on like
-// the list/detail pages have — role is checked directly from the access
-// token here instead. Still just a UI nicety: requireRole on the actual
-// POST is what really enforces this.
+// the list/detail pages have — permissions are checked directly from the
+// access token here instead, mirroring customer.routes.ts's POST /
+// (staffOrDelegatedSubadmin("customers:manage")) exactly: admin
+// unconditional, agent/subadmin need the grant. Still just a UI nicety: that
+// backend check is what really enforces this.
 export default async function NewCustomerPage({
   searchParams,
 }: {
@@ -33,8 +35,9 @@ export default async function NewCustomerPage({
     redirect("/");
   }
 
-  const { role } = peekJwtPayload(accessToken);
-  if (role !== "agent" && role !== "admin") {
+  const { role, permissions = [] } = peekJwtPayload(accessToken);
+  const canCreateCustomer = role === "admin" || permissions.includes("customers:manage");
+  if (!canCreateCustomer) {
     redirect("/customers");
   }
 

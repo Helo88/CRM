@@ -195,6 +195,8 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: live-chat
 
+> **Numbering note:** Story 62 below was added after the rest of this backlog was already numbered — same reason, same fix as the other numbering notes in this file: high number, correct position. It sits right after Story 16 since it's the AI's other branch alongside "hand off to a human" — both are ways the AI can decide it shouldn't keep answering itself.
+
 ### Story 14: Start a live chat
 **As a** logged-in customer, **I want to** open a chat widget and start a new conversation, **so that** I can get help right away.
 - Starting a chat creates a conversation record linked to the customer.
@@ -213,10 +215,18 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Escalation flags the conversation and queues it for auto-assignment (Story 17).
 - The human agent who joins sees the full prior AI conversation.
 
+### Story 62: AI agent suggests opening a ticket
+**As a** customer, **I want** the AI agent to recognize when my issue would be better handled as a ticket (needs a longer written follow-up, attachments, or is otherwise beyond what live chat/AI can resolve on the spot), **so that** I get pointed to the right path instead of going in circles in the chat.
+- Based on the conversation's content/history, the AI can decide a ticket is the better path and says so directly in the chat, not just a vague non-answer.
+- The suggestion includes a one-click action to open a ticket, pre-filled with a subject/description drawn from the conversation, so the customer doesn't have to retype their issue from scratch.
+- The AI does **not** pick the category itself — accepting the suggestion shows the customer the same category list Story 58 manages, and the customer chooses/sets it themselves, same as the regular submit-ticket form (Story 8).
+- Accepting creates the ticket the same way Story 8 does, referencing the conversation it came from; declining just continues the chat normally.
+- Same Gemini timeout/fallback handling as Story 15 — a failed AI call never blocks the customer from continuing to chat normally.
+
 ### Story 17: Auto-assign an escalated chat to an available agent
 **As the** system, **I want to** automatically assign an escalated chat to the first agent marked online, **so that** no chat waits for someone to notice it manually.
 - Assignment happens within seconds of escalation.
-- If no agent is online, the customer is told to expect a delay and offered the email/ticket path instead.
+- If no agent is online, the customer sees a "no agent available right now" hint with two options: keep chatting with the AI agent, or close the conversation.
 - Two escalations at the same instant don't get double-assigned to the same agent.
 - Chat ownership, like ticket ownership, can be manually reassigned later (Story 25).
 

@@ -1,22 +1,59 @@
-import { LayoutDashboard, Users, ShieldUser, Ticket, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
+import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
 
 // Shared between the desktop hover-expand rail and the mobile drawer
 // (components/StaffSidebar.tsx, components/MobileStaffNav.tsx) so both stay
-// in sync. "accounts" is visible to admin and sub-admin — permissions are
-// granted per individual account, so a sub-admin may or may not actually be
-// able to use the page; the page itself handles a 403 gracefully, same as
-// "customers" already does for a non-staff viewer.
+// in sync. "accounts" (/admin/users) is gated on the exact permission its
+// own GET requires — staff:view_list — not just the admin/subadmin role,
+// since a sub-admin without it gets a real 403 from that page (see
+// app/admin/users/page.tsx's own comment on this). "chats" (Story 18) used
+// to be `agentOrAdminOnly` — its backend route was `requireRole("agent",
+// "admin")` with no permission-delegation path at all, so a sub-admin (even
+// with every permission granted) always got a real 403 there, and any agent
+// had unconditional access with no way to revoke it. It's now gated on
+// chats:manage instead, same as "accounts" — see isVisibleForRole below for
+// why one `permission` check now covers both cases correctly. "customers"
+// used to be unconditionally visible to any staff role too, back when an
+// agent's access to /customers was itself unconditional — now that
+// customer.routes.ts gates agent (not just sub-admin) on customers:manage,
+// this must gate on it as well, or an agent who's had it revoked gets a nav
+// entry/search result that just bounces them to /dashboard.
 export const STAFF_NAV_ITEMS = [
-  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false },
-  { key: "customers", href: "/customers", icon: Users, staffOnly: false },
-  { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false },
-  { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true },
+  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
+  { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: "customers:manage" },
+  { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
+  { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage" },
+  { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list" },
 ] as const;
 
 export type StaffNavKey = (typeof STAFF_NAV_ITEMS)[number]["key"];
 
-export function visibleStaffNavItems(role: string | undefined) {
-  return STAFF_NAV_ITEMS.filter((item) => !item.staffOnly || role === "admin" || role === "subadmin");
+// A `permission` key, when present, is checked the same way for every item
+// regardless of `staffOnly`: admin always passes; agent/subadmin need it in
+// their own granted list. This one rule already covers both existing shapes
+// — a sub-admin-only key like staff:view_list (an agent's permissions array
+// can never contain it; the backend rejects granting it to an agent
+// account, so the array-membership check alone excludes agents exactly like
+// the old staffOnly-specific branch did) and a key assignable to either role
+// like chats:manage (an agent *can* hold it, and should see the item when
+// they do). `agentOrAdminOnly`/`staffOnly` only still matter for the
+// permission-less items above (visible to any signed-in staff role).
+function isVisibleForRole(
+  item: { agentOrAdminOnly: boolean; staffOnly: boolean; permission?: string },
+  role: string | undefined,
+  permissions: string[]
+): boolean {
+  if (item.permission) {
+    if (role === "admin") return true;
+    if (role === "agent" || role === "subadmin") return permissions.includes(item.permission);
+    return false;
+  }
+  if (item.agentOrAdminOnly) return role === "agent" || role === "admin";
+  if (!item.staffOnly) return true;
+  return role === "admin";
+}
+
+export function visibleStaffNavItems(role: string | undefined, permissions: string[] = []) {
+  return STAFF_NAV_ITEMS.filter((item) => isVisibleForRole(item, role, permissions));
 }
 
 // Quick-create actions surfaced in the header search (HeaderSearch), not
@@ -24,31 +61,31 @@ export function visibleStaffNavItems(role: string | undefined) {
 // destination page's real access check exactly — a link a click would just
 // redirect away from isn't offered here (same rule customer.routes.ts's
 // roster already follows for row-level links: don't render a link a click
-// would just bounce off of).
+// would just bounce off of). Where the destination page checks a specific
+// permission (not just role) for a sub-admin, `permission` names it — a
+// sub-admin lacking it doesn't get offered the entry, same as it doesn't
+// get a working "accounts" nav item above without staff:view_list.
 export const STAFF_ACTION_ITEMS = [
   // /tickets/new (ticket-management Story 8/57) renders customer-submit
   // mode for a customer and staff-create-for-customer mode for
   // agent/admin/subadmin — every staff role reaches a working form here,
   // even one lacking tickets:create_for_customer (the backend 403 surfaces
   // as an in-form alert, not a dead page).
-  { key: "newTicket", href: "/tickets/new", icon: TicketPlus, agentOrAdminOnly: false, staffOnly: false },
-  // customers/new/page.tsx redirects anyone who isn't exactly "agent" or
-  // "admin" (a subadmin included) — matches that exact check.
-  { key: "newCustomer", href: "/customers/new", icon: UserPlus, agentOrAdminOnly: true, staffOnly: false },
-  // Same visibility as the "accounts" nav item above (admin/subadmin only).
-  { key: "newStaffAccount", href: "/admin/users/new", icon: ShieldPlus, agentOrAdminOnly: false, staffOnly: true },
-  // Story 58: admin-editable ticket category list. tickets:manage_categories
-  // is a sub-admin-tier permission (SUBADMIN_ONLY_PERMISSIONS), same tier as
-  // the "accounts"/"newStaffAccount" entries above — admin/subadmin only.
-  { key: "manageTicketCategories", href: "/admin/ticket-categories", icon: Tags, agentOrAdminOnly: false, staffOnly: true },
+  { key: "newTicket", href: "/tickets/new", icon: TicketPlus, agentOrAdminOnly: false, staffOnly: false, permission: undefined },
+  // customers/new/page.tsx requires customers:manage (agent/subadmin) or
+  // admin, same gate its POST /customers ultimately enforces — matches
+  // that exactly.
+  { key: "newCustomer", href: "/customers/new", icon: UserPlus, agentOrAdminOnly: false, staffOnly: false, permission: "customers:manage" },
+  // admin/users/new/page.tsx requires role "admin" or permission staff:edit
+  // (a sub-admin delegated staff:edit, same key the POST itself requires).
+  { key: "newStaffAccount", href: "/admin/users/new", icon: ShieldPlus, agentOrAdminOnly: false, staffOnly: true, permission: "staff:edit" },
+  // Story 58: admin/ticket-categories/page.tsx's GET requires
+  // tickets:categories_view — a sub-admin without it gets a real 403 there.
+  { key: "manageTicketCategories", href: "/admin/ticket-categories", icon: Tags, agentOrAdminOnly: false, staffOnly: true, permission: "tickets:categories_view" },
 ] as const;
 
-export function visibleStaffActionItems(role: string | undefined) {
-  return STAFF_ACTION_ITEMS.filter((item) => {
-    if (item.staffOnly && role !== "admin" && role !== "subadmin") return false;
-    if (item.agentOrAdminOnly && role !== "agent" && role !== "admin") return false;
-    return true;
-  });
+export function visibleStaffActionItems(role: string | undefined, permissions: string[] = []) {
+  return STAFF_ACTION_ITEMS.filter((item) => isVisibleForRole(item, role, permissions));
 }
 
 // Derives which nav item is "active" from the current URL instead of a

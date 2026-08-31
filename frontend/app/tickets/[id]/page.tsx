@@ -26,6 +26,7 @@ interface TicketDetailResponse {
   category: string | null;
   priority: "low" | "medium" | "high" | "urgent";
   customer: { id: string; name: string; email: string };
+  assignedAgent: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -133,6 +134,10 @@ export default async function TicketDetailPage({
   const canCategorize = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:categorize"));
   const canChangePriority = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_priority"));
   const canReply = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reply"));
+  const canReassign = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reassign"));
+  // Story 25's availability rule: admin/sub-admin bypass the online-only
+  // restriction; a plain agent holding tickets:reassign does not.
+  const viewerIsUnrestrictedReassigner = isViewerAdmin || role === "subadmin";
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
@@ -198,8 +203,11 @@ export default async function TicketDetailPage({
                     ticketId={ticket.id}
                     category={ticket.category}
                     priority={ticket.priority}
+                    assignedAgent={ticket.assignedAgent}
                     canCategorize={canCategorize}
                     canChangePriority={canChangePriority}
+                    canReassign={canReassign}
+                    viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
                   />
                 </CardContent>
               </Card>

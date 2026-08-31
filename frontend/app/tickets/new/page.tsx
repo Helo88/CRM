@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
+import { StaffSidebar } from "@/components/StaffSidebar";
 import { SubmitTicketForm } from "./SubmitTicketForm";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -43,9 +44,23 @@ export default async function NewTicketPage({
     redirect("/dashboard");
   }
 
+  if (role === "customer") {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-8">
+        <SubmitTicketForm mode="customer" />
+      </main>
+    );
+  }
+
+  // Staff mode gets the same persistent StaffSidebar rail every other staff
+  // page has (tickets queue, ticket detail, dashboard, ...) — this form was
+  // previously the one staff-reachable page missing it entirely.
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <SubmitTicketForm mode={role === "customer" ? "customer" : "staff"} />
-    </main>
+    <div className="flex min-h-[calc(100vh-57px)]">
+      <StaffSidebar active="tickets" />
+      <main className="flex min-w-0 flex-1 items-center justify-center p-8">
+        <SubmitTicketForm mode="staff" />
+      </main>
+    </div>
   );
 }

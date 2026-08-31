@@ -31,6 +31,7 @@ export const PERMISSION_KEYS = [
   "tickets:categorize",
   "tickets:change_priority",
   "tickets:reply",
+  "chats:manage",
   "sla:configure",
   "kb:publish",
   "reports:view",
@@ -82,6 +83,11 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionK
     "tickets:categorize",
     "tickets:change_priority",
     "tickets:reply",
+    "chats:manage",
+    // customers:manage added when agents started being gated on it (see
+    // customer.routes.ts) — pre-existing agent accounts won't have it and
+    // need a manual grant; no backfill migration exists for this.
+    "customers:manage",
   ],
   subadmin: [],
 };

@@ -14,3 +14,7 @@ export const contactBodySchema = z.object({
     .optional(),
   email: emailSchema("valid email is required").optional(),
 });
+
+export const availabilityBodySchema = z.object({
+  isOnline: z.boolean({ error: "isOnline must be a boolean" }),
+});

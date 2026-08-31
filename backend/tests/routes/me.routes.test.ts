@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
+import { Ticket } from "../../src/models/Ticket";
+import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
 
 const app = createApp();
@@ -21,6 +23,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await User.deleteMany({});
+  await Ticket.deleteMany({});
+  await Notification.deleteMany({});
   vi.restoreAllMocks();
 });
 
@@ -28,15 +32,99 @@ function tokenFor(user: { id: string; role: string }) {
   return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET as string);
 }
 
-async function seedUser(email = "current@example.com") {
+async function seedUser(
+  email = "current@example.com",
+  overrides: Partial<{ role: string; isActive: boolean; isOnline: boolean }> = {}
+) {
   const user = await User.create({
     name: "Test User",
     email,
     passwordHash: "irrelevant-for-these-tests",
-    role: "customer",
+    role: overrides.role ?? "customer",
+    isActive: overrides.isActive ?? true,
+    isOnline: overrides.isOnline ?? false,
   });
   return { user, token: tokenFor({ id: user.id, role: user.role }) };
 }
+
+describe("GET /api/v1/me/status", () => {
+  it("includes isOnline in the response body", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent", isOnline: true });
+    const res = await request(app).get("/api/v1/me/status").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.isOnline).toBe(true);
+  });
+});
+
+describe("PATCH /api/v1/me/availability (Story 21, minimal)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).patch("/api/v1/me/availability").send({ isOnline: true });
+    expect(res.status).toBe(401);
+  });
+
+  it("lets an active agent flip isOnline true and back to false", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+
+    const resOn = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(resOn.status).toBe(200);
+    expect(resOn.body).toEqual({ isOnline: true });
+    expect((await User.findById(user.id))!.isOnline).toBe(true);
+
+    const resOff = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: false });
+    expect(resOff.status).toBe(200);
+    expect(resOff.body).toEqual({ isOnline: false });
+    expect((await User.findById(user.id))!.isOnline).toBe(false);
+  });
+
+  it("returns 403 for an admin", async () => {
+    const { token } = await seedUser("admin@example.com", { role: "admin" });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const { token } = await seedUser("customer@example.com", { role: "customer" });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 and does not flip isOnline when a deactivated agent tries to go online", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent", isActive: false });
+    const res = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: true });
+    expect(res.status).toBe(403);
+    expect((await User.findById(user.id))!.isOnline).toBe(false);
+  });
+
+  it("returns 400 when isOnline is missing or not a boolean", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const resMissing = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(resMissing.status).toBe(400);
+
+    const resWrongType = await request(app)
+      .patch("/api/v1/me/availability")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isOnline: "yes" });
+    expect(resWrongType.status).toBe(400);
+  });
+});
 
 describe("GET /api/v1/me/contact", () => {
   it("returns 401 without a token", async () => {
@@ -178,5 +266,109 @@ describe("GET /api/v1/me/email/confirm", () => {
     expect(res.headers.location).toContain("status=conflict");
     const reloaded = await User.findById(userId);
     expect(reloaded!.pendingEmail).toBeNull();
+  });
+});
+
+async function seedTicket(customer: mongoose.Types.ObjectId) {
+  return Ticket.create({ subject: "s", description: "d", customer });
+}
+
+describe("GET /api/v1/me/notifications (Story 54)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/me/notifications");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the caller's notifications unread-first, newest-first within each bucket, and never someone else's", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const { user: otherAgent } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticketA = await seedTicket(customer._id);
+    const ticketB = await seedTicket(customer._id);
+    const ticketC = await seedTicket(customer._id);
+
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketA._id, read: true });
+    await Notification.create({ recipient: user._id, type: "ticket_assigned", ticketId: ticketB._id, read: false });
+    await Notification.create({ recipient: user._id, type: "ticket_reassigned", ticketId: ticketC._id, read: false });
+    await Notification.create({ recipient: otherAgent._id, type: "ticket_assigned", ticketId: ticketA._id, read: false });
+
+    const res = await request(app).get("/api/v1/me/notifications").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(3);
+    expect(res.body.every((n: { read: boolean }) => typeof n.read === "boolean")).toBe(true);
+    // Unread ones (ticketB, ticketC) sort before the read one (ticketA).
+    expect(res.body[2].read).toBe(true);
+    expect(res.body[2].ticket.id).toBe(ticketA.id);
+  });
+
+  it("drops a notification whose ticket no longer resolves rather than erroring", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    await Notification.create({
+      recipient: user._id,
+      type: "ticket_assigned",
+      ticketId: new mongoose.Types.ObjectId(),
+    });
+    const res = await request(app).get("/api/v1/me/notifications").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(0);
+  });
+});
+
+describe("PATCH /api/v1/me/notifications/:id/read (Story 54)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app)
+      .patch("/api/v1/me/notifications/not-an-object-id/read")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("marks the caller's own notification read", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    const notification = await Notification.create({
+      recipient: user._id,
+      type: "ticket_assigned",
+      ticketId: ticket._id,
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${notification.id}/read`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.read).toBe(true);
+    expect((await Notification.findById(notification.id))!.read).toBe(true);
+  });
+
+  it("returns 404 (never 403) for someone else's notification, and does not mark it read", async () => {
+    const { user: owner } = await seedUser("owner@example.com", { role: "agent" });
+    const { token: otherToken } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const ticket = await seedTicket(customer._id);
+    const notification = await Notification.create({
+      recipient: owner._id,
+      type: "ticket_assigned",
+      ticketId: ticket._id,
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${notification.id}/read`)
+      .set("Authorization", `Bearer ${otherToken}`);
+    expect(res.status).toBe(404);
+    expect((await Notification.findById(notification.id))!.read).toBe(false);
+  });
+
+  it("returns 404 for a non-existent notification id", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app)
+      .patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
   });
 });

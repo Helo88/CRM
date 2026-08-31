@@ -61,14 +61,15 @@ None.
 
 ## Dependencies
 
-- **Blocked by / related ids:** Story 17 (auto-assign an escalated chat) — this story is the agent-facing counterpart once assignment has happened.
-- **Depends on code areas or other stories:** `backend/src/models/Message.ts` (`senderType: "agent"` already in the enum), `backend/src/sockets/chat.socket.ts` (`conversation:join`/`conversation:message` handlers), `backend/src/middleware/auth.ts` (`requireAuth`, `requireRole("agent","admin")` for agent-facing endpoints).
+- **Blocked by / related ids:** Story 17 (auto-assign an escalated chat) — **shipped**. `Conversation.status` can now be `"with_agent"` with `assignedAgent` populated; a `conversation:assigned` socket event already fires the moment assignment happens (`backend/src/sockets/chat.socket.ts`, right after the `conversation:escalate` handler). This story is the agent-facing counterpart that finally lets that assigned agent actually see and reply to the chat — right now nothing does.
+- **Depends on code areas or other stories:** `backend/src/models/Message.ts` (`senderType: "agent"` already in the enum), `backend/src/sockets/chat.socket.ts` (294 lines now — `conversation:join`, `conversation:message`, `conversation:escalate`, `conversation:close` handlers all already there), `backend/src/middleware/auth.ts` (`requireAuth`, `requireRole("agent","admin")` for agent-facing endpoints).
 
 ## Extra notes (optional)
 
-- "Sees the full conversation, including prior AI messages" is a read endpoint (`GET` messages for a conversation) — likely `GET /api/v1/conversations/:id` or a nested messages route; none exists yet (`conversation.routes.ts` only has the two `POST` stubs). Decide the route shape and note it.
+- "Sees the full conversation, including prior AI messages" is a read endpoint (`GET` messages for a conversation) — likely `GET /api/v1/conversations/:id` or a nested messages route; none exists yet (`conversation.routes.ts` only has the `POST /` create handler — the old escalate stub was removed by Story 16). Decide the route shape and note it.
 - "Messages the agent sends appear instantly via WebSocket" reuses the same `conversation:message` socket event Story 14 wires for customers — an agent sending a message should go through the same persistence + broadcast path, just with `senderType: "agent"` and `senderId` set to the agent's id from `req.user`/the authenticated socket.
-- This story is backend-only unless a minimal agent chat UI is judged necessary to satisfy "sees my assigned live chats" — there is no agent dashboard UI in `frontend/` yet (that's Story 20, `agent-workspace`, a later feature). If frontend work is out of reach for this story, note explicitly that only the API/socket surface is delivered here.
+- **Real gap found while planning Story 17:** `isAuthorizedOnConversation(userId, conversation)` (`chat.socket.ts`) only returns true for the conversation's own `customer` or its `assignedAgent` — it has no admin bypass. This story's own acceptance criterion ("Admin can also reply to any live chat, not just their own assigned ones") cannot be satisfied without widening that check (e.g. `|| callerRole === "admin"`, which needs the role available at the call site — it currently isn't passed in, only the user id). Fix this as part of this story, not a follow-up.
+- **Frontend is NOT optional for this story** per `CLAUDE.md`'s "every persona-facing capability ships its frontend UI in the same story" — Story 20 (`agent-workspace`, full unified dashboard) is a later feature, but this story still needs *some* minimal, reachable surface for an agent to see their assigned chats and reply (e.g. a simple `/chats` list + detail view, reusing `LiveChatPanel.tsx`'s message-rendering patterns rather than the full dashboard). Scope it the same way the agent-availability-toggle story scoped itself down below full Story 21 — small and functional, not polished, but real and shipped.
 
 ## Technical hints (optional)
 

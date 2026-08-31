@@ -14,7 +14,15 @@ import { CUSTOMER_SEARCH_ITEMS } from "@/lib/customerSearch";
 // (staffNav.ts / customerSearch.ts) itself — those lists carry Lucide icon
 // component references, which cannot cross the Server-to-Client prop
 // boundary from SiteHeader (a Server Component); only primitives can.
-export function HeaderSearch({ variant, role }: { variant: "staff" | "customer"; role?: string }) {
+export function HeaderSearch({
+  variant,
+  role,
+  permissions = [],
+}: {
+  variant: "staff" | "customer";
+  role?: string;
+  permissions?: string[];
+}) {
   const t = useTranslations("Nav");
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -23,7 +31,7 @@ export function HeaderSearch({ variant, role }: { variant: "staff" | "customer";
 
   const items =
     variant === "staff"
-      ? [...visibleStaffNavItems(role), ...visibleStaffActionItems(role)]
+      ? [...visibleStaffNavItems(role, permissions), ...visibleStaffActionItems(role, permissions)]
       : CUSTOMER_SEARCH_ITEMS;
   const labeledItems = items.map((item) => ({ ...item, label: t(item.key) }));
   const matches = query.trim()

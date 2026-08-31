@@ -55,5 +55,5 @@ export async function register(
 
   await setSessionCookies(data.token, data.refreshToken);
 
-  redirect("/settings");
+  redirect("/support");
 }

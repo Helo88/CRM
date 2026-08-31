@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LOCALE_COOKIE, type Locale } from "@/lib/locale";
 import { logout } from "@/app/actions";
+import { getAvailability, setAvailability } from "@/app/actions/availability";
 import { cn } from "@/lib/utils";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -27,6 +29,7 @@ export function UserMenu({
   email,
   membershipNumber,
   locale,
+  role,
   inlineName = false,
   viewProfileHref,
 }: {
@@ -34,6 +37,10 @@ export function UserMenu({
   email?: string;
   membershipNumber?: string;
   locale: Locale;
+  // Story 21 (agent-workspace), scoped down to just the flag + this toggle,
+  // not the full dashboard — see .squad/stories/agent-workspace/
+  // agent-availability-toggle/intake.md. Only agents get the item below.
+  role?: string;
   inlineName?: boolean;
   // Customer-only: links to /customers/[id]'s richer profile (name/email/
   // phone plus the notes/attachments gallery step). Used to sit alongside a
@@ -50,6 +57,37 @@ export function UserMenu({
   // do have an email worth surfacing here instead — matching the reference
   // header's "name / email" pairing.
   const secondaryLine = membershipNumber ? t("memberNumber", { number: membershipNumber }) : email;
+
+  const isAgent = role === "agent";
+  const [isOnline, setIsOnline] = useState<boolean | null>(null);
+  const [availabilityPending, setAvailabilityPending] = useState(false);
+
+  // Hydrate on mount rather than from the header's JWT decode — isOnline
+  // isn't (and shouldn't be) baked into the access token, so this is the one
+  // piece of UserMenu that needs its own round-trip.
+  useEffect(() => {
+    if (!isAgent) return;
+    let cancelled = false;
+    getAvailability().then((value) => {
+      if (!cancelled) setIsOnline(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAgent]);
+
+  async function toggleAvailability(event: Event) {
+    event.preventDefault();
+    if (isOnline === null || availabilityPending) return;
+    const next = !isOnline;
+    setIsOnline(next); // optimistic
+    setAvailabilityPending(true);
+    const result = await setAvailability(next);
+    setAvailabilityPending(false);
+    if (!result.ok) {
+      setIsOnline(!next); // revert
+    }
+  }
 
   function toggleLocale() {
     const next: Locale = locale === "en" ? "ar" : "en";
@@ -90,6 +128,19 @@ export function UserMenu({
           )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {isAgent && isOnline !== null && (
+          <DropdownMenuItem onSelect={toggleAvailability}>
+            <span className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "inline-flex size-2 shrink-0 rounded-full",
+                  isOnline ? "bg-success" : "bg-muted-foreground/40"
+                )}
+              />
+              {isOnline ? t("availabilityOnline") : t("availabilityOffline")}
+            </span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link href={viewProfileHref ?? "/settings"}>{viewProfileHref ? t("myProfile") : t("profile")}</Link>
         </DropdownMenuItem>

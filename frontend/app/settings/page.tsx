@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
+import { peekJwtPayload } from "@/lib/jwt";
+import { StaffSidebar } from "@/components/StaffSidebar";
 import { SettingsForm } from "./SettingsForm";
 
 // Authenticated page — not meant to be indexed, but still wants a real
@@ -61,10 +63,21 @@ export default async function SettingsPage({
     redirect("/");
   }
   const contact = await res.json();
+  // This page (unlike most authenticated pages) is reachable by both
+  // personas — a customer and staff alike edit their own contact info here —
+  // so StaffSidebar only renders for the staff case, same "gate on role, not
+  // the page" pattern as tickets/[id]/page.tsx. There's no matching rail
+  // item for /settings (it's reached via UserMenu, not the rail), so no
+  // `active` is passed.
+  const { role } = peekJwtPayload(token);
+  const isStaff = role === "agent" || role === "admin" || role === "subadmin";
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <SettingsForm contact={contact} />
-    </main>
+    <div className="flex min-h-[calc(100vh-57px)]">
+      {isStaff && <StaffSidebar />}
+      <main className="flex min-w-0 flex-1 items-center justify-center p-8">
+        <SettingsForm contact={contact} />
+      </main>
+    </div>
   );
 }

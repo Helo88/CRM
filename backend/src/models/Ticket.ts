@@ -25,6 +25,10 @@ export interface ITicket extends Document {
   status: TicketStatus;
   sla: ITicketSla;
   escalatedTo: Types.ObjectId | null;
+  // Story 62 (live-chat): provenance only — set when the customer accepted
+  // the AI's "open a ticket" suggestion from a live chat. Never consumed by
+  // auto-assignment (Story 10) or any query filter, just a traceability link.
+  sourceConversation: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +56,7 @@ const ticketSchema = new Schema<ITicket>(
     },
 
     escalatedTo: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    sourceConversation: { type: Schema.Types.ObjectId, ref: "Conversation", default: null },
   },
   { timestamps: true }
 );

@@ -54,7 +54,7 @@ export default async function TicketsPage({
     redirect("/");
   }
 
-  const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  const { id: viewerId, role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
   const isStaff = viewerRole === "agent" || viewerRole === "admin" || viewerRole === "subadmin";
 
   const listQuery = new URLSearchParams(currentQuery);
@@ -110,6 +110,10 @@ export default async function TicketsPage({
   const canViewAll = isAdmin || viewerPermissions.includes("tickets:view_all");
   const canReassign = isAdmin || viewerPermissions.includes("tickets:reassign");
   const canDelete = isAdmin || viewerPermissions.includes("tickets:delete");
+  const canViewStaffAccount = isAdmin || viewerPermissions.includes("staff:view_account");
+  // Story 25's availability rule: admin/sub-admin bypass the online-only
+  // restriction; a plain agent holding tickets:reassign does not.
+  const viewerIsUnrestrictedReassigner = isAdmin || viewerRole === "subadmin";
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
@@ -124,7 +128,10 @@ export default async function TicketsPage({
           canViewAll={canViewAll}
           canReassign={canReassign}
           canDelete={canDelete}
+          canViewStaffAccount={canViewStaffAccount}
+          viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
           currentQuery={currentQuery.toString()}
+          currentUserId={viewerId}
         />
       </main>
     </div>

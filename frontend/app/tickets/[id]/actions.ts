@@ -19,7 +19,7 @@ async function getBearerToken(): Promise<string | null> {
 
 async function patchTicket(
   ticketId: string,
-  body: { category: string | null } | { priority: string }
+  body: { category: string | null } | { priority: string } | { assignedAgent: string | null }
 ): Promise<TicketDetailActionState> {
   const t = await getTranslations("TicketDetail");
   const token = await getBearerToken();
@@ -61,6 +61,44 @@ export async function updateTicketCategory(
 
 export async function updateTicketPriority(ticketId: string, priority: string): Promise<TicketDetailActionState> {
   return patchTicket(ticketId, { priority });
+}
+
+export async function reassignTicket(
+  ticketId: string,
+  assignedAgent: string | null
+): Promise<TicketDetailActionState> {
+  return patchTicket(ticketId, { assignedAgent });
+}
+
+export interface AssignableAgent {
+  id: string;
+  name: string;
+  isOnline: boolean;
+}
+
+// Story 25: backs both the ticket-detail sidebar's "Assigned agent" select
+// and the queue table's reassign dropdown — one shared action, mirroring
+// listActiveTicketCategories in ../new/actions.ts. Returns [] on any
+// failure (signed out, forbidden, network hiccup) — same "degrade to
+// empty" reasoning that function already uses.
+export async function listAssignableAgents(): Promise<AssignableAgent[]> {
+  const token = await getBearerToken();
+  if (!token) return [];
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/tickets/assignable-agents`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) return [];
+    res = await doFetch(refreshedToken);
+  }
+  if (!res.ok) return [];
+  return (await res.json()) as AssignableAgent[];
 }
 
 export interface SendTicketReplyState {

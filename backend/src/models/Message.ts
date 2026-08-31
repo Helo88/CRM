@@ -24,6 +24,11 @@ export interface IMessageAttachment {
  * `senderType: "ai"` covers AI agent replies (live-chat Story 15, ai-features Stories 31-34);
  * `internal: true` covers agent-only notes (agent-workspace Story 24) — never shown to the customer.
  */
+export interface IAiTicketSuggestion {
+  subject: string;
+  description: string;
+}
+
 export interface IMessage extends Document {
   parentType: MessageParentType;
   parentId: Types.ObjectId;
@@ -32,6 +37,11 @@ export interface IMessage extends Document {
   text: string;
   internal: boolean;
   attachments: IMessageAttachment[];
+  // Story 62 (live-chat): set on an "ai" message when Gemini's classifier
+  // decided this reply should offer a one-click "open a ticket" suggestion.
+  // Persisted (not just emitted) so the card re-hydrates correctly on
+  // reconnect/history reload.
+  aiTicketSuggestion: IAiTicketSuggestion | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +65,11 @@ const messageSchema = new Schema<IMessage>(
         size: { type: Number, required: true },
       },
     ],
+
+    aiTicketSuggestion: {
+      type: new Schema({ subject: String, description: String }, { _id: false }),
+      default: null,
+    },
   },
   { timestamps: true }
 );

@@ -13,6 +13,7 @@ import * as liveChatAiService from "../../src/services/liveChatAi.service";
 
 vi.mock("../../src/services/liveChatAi.service", () => ({
   getAiReply: vi.fn(),
+  evaluateTicketSuggestion: vi.fn(),
 }));
 
 let mongod: MongoMemoryServer;
@@ -45,6 +46,8 @@ beforeEach(async () => {
   await Conversation.deleteMany({});
   await Message.deleteMany({});
   vi.mocked(liveChatAiService.getAiReply).mockReset();
+  vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockReset();
+  vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
 });
 
 function tokenFor(user: { id: string; role: string }) {
@@ -59,6 +62,21 @@ async function seedUser(role = "customer") {
     role,
   });
   return { user, token: tokenFor({ id: user.id, role }) };
+}
+
+async function seedOnlineAgent() {
+  return User.create({
+    name: "Available Agent",
+    email: `agent-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
+    passwordHash: "irrelevant-for-these-tests",
+    role: "agent",
+    isOnline: true,
+    isActive: true,
+    // chats:manage is now required to be an auto-assignment candidate for a
+    // conversation (assignment.service.ts's pickAndClaimAgentForConversation)
+    // — this helper's whole purpose is seeding an agent meant to be picked.
+    permissions: ["chats:manage"],
+  });
 }
 
 function connect(token?: string): Promise<ClientSocket> {
@@ -309,4 +327,549 @@ describe("chat.socket.ts AI agent branch (Story 15)", () => {
       socket.disconnect();
     }
   );
+});
+
+describe("chat.socket.ts escalate (Story 16)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("flips status to escalated and broadcasts conversation:escalated", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "escalated" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("escalated");
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-customer (agent) trying to escalate, leaving status unchanged", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "ai_handling",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "You do not have permission to escalate this conversation",
+    });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("ai_handling");
+
+    socket.disconnect();
+  });
+
+  it("rejects a malformed payload", async () => {
+    const { token } = await seedUser();
+    const socket = await connect(token);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: "not-an-object-id" });
+
+    await errored;
+    socket.disconnect();
+  });
+
+  it("rejects escalating a resolved conversation", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "resolved" });
+    const socket = await connect(token);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({ error: "This conversation is closed" });
+
+    socket.disconnect();
+  });
+
+  it("is idempotent for an already-escalated conversation — no error, direct re-emit", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "escalated" });
+    const socket = await connect(token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "escalated" });
+
+    socket.disconnect();
+  });
+
+  it("is idempotent for an already-with_agent conversation", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "with_agent" });
+    const socket = await connect(token);
+
+    const escalated = new Promise((resolve) => socket.on("conversation:escalated", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    await expect(escalated).resolves.toEqual({ conversationId: conversation.id, status: "with_agent" });
+
+    socket.disconnect();
+  });
+
+  it("after escalation, with an agent online to claim it, a customer message persists but does not trigger the AI branch", async () => {
+    // Story 17: an online agent claims the conversation right after
+    // escalation, which is what keeps the AI branch off afterward — without
+    // one, Story 17 reverts status to ai_handling on purpose (see that
+    // story's own describe block below).
+    await seedOnlineAgent();
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    await new Promise((resolve) => {
+      socket.on("conversation:assigned", resolve);
+      socket.emit("conversation:escalate", { conversationId: conversation.id });
+    });
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "still here?" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
+    expect(await Message.countDocuments({ senderType: "customer" })).toBe(1);
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("auto-assigns to the online agent and emits conversation:assigned to the room", async () => {
+    const agent = await seedOnlineAgent();
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const assigned = new Promise<Record<string, unknown>>((resolve) =>
+      socket.on("conversation:assigned", resolve)
+    );
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    const payload = await assigned;
+    expect(payload).toEqual({ conversationId: conversation.id, agentId: agent.id, status: "with_agent" });
+
+    const reloaded = await Conversation.findById(conversation.id);
+    expect(reloaded!.status).toBe("with_agent");
+    expect(reloaded!.assignedAgent?.toString()).toBe(agent.id);
+
+    socket.disconnect();
+  });
+
+  it("emits conversation:no-agent-available to the caller only and reverts status to ai_handling when no agent is online", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const noAgent = new Promise<Record<string, unknown>>((resolve) =>
+      socket.on("conversation:no-agent-available", resolve)
+    );
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+
+    const payload = await noAgent;
+    expect(payload).toEqual({ conversationId: conversation.id });
+
+    const reloaded = await Conversation.findById(conversation.id);
+    expect(reloaded!.status).toBe("ai_handling");
+    expect(reloaded!.assignedAgent).toBeNull();
+
+    socket.disconnect();
+  });
+
+  it("customer close via conversation:close flips status to resolved and broadcasts conversation:closed", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "escalated" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const closed = new Promise((resolve) => socket.on("conversation:closed", resolve));
+    socket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closed).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+
+    socket.disconnect();
+  });
+
+  it("lets the assigned agent close via conversation:close (Story 19)", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    const closedForCustomer = new Promise((resolve) => customerSocket.on("conversation:closed", resolve));
+    agentSocket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closedForCustomer).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("lets an admin close any conversation via conversation:close (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent } = await seedUser("agent");
+    const { token: adminToken } = await seedUser("admin");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, adminToken);
+
+    const closed = new Promise((resolve) => socket.on("conversation:closed", resolve));
+    socket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closed).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("resolved");
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-participant agent's conversation:close with conversation:error (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: assignedAgent } = await seedUser("agent");
+    const { token: otherAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: assignedAgent._id,
+      status: "with_agent",
+    });
+    // Not joinedSocket() -- this agent isn't authorized to join the
+    // conversation either, so waiting on "conversation:joined" would hang.
+    const socket = await connect(otherAgentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "You do not have permission to close this conversation",
+    });
+    expect((await Conversation.findById(conversation.id))!.status).toBe("with_agent");
+
+    socket.disconnect();
+  });
+
+  it("closing an already-resolved conversation emits conversation:closed to the caller but does not re-broadcast (Story 19)", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "resolved",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    let customerBroadcasts = 0;
+    customerSocket.on("conversation:closed", () => {
+      customerBroadcasts += 1;
+    });
+    const closedForAgent = new Promise((resolve) => agentSocket.on("conversation:closed", resolve));
+    agentSocket.emit("conversation:close", { conversationId: conversation.id });
+
+    await expect(closedForAgent).resolves.toEqual({ conversationId: conversation.id, status: "resolved" });
+    // Give the (absent) room broadcast a tick to have arrived if it wrongly fired.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(customerBroadcasts).toBe(0);
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("rejects an agent's message on a resolved conversation, same as a customer's (Story 19)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "resolved",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    await expect(errored).resolves.toEqual({ error: "This conversation is closed" });
+    expect(await Message.countDocuments()).toBe(0);
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts agent/admin reply (Story 18)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("lets the assigned agent join and reply; message persists as senderType agent and broadcasts to the customer", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    const receivedByCustomer = new Promise<Record<string, unknown>>((resolve) =>
+      customerSocket.on("conversation:message", resolve)
+    );
+    agentSocket.emit("conversation:message", { conversationId: conversation.id, text: "How can I help?" });
+
+    const message = await receivedByCustomer;
+    expect(message.senderType).toBe("agent");
+    expect(message.senderId).toBe(agent.id);
+    expect(message.text).toBe("How can I help?");
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("does not trigger the AI branch for the agent's own reply", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "agent reply" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
+
+    socket.disconnect();
+  });
+
+  it("admin can join and message any conversation even when not the assignedAgent", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent } = await seedUser("agent");
+    const { token: adminToken } = await seedUser("admin");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await joinedSocket(conversation.id, adminToken);
+
+    const received = new Promise<Record<string, unknown>>((resolve) =>
+      socket.on("conversation:message", resolve)
+    );
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "Admin stepping in" });
+
+    const message = await received;
+    expect(message.senderType).toBe("agent"); // Message has no separate "admin" sender type
+    expect(message.text).toBe("Admin stepping in");
+
+    socket.disconnect();
+  });
+
+  it("an unassigned, non-admin agent is still rejected (regression on the widened check)", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: assignedAgent } = await seedUser("agent");
+    const { token: otherAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: assignedAgent._id,
+      status: "with_agent",
+    });
+    const socket = await connect(otherAgentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:join", conversation.id);
+
+    await expect(errored).resolves.toEqual({ error: "You do not have permission to join this conversation" });
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts AI ticket suggestion (Story 62)", () => {
+  async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
+    const socket = await connect(token);
+    await new Promise((resolve) => {
+      socket.on("conversation:joined", resolve);
+      socket.emit("conversation:join", conversationId);
+    });
+    return socket;
+  }
+
+  it("includes aiTicketSuggestion on the AI message when the classifier suggests one", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue({
+      subject: "Attach logs",
+      description: "Needs file attachments.",
+    });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    const aiMessage = await secondMessage;
+    expect(aiMessage.aiTicketSuggestion).toEqual({ subject: "Attach logs", description: "Needs file attachments." });
+
+    socket.disconnect();
+  });
+
+  it("omits aiTicketSuggestion (null) when the classifier does not suggest one", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    const aiMessage = await secondMessage;
+    expect(aiMessage.aiTicketSuggestion).toBeNull();
+
+    socket.disconnect();
+  });
+
+  it("skips the classifier once the conversation is flagged as declined", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({
+      customer: user._id,
+      status: "ai_handling",
+      aiTicketSuggestionDeclined: true,
+    });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("ok");
+    const socket = await joinedSocket(conversation.id, token);
+
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
+
+    expect(liveChatAiService.evaluateTicketSuggestion).toHaveBeenCalledWith(conversation.id, true);
+
+    socket.disconnect();
+  });
+
+  it("still emits the normal AI reply when the classifier call rejects", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Here's the answer.");
+    vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockRejectedValue(new Error("classifier down"));
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    // Promise.all rejects if either promise rejects, so the outer catch's
+    // fallback path fires -- still a graceful, non-blocking result.
+    const aiMessage = await secondMessage;
+    expect(aiMessage.senderType).toBe("ai");
+    expect(aiMessage.text).toMatch(/trouble answering/i);
+
+    socket.disconnect();
+  });
+});
+
+describe("chat.socket.ts conversation:ai-suggestion-declined (Story 62)", () => {
+  it("sets aiTicketSuggestionDeclined for the conversation's own customer", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await connect(token);
+
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(true);
+
+    socket.disconnect();
+  });
+
+  it("is idempotent when already declined", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({
+      customer: user._id,
+      status: "ai_handling",
+      aiTicketSuggestionDeclined: true,
+    });
+    const socket = await connect(token);
+
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(true);
+
+    socket.disconnect();
+  });
+
+  it("rejects a non-owning caller and leaves the flag unset", async () => {
+    const { user: owner } = await seedUser();
+    const { token: otherToken } = await seedUser();
+    const conversation = await Conversation.create({ customer: owner._id, status: "ai_handling" });
+    const socket = await connect(otherToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:ai-suggestion-declined", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "You do not have permission to update this conversation",
+    });
+    expect((await Conversation.findById(conversation.id))!.aiTicketSuggestionDeclined).toBe(false);
+
+    socket.disconnect();
+  });
 });

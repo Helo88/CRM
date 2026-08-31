@@ -4,8 +4,15 @@ import type { JwtPayload } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
 import { objectIdSchema } from "../validation/common";
-import { conversationMessagePayloadSchema } from "../validation/conversation.schema";
-import { getAiReply } from "../services/liveChatAi.service";
+import {
+  conversationMessagePayloadSchema,
+  conversationEscalatePayloadSchema,
+  conversationClosePayloadSchema,
+  conversationAiSuggestionDeclinedPayloadSchema,
+} from "../validation/conversation.schema";
+import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
+import { pickAndClaimAgentForConversation } from "../services/assignment.service";
+import { hasPermission } from "../services/permissions";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
@@ -27,11 +34,24 @@ interface ConversationMessagePayload {
 
 const conversationIdSchema = objectIdSchema("Invalid conversation id");
 
-// Whether `userId` may act on `conversation` — the conversation's own customer
-// (this story) or its assignedAgent (inert until Story 17 assigns one, but
-// forward-compatible so Story 18's agent-reply handler needs no change here).
-function isAuthorizedOnConversation(userId: string, conversation: { customer: unknown; assignedAgent: unknown }): boolean {
-  return userId === String(conversation.customer) || userId === String(conversation.assignedAgent);
+// Whether `user` may act on `conversation` — the conversation's own customer,
+// its assignedAgent, (Story 18) any admin regardless of assignment so an
+// admin can take over/respond to any live chat per that story's acceptance
+// criteria, or a sub-admin holding chats:manage (same any-conversation scope
+// as admin — mirrors conversation.routes.ts's callerAuthorizedOnConversation,
+// duplicated rather than imported so this module stays independent of the
+// REST route file, same reasoning that file gives for not importing this
+// one). Async because of that live permission lookup — a stale JWT-carried
+// permissions snapshot must never gate a live socket action (same rule
+// requirePermission enforces for REST; socket.data.user deliberately carries
+// only { id, role }, never permissions, to make that mistake impossible).
+async function isAuthorizedOnConversation(
+  user: { id: string; role: string },
+  conversation: { customer: unknown; assignedAgent: unknown }
+): Promise<boolean> {
+  if (user.role === "admin") return true;
+  if (user.role === "subadmin") return hasPermission(user.id, "chats:manage");
+  return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
 }
 
 export function registerChatHandlers(io: Server): void {
@@ -82,7 +102,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
         socket.emit("conversation:error", { error: "You do not have permission to join this conversation" });
         return;
       }
@@ -108,7 +128,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!isAuthorizedOnConversation(socket.data.user.id, conversation)) {
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
         socket.emit("conversation:error", {
           error: "You do not have permission to send messages in this conversation",
         });
@@ -120,6 +140,10 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
+      // Story 18: an admin replying (never the conversation's own customer,
+      // rarely its assignedAgent) also serializes as "agent" — Message has no
+      // separate "admin" sender type, and a UI-side distinction isn't part of
+      // this story (Story 24 covers internal team roles/notes).
       const senderType = socket.data.user.id === String(conversation.customer) ? "customer" : "agent";
 
       const message = await Message.create({
@@ -141,13 +165,21 @@ export function registerChatHandlers(io: Server): void {
         io.to(roomKey).emit("conversation:ai-typing", { conversationId });
 
         try {
-          const reply = await getAiReply(conversationId);
+          // Story 62: the ticket-suggestion classifier runs alongside the
+          // normal reply, not instead of it -- each is independently
+          // safe/non-throwing (see liveChatAi.service.ts), so a Promise.all
+          // here never lets one call's failure affect the other.
+          const [reply, ticketSuggestion] = await Promise.all([
+            getAiReply(conversationId),
+            evaluateTicketSuggestion(conversationId, conversation.aiTicketSuggestionDeclined),
+          ]);
           const aiMessage = await Message.create({
             parentType: "conversation",
             parentId: conversation._id,
             senderType: "ai",
             senderId: null,
             text: reply ?? AI_FALLBACK_TEXT,
+            aiTicketSuggestion: ticketSuggestion,
           });
           io.to(roomKey).emit("conversation:message", aiMessage);
         } catch (err) {
@@ -166,6 +198,147 @@ export function registerChatHandlers(io: Server): void {
           }
         }
       }
+    });
+
+    // Story 62: customer declines the AI's "open a ticket" suggestion —
+    // records it so the classifier stops being called for this conversation
+    // (evaluateTicketSuggestion's alreadyDeclined short-circuit above). No
+    // broadcast needed; the declining client already updates its own local
+    // state on click, and no one else needs to know.
+    socket.on("conversation:ai-suggestion-declined", async (payload: { conversationId: string }) => {
+      const parsed = conversationAiSuggestionDeclinedPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+      if (socket.data.user.id !== String(conversation.customer)) {
+        socket.emit("conversation:error", { error: "You do not have permission to update this conversation" });
+        return;
+      }
+      if (!conversation.aiTicketSuggestionDeclined) {
+        conversation.aiTicketSuggestionDeclined = true;
+        await conversation.save();
+      }
+    });
+
+    // Story 16: customer-triggered "talk to a human" — flips status to
+    // "escalated", which is enough on its own to disable the Story 15 AI
+    // branch above (it only fires while status === "ai_handling"). Story 17
+    // (auto-assign an escalated chat) is the one that queries
+    // Conversation.find({ status: "escalated", assignedAgent: null }) and
+    // actually picks an agent — nothing here does that.
+    socket.on("conversation:escalate", async (payload: { conversationId: string }) => {
+      const parsed = conversationEscalatePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid escalate payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      // Customer-only: agents never escalate on the customer's behalf in
+      // this story (stricter than isAuthorizedOnConversation, which also
+      // allows the assignedAgent).
+      if (socket.data.user.id !== String(conversation.customer)) {
+        socket.emit("conversation:error", { error: "You do not have permission to escalate this conversation" });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:error", { error: "This conversation is closed" });
+        return;
+      }
+
+      // Idempotent: already-escalated / already-with-agent is a no-op
+      // success — re-emit directly to the caller so a reconnecting client
+      // can re-sync its UI state without erroring.
+      if (conversation.status === "escalated" || conversation.status === "with_agent") {
+        socket.emit("conversation:escalated", { conversationId, status: conversation.status });
+        return;
+      }
+
+      conversation.status = "escalated";
+      await conversation.save();
+
+      io.to(`conversation:${conversationId}`).emit("conversation:escalated", {
+        conversationId,
+        status: "escalated",
+      });
+
+      // Story 17: immediately try to pick + claim an online agent. Never
+      // lets a failure here undo the escalation the customer already saw
+      // succeed above — only logged, never rethrown.
+      try {
+        const pickedAgentId = await pickAndClaimAgentForConversation(conversationId);
+        if (pickedAgentId) {
+          io.to(`conversation:${conversationId}`).emit("conversation:assigned", {
+            conversationId,
+            agentId: pickedAgentId.toString(),
+            status: "with_agent",
+          });
+        } else {
+          // No online agent: revert to ai_handling (guarded so a conversation
+          // already moved on — e.g. closed concurrently — is left alone) and
+          // tell only the escalating customer, so the Story 15 AI branch
+          // resumes on their next message.
+          await Conversation.findOneAndUpdate(
+            { _id: conversationId, status: "escalated" },
+            { $set: { status: "ai_handling" } }
+          );
+          socket.emit("conversation:no-agent-available", { conversationId });
+        }
+      } catch (err) {
+        console.error("[chat.socket] auto-assign on escalate failed:", (err as Error).message);
+      }
+    });
+
+    // Story 19: widened from customer-only (Story 17's minimal version) to
+    // isAuthorizedOnConversation — customer, assignedAgent, or admin can all
+    // mark a chat resolved now.
+    socket.on("conversation:close", async (payload: { conversationId: string }) => {
+      const parsed = conversationClosePayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid close payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
+        socket.emit("conversation:error", { error: "You do not have permission to close this conversation" });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:closed", { conversationId, status: "resolved" });
+        return;
+      }
+
+      // assignedAgent is intentionally left untouched — history keeps it.
+      conversation.status = "resolved";
+      await conversation.save();
+
+      io.to(`conversation:${conversationId}`).emit("conversation:closed", {
+        conversationId,
+        status: "resolved",
+      });
     });
 
     socket.on("disconnect", () => {

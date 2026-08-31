@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
 import { useTranslations } from "next-intl";
 import { CircleAlert, Send, MessageSquareWarning, CircleHelp, Ticket, X } from "lucide-react";
@@ -9,16 +10,31 @@ import { API_URL } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { createConversation, getMyRecentTickets, type ChatTicketSummary } from "./actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UNSPECIFIED_CATEGORY } from "@/app/tickets/new/constants";
+import { listActiveTicketCategories } from "@/app/tickets/new/actions";
+import {
+  createConversation,
+  getMyRecentTickets,
+  createTicketFromConversation,
+  type ChatTicketSummary,
+} from "./actions";
+
+interface TicketSuggestion {
+  subject: string;
+  description: string;
+}
 
 interface ChatMessage {
   _id: string;
   text: string;
   senderType: "customer" | "agent" | "ai" | "system";
   createdAt: string;
+  aiTicketSuggestion?: TicketSuggestion | null;
 }
 
 const STATUS_KEY: Record<ChatTicketSummary["status"], string> = {
@@ -38,6 +54,134 @@ const STATUS_BADGE_CLASS: Record<ChatTicketSummary["status"], string> = {
 };
 
 type ConnectionStatus = "connecting" | "connected" | "error";
+// Story 16/17: orthogonal to ConnectionStatus (socket up/down) — this tracks
+// whether the customer has asked to talk to a human, independent of the
+// underlying connection ever dropping/reconnecting. "escalated" = waiting
+// for Story 17's auto-assign; "assigned" = a human agent has joined.
+type EscalationState = "idle" | "requesting" | "escalated" | "assigned";
+
+// Story 62: the inline "open a ticket" suggestion card rendered under an AI
+// message that carries one. Manages its own expand/category/submit state —
+// LiveChatPanel only needs to know the outcome (accepted → ticket id/
+// reference; declined → hide every card in this conversation).
+function TicketSuggestionCard({
+  suggestion,
+  conversationId,
+  onAccepted,
+  onDecline,
+}: {
+  suggestion: TicketSuggestion;
+  conversationId: string;
+  onAccepted: (ticketId: string, reference: string) => void;
+  onDecline: () => void;
+}) {
+  const t = useTranslations("Chat");
+  const [expanded, setExpanded] = useState(false);
+  const [subject, setSubject] = useState(suggestion.subject);
+  const [description, setDescription] = useState(suggestion.description);
+  const [categories, setCategories] = useState<string[] | null>(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [category, setCategory] = useState(UNSPECIFIED_CATEGORY);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function handleOpenClick() {
+    setExpanded(true);
+    if (categories !== null) return;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const result = await listActiveTicketCategories();
+      setCategories(result);
+    } catch {
+      setCategoriesError(t("suggestionCategoriesFailed"));
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!subject.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    const result = await createTicketFromConversation({
+      conversationId,
+      subject: subject.trim(),
+      description: description.trim(),
+      category: category === UNSPECIFIED_CATEGORY ? "" : category,
+    });
+    setCreating(false);
+    if (!result.ok) {
+      setCreateError(result.error);
+      return;
+    }
+    onAccepted(result.ticketId, result.reference);
+  }
+
+  return (
+    <div className="flex w-full max-w-[90%] flex-col gap-2 self-start rounded-xl border border-border bg-card p-3 text-sm">
+      <p className="font-medium">{t("suggestionTitle")}</p>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">{t("suggestionSubjectLabel")}</label>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={creating} />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">{t("suggestionDescriptionLabel")}</label>
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          disabled={creating}
+        />
+      </div>
+      {expanded && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">{t("suggestionCategoryLabel")}</label>
+          {categoriesLoading ? (
+            <p className="text-xs text-muted-foreground">{t("connecting")}</p>
+          ) : categoriesError ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-destructive">{categoriesError}</p>
+              <Button type="button" variant="outline" size="sm" onClick={handleOpenClick}>
+                {t("suggestionRetry")}
+              </Button>
+            </div>
+          ) : (
+            <Select value={category} onValueChange={setCategory} disabled={creating}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSPECIFIED_CATEGORY}>{t("suggestionUnspecifiedCategory")}</SelectItem>
+                {categories?.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+      {createError && <p className="text-xs text-destructive">{createError}</p>}
+      <div className="flex gap-2">
+        {expanded ? (
+          <Button type="button" size="sm" disabled={creating || !subject.trim()} onClick={handleSubmit}>
+            {creating ? t("suggestionCreating") : t("suggestionSubmit")}
+          </Button>
+        ) : (
+          <Button type="button" size="sm" onClick={handleOpenClick}>
+            {t("suggestionOpenTicket")}
+          </Button>
+        )}
+        <Button type="button" variant="outline" size="sm" disabled={creating} onClick={onDecline}>
+          {t("suggestionKeepChatting")}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // Story 14: the access token is passed down once, purely so the Socket.io
 // handshake can authenticate (there is no other way for a WebSocket
@@ -46,6 +190,7 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 // model everywhere else; it only lives in this component's state for the
 // life of the page.
 export function LiveChatPanel({ token }: { token: string }) {
+  const router = useRouter();
   const t = useTranslations("Chat");
   const tt = useTranslations("Tickets");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -53,6 +198,18 @@ export function LiveChatPanel({ token }: { token: string }) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiTyping, setAiTyping] = useState(false);
+  const [escalationState, setEscalationState] = useState<EscalationState>("idle");
+  // Story 17: shown when escalation finds no online agent — offers the two
+  // options (keep chatting with AI, or close) instead of the old
+  // email/ticket suggestion.
+  const [noAgentAvailable, setNoAgentAvailable] = useState(false);
+  const [conversationClosed, setConversationClosed] = useState(false);
+  // Story 62: once the customer declines one suggestion, every suggestion
+  // card in this conversation hides (mirrors the server's
+  // aiTicketSuggestionDeclined flag, which stops the classifier from being
+  // called again — this local flag just keeps the UI in sync immediately).
+  const [suggestionDeclined, setSuggestionDeclined] = useState(false);
+  const [acceptedTickets, setAcceptedTickets] = useState<Record<string, { id: string; reference: string }>>({});
   const [previousTicketsOpen, setPreviousTicketsOpen] = useState(false);
   const [previousTicketsLoading, setPreviousTicketsLoading] = useState(false);
   const [previousTickets, setPreviousTickets] = useState<ChatTicketSummary[] | null>(null);
@@ -112,6 +269,29 @@ export function LiveChatPanel({ token }: { token: string }) {
         setAiTyping(true);
         startAiTypingSafetyTimeout();
       });
+      socket.on("conversation:escalated", () => {
+        if (cancelled) return;
+        setEscalationState("escalated");
+        setAiTyping(false);
+        clearAiTypingTimeout();
+      });
+      socket.on("conversation:assigned", () => {
+        if (cancelled) return;
+        setEscalationState("assigned");
+        setNoAgentAvailable(false);
+      });
+      socket.on("conversation:no-agent-available", () => {
+        if (cancelled) return;
+        // Backend already reverted status to ai_handling — reset to "idle"
+        // so "Talk to a human" is reachable again once the hint is dismissed.
+        setEscalationState("idle");
+        setNoAgentAvailable(true);
+      });
+      socket.on("conversation:closed", () => {
+        if (cancelled) return;
+        setConversationClosed(true);
+        setNoAgentAvailable(false);
+      });
       socket.on("conversation:error", (payload: { error: string }) => {
         if (!cancelled) {
           setStatus("error");
@@ -156,6 +336,47 @@ export function LiveChatPanel({ token }: { token: string }) {
     sendMessage(text);
   }
 
+  // Story 16: socket emit only — conversation:message is already the
+  // customer's only real-time channel into the conversation, so escalation
+  // reuses that same authenticated transport rather than a REST call.
+  function handleEscalate() {
+    if (!socketRef.current || !conversationIdRef.current) return;
+    if (escalationState !== "idle") return;
+    setEscalationState("requesting");
+    socketRef.current.emit("conversation:escalate", { conversationId: conversationIdRef.current });
+  }
+
+  // Story 17: dismiss the no-agent hint — nothing to emit, the backend
+  // already reverted status to ai_handling, so the next message the
+  // customer sends naturally hits the Story 15 AI branch again.
+  function handleKeepChattingWithAi() {
+    setNoAgentAvailable(false);
+  }
+
+  // The customer ending the chat on their own (header X button, or the
+  // no-agent hint's close option) lands them on their tickets list — there's
+  // nothing more to do in this widget once they've decided to leave.
+  function handleCloseConversation() {
+    if (!socketRef.current || !conversationIdRef.current) return;
+    socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
+    router.push("/tickets");
+  }
+
+  // Story 62: declining hides every suggestion card in this conversation and
+  // tells the server so the classifier stops being called here again.
+  function handleDeclineSuggestion() {
+    setSuggestionDeclined(true);
+    if (socketRef.current && conversationIdRef.current) {
+      socketRef.current.emit("conversation:ai-suggestion-declined", {
+        conversationId: conversationIdRef.current,
+      });
+    }
+  }
+
+  function handleSuggestionAccepted(messageId: string, ticketId: string, reference: string) {
+    setAcceptedTickets((prev) => ({ ...prev, [messageId]: { id: ticketId, reference } }));
+  }
+
   async function handleTogglePreviousTickets() {
     if (previousTicketsOpen) {
       setPreviousTicketsOpen(false);
@@ -175,13 +396,28 @@ export function LiveChatPanel({ token }: { token: string }) {
 
   return (
     <Card className="flex h-[70vh] w-full max-w-lg flex-col">
-      <CardHeader>
-        <CardTitle>{t("heading")}</CardTitle>
-        <CardDescription>
-          {status === "connecting" && t("connecting")}
-          {status === "connected" && t("connected")}
-          {status === "error" && t("error")}
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle>{t("heading")}</CardTitle>
+          <CardDescription>
+            {status === "connecting" && t("connecting")}
+            {status === "connected" && t("connected")}
+            {status === "error" && t("error")}
+          </CardDescription>
+        </div>
+        {!conversationClosed && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            title={t("endChat")}
+            onClick={handleCloseConversation}
+          >
+            <X className="size-4" />
+            <span className="sr-only">{t("endChat")}</span>
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2 overflow-y-auto">
         {errorMessage && (
@@ -190,20 +426,79 @@ export function LiveChatPanel({ token }: { token: string }) {
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         )}
+        {escalationState === "escalated" && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription>{t("escalatedWaiting")}</AlertDescription>
+          </Alert>
+        )}
+        {escalationState === "assigned" && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription>{t("agentJoined")}</AlertDescription>
+          </Alert>
+        )}
+        {noAgentAvailable && (
+          <Alert>
+            <MessageSquareWarning />
+            <AlertDescription className="flex flex-col gap-2">
+              <div>
+                <p className="font-medium">{t("noAgentAvailableTitle")}</p>
+                <p>{t("noAgentAvailableBody")}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={handleKeepChattingWithAi}>
+                  {t("noAgentKeepChattingAi")}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={handleCloseConversation}>
+                  {t("noAgentClose")}
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        {conversationClosed && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{t("closed")}</AlertDescription>
+          </Alert>
+        )}
         {messages.map((message) => {
           const isCustomer = message.senderType === "customer";
+          const acceptedTicket = acceptedTickets[message._id];
           return (
-            <div key={message._id} className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>
-              {/* TODO(story-16/18): label "agent" messages once agent replies land */}
-              {message.senderType === "ai" && (
-                <span className="text-[11px] font-medium text-muted-foreground">{t("aiAgentLabel")}</span>
-              )}
-              <div className={`rounded-xl px-3 py-2 text-sm ${isCustomer ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                {message.text}
+            <div key={message._id} className="contents">
+              <div className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>
+                {/* TODO(story-16/18): label "agent" messages once agent replies land */}
+                {message.senderType === "ai" && (
+                  <span className="text-[11px] font-medium text-muted-foreground">{t("aiAgentLabel")}</span>
+                )}
+                <div className={`rounded-xl px-3 py-2 text-sm ${isCustomer ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                  {message.text}
+                </div>
+                <span dir="ltr" className="text-[11px] text-muted-foreground">
+                  {new Date(message.createdAt).toLocaleString()}
+                </span>
               </div>
-              <span dir="ltr" className="text-[11px] text-muted-foreground">
-                {new Date(message.createdAt).toLocaleString()}
-              </span>
+              {message.aiTicketSuggestion &&
+                (acceptedTicket ? (
+                  <Link
+                    href={`/tickets/${acceptedTicket.id}`}
+                    className="w-full max-w-[90%] self-start rounded-xl border border-success/30 bg-success/10 p-3 text-sm text-success hover:underline"
+                  >
+                    {t("suggestionCreated", { reference: acceptedTicket.reference })}
+                  </Link>
+                ) : (
+                  !suggestionDeclined &&
+                  conversationIdRef.current && (
+                    <TicketSuggestionCard
+                      suggestion={message.aiTicketSuggestion}
+                      conversationId={conversationIdRef.current}
+                      onAccepted={(ticketId, reference) => handleSuggestionAccepted(message._id, ticketId, reference)}
+                      onDecline={handleDeclineSuggestion}
+                    />
+                  )
+                ))}
             </div>
           );
         })}
@@ -265,7 +560,7 @@ export function LiveChatPanel({ token }: { token: string }) {
             type="button"
             variant="outline"
             size="sm"
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             onClick={() => handleIntentChip(t("complaintMessage"))}
           >
             <MessageSquareWarning className="size-3.5" />
@@ -275,7 +570,7 @@ export function LiveChatPanel({ token }: { token: string }) {
             type="button"
             variant="outline"
             size="sm"
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             onClick={() => handleIntentChip(t("inquiryMessage"))}
           >
             <CircleHelp className="size-3.5" />
@@ -291,6 +586,18 @@ export function LiveChatPanel({ token }: { token: string }) {
             <Ticket className="size-3.5" />
             {t("previousTicketsChip")}
           </Button>
+          {(escalationState === "idle" || escalationState === "requesting") && !conversationClosed && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={status !== "connected" || escalationState === "requesting"}
+              onClick={handleEscalate}
+            >
+              <MessageSquareWarning className="size-3.5" />
+              {escalationState === "requesting" ? t("talkToHumanRequesting") : t("talkToHuman")}
+            </Button>
+          )}
         </div>
         <div className="flex w-full items-center gap-2">
           <Textarea
@@ -304,10 +611,15 @@ export function LiveChatPanel({ token }: { token: string }) {
             }}
             placeholder={t("composerPlaceholder")}
             rows={1}
-            disabled={status !== "connected"}
+            disabled={status !== "connected" || conversationClosed}
             className="min-h-9"
           />
-          <Button type="button" size="icon" disabled={status !== "connected" || draft.trim().length === 0} onClick={handleSend}>
+          <Button
+            type="button"
+            size="icon"
+            disabled={status !== "connected" || conversationClosed || draft.trim().length === 0}
+            onClick={handleSend}
+          >
             <Send className="size-4" />
             <span className="sr-only">{t("send")}</span>
           </Button>

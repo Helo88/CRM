@@ -1,10 +1,32 @@
 import express, { NextFunction, Request, Response } from "express";
-import { requireAuth, requireRole } from "../middleware/auth";
+import { Types } from "mongoose";
+import { requireAuth, requirePermission, requireRole } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
+import { Message } from "../models/Message";
 import { validateBody } from "../middleware/validate";
 import { createConversationSchema } from "../validation/conversation.schema";
+import { hasPermission } from "../services/permissions";
 
 const router = express.Router();
+
+// Shared with chat.socket.ts's isAuthorizedOnConversation (Story 18): the
+// conversation's own customer, its assignedAgent, or any admin — plus a
+// sub-admin holding chats:manage, who (per that permission's scope) can act
+// on any conversation the same way admin does, not just ones assigned to
+// them (sub-admins are never auto-assignment candidates in the first
+// place — see assignment.service.ts). Kept as a separate small helper here
+// rather than importing the socket module's version, so this route file
+// never depends on Socket.io wiring. Async (a live DB check for the
+// sub-admin branch), unlike the old sync version — every call site below
+// already awaits it.
+async function callerAuthorizedOnConversation(
+  user: { id: string; role: string },
+  conversation: { customer: unknown; assignedAgent: unknown }
+): Promise<boolean> {
+  if (user.role === "admin") return true;
+  if (user.role === "subadmin") return hasPermission(user.id, "chats:manage");
+  return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
+}
 
 // live-chat Story 14: customer starts a new conversation. Real-time messaging
 // itself is handled over Socket.io (see sockets/chat.socket.ts) — this route
@@ -29,10 +51,74 @@ router.post(
   }
 );
 
-// TODO (live-chat feature, Story 16): POST /:id/escalate — flag for human hand-off
-// and queue for auto-assignment (Story 17).
-router.post("/:id/escalate", requireAuth, requireRole("customer"), (req: Request, res: Response) => {
-  res.status(501).json({ error: "Not implemented — see USER_STORIES.md live-chat Story 16" });
+// Story 16 ("Escalate to a human agent") is socket-only, not a REST route —
+// see backend/src/sockets/chat.socket.ts's conversation:escalate handler.
+// conversation:message is already the customer's only real-time channel into
+// the conversation, so escalation reuses that same authenticated/authorized
+// transport rather than introducing a second parallel one.
+
+// Story 18: staff-scoped list of active conversations — an agent's own
+// assigned ones, or every active one for an admin or a sub-admin holding
+// chats:manage (same "sees everything" scope as admin, per that
+// permission — a sub-admin is never an assignment candidate, so "own
+// assigned ones" would always be empty for them). Gated by chats:manage
+// rather than a bare role check (admin passes implicitly via
+// requirePermission) — this is the piece that used to be hardcoded to
+// requireRole("agent", "admin") with no permission-delegation path at all,
+// so a sub-admin could never reach live chat regardless of what was
+// granted; every agent had unconditional access with no way to revoke it.
+// Not paginated yet (platform Story 59 covers that consistently once it's
+// this route's turn). Story 19 (close a live chat) intentionally does NOT
+// widen this filter to include "resolved" — a closed conversation drops out
+// of this list on purpose; the agent who closed it still has the URL, and
+// GET /:id stays readable regardless of status. A polished "closed chats"
+// history view is separate, later scope, not a gap to silently "fix" here.
+router.get("/", requireAuth, requirePermission("chats:manage"), async (req: Request, res: Response) => {
+  const filter =
+    req.user!.role === "admin" || req.user!.role === "subadmin"
+      ? { status: { $in: ["escalated", "with_agent"] } }
+      : { assignedAgent: new Types.ObjectId(req.user!.id), status: { $in: ["escalated", "with_agent"] } };
+  // Populated so the staff list can show who the agent is actually talking
+  // to, not just a status/timestamp row.
+  const conversations = await Conversation.find(filter)
+    .populate<{ customer: { _id: Types.ObjectId; name: string } }>("customer", "name")
+    .sort({ updatedAt: -1 })
+    .lean();
+  res.status(200).json({ conversations });
 });
+
+// Story 18: the agent-facing transcript read — full history including prior
+// AI messages, so the agent has context before replying. Also reachable by
+// the conversation's own customer (same authorization rule as the socket
+// handlers) so this one endpoint can later back a customer-side view too,
+// though only the staff path is built out this story.
+router.get(
+  "/:id",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin", "customer"),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    // 403, not 404 — unlike a customer probing a foreign ticket id, a
+    // wrong-conversation agent/admin case is a real permission question the
+    // caller is allowed to know about (no customer-identity leak risk here).
+    if (!(await callerAuthorizedOnConversation({ id: req.user!.id, role: req.user!.role }, conversation))) {
+      res.status(403).json({ error: "You do not have permission to view this conversation" });
+      return;
+    }
+    const messages = await Message.find({ parentType: "conversation", parentId: conversation._id })
+      .sort({ createdAt: 1 })
+      .limit(500)
+      .lean();
+    res.status(200).json({ conversation, messages });
+  }
+);
 
 export default router;

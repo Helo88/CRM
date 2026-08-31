@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { Message } from "../../src/models/Message";
+import { Conversation } from "../../src/models/Conversation";
+import { User } from "../../src/models/User";
 import * as geminiService from "../../src/services/gemini.service";
-import { getAiReply } from "../../src/services/liveChatAi.service";
+import { getAiReply, evaluateTicketSuggestion } from "../../src/services/liveChatAi.service";
 
 let mongod: MongoMemoryServer;
 
@@ -18,6 +20,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await Message.deleteMany({});
+  await Conversation.deleteMany({});
+  await User.deleteMany({});
   vi.restoreAllMocks();
 });
 
@@ -113,5 +117,122 @@ describe("liveChatAi.service.ts getAiReply (Story 15)", () => {
     const reply = await getAiReply(parentId.toHexString());
 
     expect(reply).toBeNull();
+  });
+
+  it("includes the customer's identity in the prompt so the AI never has to ask for it", async () => {
+    const customer = await User.create({
+      name: "Sara Ahmed",
+      email: "sara@example.com",
+      passwordHash: "irrelevant-for-these-tests",
+      role: "customer",
+    });
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    await Message.create({
+      parentType: "conversation",
+      parentId: conversation._id,
+      senderType: "customer",
+      senderId: customer._id,
+      text: "I need help",
+    });
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(conversation.id);
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).toContain("Sara Ahmed");
+    expect(prompt).toContain(customer.membershipNumber);
+    expect(prompt).toMatch(/never ask them for/i);
+  });
+
+  it("omits the identity line (no crash) when the conversation/customer can't be found", async () => {
+    await seedMessage("customer", "Hello?");
+    const spy = vi.spyOn(geminiService, "generateText").mockResolvedValue("ok");
+
+    await getAiReply(parentId.toHexString());
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).not.toContain("Customer identity");
+  });
+});
+
+describe("liveChatAi.service.ts evaluateTicketSuggestion (Story 62)", () => {
+  it("returns a suggestion when Gemini returns valid JSON with suggest: true", async () => {
+    await seedMessage("customer", "I need to attach three screenshots and a long log.");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(
+      '{"suggest": true, "subject": "Attach screenshots and logs", "description": "Customer needs to attach files."}'
+    );
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toEqual({
+      subject: "Attach screenshots and logs",
+      description: "Customer needs to attach files.",
+    });
+  });
+
+  it("returns null when Gemini returns suggest: false", async () => {
+    await seedMessage("customer", "What are your hours?");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue('{"suggest": false, "subject": "", "description": ""}');
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("strips a markdown code fence before parsing", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(
+      '```json\n{"suggest": true, "subject": "S", "description": "D"}\n```'
+    );
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toEqual({ subject: "S", description: "D" });
+  });
+
+  it("returns null when generateText resolves to null (timeout/failure)", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue(null);
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("returns null on malformed / non-JSON Gemini output", async () => {
+    await seedMessage("customer", "Help");
+    vi.spyOn(geminiService, "generateText").mockResolvedValue("Sure, here's some prose, not JSON.");
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), false);
+
+    expect(suggestion).toBeNull();
+  });
+
+  it("returns null immediately, without calling Gemini, when alreadyDeclined is true", async () => {
+    await seedMessage("customer", "Help");
+    const spy = vi.spyOn(geminiService, "generateText");
+
+    const suggestion = await evaluateTicketSuggestion(parentId.toHexString(), true);
+
+    expect(suggestion).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("also includes the customer's identity in the classifier prompt", async () => {
+    const customer = await User.create({
+      name: "Sara Ahmed",
+      email: "sara@example.com",
+      passwordHash: "irrelevant-for-these-tests",
+      role: "customer",
+    });
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    const spy = vi
+      .spyOn(geminiService, "generateText")
+      .mockResolvedValue('{"suggest": false, "subject": "", "description": ""}');
+
+    await evaluateTicketSuggestion(conversation.id, false);
+
+    const prompt = spy.mock.calls[0][0];
+    expect(prompt).toContain("Sara Ahmed");
   });
 });
