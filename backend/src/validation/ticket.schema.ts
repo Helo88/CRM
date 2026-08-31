@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requiredString, objectIdSchema } from "./common";
+import { requiredString, objectIdSchema, flexibleDateSchema } from "./common";
 
 export const SUBJECT_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 4000;
@@ -83,6 +83,14 @@ export const listTicketsQuerySchema = z.object({
       `sort must be one of: ${ALLOWED_SORT_KEYS.join(", ")}, optionally prefixed with -`
     )
     .optional(),
+  // Date-range filters on the two timestamps the queue's own sort options
+  // already cover (createdAt/updatedAt) — independent pairs, not one
+  // "date field" toggle, so a caller can filter by both at once (e.g.
+  // "created last week, but only ones still updated today").
+  createdFrom: flexibleDateSchema().optional(),
+  createdTo: flexibleDateSchema().optional(),
+  updatedFrom: flexibleDateSchema().optional(),
+  updatedTo: flexibleDateSchema().optional(),
 });
 
 // ticket-management Story 11: PATCH /:id/status body. "escalated" is

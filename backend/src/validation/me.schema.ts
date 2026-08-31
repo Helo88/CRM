@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isValidPhone } from "../utils/phone";
-import { emailSchema } from "./common";
+import { emailSchema, flexibleDateSchema } from "./common";
 
 // Format-only — "this is already your current email" / "email already in
 // use" / the confirm-email send both depend on the loaded user document and
@@ -28,6 +28,6 @@ export const availabilityBodySchema = z.object({
 export const notificationHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
-  from: z.union([z.iso.datetime({ offset: true }), z.iso.date()]).optional(),
-  to: z.union([z.iso.datetime({ offset: true }), z.iso.date()]).optional(),
+  from: flexibleDateSchema().optional(),
+  to: flexibleDateSchema().optional(),
 });

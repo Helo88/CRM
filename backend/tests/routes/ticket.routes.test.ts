@@ -1964,6 +1964,90 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("filters by createdAt date range (createdFrom/createdTo)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const oldTicket = await seedTicketFor(customer.id);
+    const recentTicket = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: oldTicket._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(recentTicket.id);
+  });
+
+  it("filters by updatedAt date range (updatedFrom/updatedTo), independently of createdAt", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const staleTicket = await seedTicketFor(customer.id);
+    const freshTicket = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: staleTicket._id },
+      { $set: { updatedAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?updatedFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(freshTicket.id);
+  });
+
+  it("applies both createdAt and updatedAt ranges together", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id);
+    const wrongCreated = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: wrongCreated._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01&updatedFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("scopes date-filtered statusCounts the same way as the list itself", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const oldTicket = await seedTicketFor(customer.id, { status: "closed" });
+    await seedTicketFor(customer.id, { status: "new" });
+    await Ticket.collection.updateOne(
+      { _id: oldTicket._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statusCounts.closed).toBe(0);
+    expect(res.body.statusCounts.new).toBe(1);
+  });
+
+  it("returns 400 for a malformed date value", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=not-a-date")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
   it("paginates results and reports total/page/limit", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
     const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });

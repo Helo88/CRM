@@ -274,7 +274,8 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
     return;
   }
-  const { page, limit, status, category, priority, sort } = parsed.data;
+  const { page, limit, status, category, priority, sort, createdFrom, createdTo, updatedFrom, updatedTo } =
+    parsed.data;
 
   const filter: Record<string, unknown> = {};
   let sortSpec: Record<string, 1 | -1> = { updatedAt: -1 };
@@ -298,6 +299,21 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     // trust a client-supplied "show all" flag.
     if (category) filter.category = category;
     if (priority) filter.priority = priority;
+
+    // Two independent date-range pairs (not one "date field" toggle) — a
+    // caller can filter by createdAt and updatedAt at once.
+    if (createdFrom || createdTo) {
+      filter.createdAt = {
+        ...(createdFrom ? { $gte: new Date(createdFrom) } : {}),
+        ...(createdTo ? { $lte: new Date(createdTo) } : {}),
+      };
+    }
+    if (updatedFrom || updatedTo) {
+      filter.updatedAt = {
+        ...(updatedFrom ? { $gte: new Date(updatedFrom) } : {}),
+        ...(updatedTo ? { $lte: new Date(updatedTo) } : {}),
+      };
+    }
 
     if (!(await callerHasPermission(req, "tickets:view_all"))) {
       filter.assignedAgent = new Types.ObjectId(req.user!.id);

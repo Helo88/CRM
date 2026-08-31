@@ -17,6 +17,12 @@ export function requiredString(message: string) {
 export const objectIdSchema = (message = "Invalid id") =>
   z.string({ error: message }).refine((val) => mongoose.isValidObjectId(val), { message });
 
+// Accepts either a plain date ("2026-01-31") or a full ISO datetime with
+// offset — every from/to date-range query param in the app (notifications
+// history, ticket list) uses this same shape so the frontend's date-only
+// pickers and any future datetime-precise caller both work unmodified.
+export const flexibleDateSchema = () => z.union([z.iso.datetime({ offset: true }), z.iso.date()]);
+
 // Shared by every `:id`-as-a-user-document route (admin staff accounts,
 // customer profiles) — same format check, same message, in every one of them.
 export const userIdParamsSchema = z.object({ id: objectIdSchema("Invalid user id") });

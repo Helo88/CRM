@@ -2,9 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { format } from "date-fns";
 import { CircleDot, Tag, Flag, ArrowDownUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { FilterField } from "@/components/FilterField";
+import { DatePickerField } from "@/components/DatePickerField";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const ALL = "__all__";
@@ -28,6 +31,15 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
   const priority = searchParams.get("priority") ?? ALL;
   const sort = searchParams.get("sort") ?? "-updatedAt";
 
+  const createdFrom = searchParams.get("createdFrom") ?? "";
+  const createdTo = searchParams.get("createdTo") ?? "";
+  const updatedFrom = searchParams.get("updatedFrom") ?? "";
+  const updatedTo = searchParams.get("updatedTo") ?? "";
+  const createdFromDate = createdFrom ? new Date(`${createdFrom}T00:00:00`) : undefined;
+  const createdToDate = createdTo ? new Date(`${createdTo}T00:00:00`) : undefined;
+  const updatedFromDate = updatedFrom ? new Date(`${updatedFrom}T00:00:00`) : undefined;
+  const updatedToDate = updatedTo ? new Date(`${updatedTo}T00:00:00`) : undefined;
+
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value === ALL) {
@@ -39,7 +51,22 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
     router.push(`/tickets?${params.toString()}`);
   }
 
-  const hasActiveFilter = status !== ALL || category !== ALL || priority !== ALL;
+  function updateDateParam(key: "createdFrom" | "createdTo" | "updatedFrom" | "updatedTo", value: Date | undefined) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) {
+      params.set(key, format(value, "yyyy-MM-dd"));
+    } else {
+      params.delete(key);
+    }
+    params.delete("page");
+    router.push(`/tickets?${params.toString()}`);
+  }
+
+  const hasActiveFilter =
+    status !== ALL ||
+    category !== ALL ||
+    priority !== ALL ||
+    Boolean(createdFrom || createdTo || updatedFrom || updatedTo);
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card/50 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-5 sm:gap-y-3 sm:p-4">
@@ -102,6 +129,54 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
         </Select>
       </FilterField>
 
+      <FilterField label={t("filterCreated")}>
+        <div className="flex items-center gap-1.5">
+          <DatePickerField
+            id="tickets-created-from"
+            className="sm:w-32"
+            placeholder={t("filterDateFrom")}
+            value={createdFromDate}
+            maxDate={createdToDate}
+            onChange={(v) => updateDateParam("createdFrom", v)}
+          />
+          <span className="text-xs text-muted-foreground" aria-hidden>
+            –
+          </span>
+          <DatePickerField
+            id="tickets-created-to"
+            className="sm:w-32"
+            placeholder={t("filterDateTo")}
+            value={createdToDate}
+            minDate={createdFromDate}
+            onChange={(v) => updateDateParam("createdTo", v)}
+          />
+        </div>
+      </FilterField>
+
+      <FilterField label={t("filterUpdated")}>
+        <div className="flex items-center gap-1.5">
+          <DatePickerField
+            id="tickets-updated-from"
+            className="sm:w-32"
+            placeholder={t("filterDateFrom")}
+            value={updatedFromDate}
+            maxDate={updatedToDate}
+            onChange={(v) => updateDateParam("updatedFrom", v)}
+          />
+          <span className="text-xs text-muted-foreground" aria-hidden>
+            –
+          </span>
+          <DatePickerField
+            id="tickets-updated-to"
+            className="sm:w-32"
+            placeholder={t("filterDateTo")}
+            value={updatedToDate}
+            minDate={updatedFromDate}
+            onChange={(v) => updateDateParam("updatedTo", v)}
+          />
+        </div>
+      </FilterField>
+
       {hasActiveFilter && (
         <Button
           variant="ghost"
@@ -129,15 +204,6 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
           </SelectContent>
         </Select>
       </FilterField>
-    </div>
-  );
-}
-
-function FilterField({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn("flex w-full flex-col gap-1 sm:w-auto", className)}>
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
     </div>
   );
 }
