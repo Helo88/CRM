@@ -79,6 +79,40 @@ describe("tickets:reply (Story 56)", () => {
   });
 });
 
+// Story 11: split into two keys (not one) so an account can be granted
+// routine New/In Progress/Answered flips without also getting authority to
+// close/reopen, or vice versa — same day-to-day agent tier as Story 9's
+// categorize/change_priority keys above, never sub-admin-only.
+describe("tickets:change_status / tickets:close_reopen (Story 11)", () => {
+  const STORY_11_KEYS = ["tickets:change_status", "tickets:close_reopen"] as const;
+
+  it("are all recognized permission keys", () => {
+    for (const key of STORY_11_KEYS) {
+      expect(PERMISSION_KEYS).toContain(key);
+    }
+  });
+
+  it("are not sub-admin-only", () => {
+    for (const key of STORY_11_KEYS) {
+      expect(SUBADMIN_ONLY_PERMISSIONS.has(key)).toBe(false);
+    }
+  });
+
+  it("are granted by default to a freshly-created agent", () => {
+    for (const key of STORY_11_KEYS) {
+      expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).toContain(key);
+    }
+  });
+
+  it("are not granted by default to a freshly-created customer role (no such default exists)", () => {
+    // customer isn't a CreatableStaffRole at all — DEFAULT_PERMISSIONS_BY_ROLE
+    // only covers agent/subadmin, so there is no customer default to check
+    // against; this test documents that a customer can never be granted
+    // either key through this mechanism, not just that it defaults to none.
+    expect(Object.keys(DEFAULT_PERMISSIONS_BY_ROLE)).not.toContain("customer");
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

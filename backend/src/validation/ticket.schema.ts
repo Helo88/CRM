@@ -85,6 +85,18 @@ export const listTicketsQuerySchema = z.object({
     .optional(),
 });
 
+// ticket-management Story 11: PATCH /:id/status body. "escalated" is
+// deliberately excluded — Story 12 owns that transition, this endpoint
+// rejects it at the validation layer so it never reaches the transition
+// service.
+export const ALLOWED_MANUAL_STATUSES = ["new", "in_progress", "answered", "closed"] as const;
+
+export const updateTicketStatusSchema = z.object({
+  status: z.enum(ALLOWED_MANUAL_STATUSES, {
+    error: `status must be one of: ${ALLOWED_MANUAL_STATUSES.join(", ")}`,
+  }),
+});
+
 export const REPLY_TEXT_MAX_LENGTH = DESCRIPTION_MAX_LENGTH;
 
 // Story 56: the reply-text field of POST /:id/messages. Multer parses the

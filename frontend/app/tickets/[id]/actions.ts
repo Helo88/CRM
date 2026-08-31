@@ -70,6 +70,46 @@ export async function reassignTicket(
   return patchTicket(ticketId, { assignedAgent });
 }
 
+// ticket-management Story 11: separate endpoint (PATCH /:id/status, not
+// PATCH /:id) since status transitions are permission-gated differently
+// (tickets:change_status vs tickets:close_reopen, decided per-request on
+// the backend) from category/priority/assignedAgent above — same
+// request/error-handling shape as patchTicket, just a different URL.
+export async function updateTicketStatus(
+  ticketId: string,
+  status: "new" | "in_progress" | "answered" | "closed"
+): Promise<TicketDetailActionState> {
+  const t = await getTranslations("TicketDetail");
+  const token = await getBearerToken();
+  if (!token) {
+    return { error: t("changeFailed") };
+  }
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/tickets/${ticketId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ status }),
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) {
+      return { error: t("changeFailed") };
+    }
+    res = await doFetch(refreshedToken);
+  }
+
+  if (!res.ok) {
+    if (res.status === 403) return { error: t("noAccess") };
+    return { error: t("changeFailed") };
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  return { error: null };
+}
+
 export interface AssignableAgent {
   id: string;
   name: string;

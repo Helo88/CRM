@@ -16,6 +16,8 @@ Entry point for the **ticket-management** feature. Stories execute in order by t
 | 18 | `18-story-view-and-filter-the-ticket-queue.md` | View and filter the ticket queue | view-and-filter-the-ticket-queue | — |
 | 20 | `20-story-auto-assign-a-ticket-to-an-available-agent.md` | Auto-assign a ticket to an available agent | auto-assign-a-ticket-to-an-available-agent | — |
 | 26 | `26-story-in-app-notifications-for-ticket-events.md` | In-app notifications for ticket events | in-app-notifications-for-ticket-events | — |
+| 28 | `28-story-update-ticket-status.md` | Update ticket status | update-ticket-status | — |
+| 29 | `29-story-status-quick-filter-chips-on-the-ticket-queue.md` | Status quick-filter chips on the ticket queue | status-quick-filter-chips-on-the-ticket-queue | — |
 
 ## Dependency notes
 

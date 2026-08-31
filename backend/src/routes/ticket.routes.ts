@@ -15,12 +15,14 @@ import { validateBody } from "../middleware/validate";
 import {
   createTicketBodySchema,
   updateTicketBodySchema,
+  updateTicketStatusSchema,
   replyToTicketBodySchema,
   listTicketsQuerySchema,
   ALLOWED_PRIORITIES,
 } from "../validation/ticket.schema";
 import { findByNameCaseInsensitive } from "./ticketCategory.routes";
 import { uploadTicketMessageAttachments, ticketFilePath } from "../middleware/upload";
+import { applyStatusTransition, InvalidStatusTransitionError } from "../services/ticketStatus.service";
 
 const router = express.Router();
 
@@ -138,6 +140,10 @@ router.post(
       sourceConversationId = conversation._id;
     }
 
+    // ticket-management Story 11: seed the audit trail with the creation
+    // itself — the staff creator on behalf of a customer (Story 57), or the
+    // customer themself for a self-submitted ticket.
+    const creatorId = isStaffCreated ? new Types.ObjectId(req.user!.id) : customer._id;
     const ticket = await Ticket.create({
       subject,
       description,
@@ -145,6 +151,7 @@ router.post(
       category,
       priority,
       sourceConversation: sourceConversationId,
+      statusHistory: [{ status: "new", changedBy: creatorId, changedAt: new Date() }],
     });
 
     // Story 60: a human-friendly "TCK-<n>" reference for anything shown to a
@@ -598,6 +605,109 @@ router.patch(
   }
 );
 
+// ticket-management Story 11: move a ticket through New -> In Progress ->
+// Answered -> Closed (and reopen back to In Progress). Two permission keys,
+// not one, per the intake's split rationale: tickets:change_status covers
+// the three "open" states, tickets:close_reopen specifically covers closing
+// and reopening — so an account can be granted routine status flips without
+// also getting authority to close/reopen, or vice versa. requirePermission
+// can't gate this route at the middleware level (same reasoning as PATCH
+// /:id above) since which key applies depends on BOTH the target status AND
+// the ticket's CURRENT status (reopening a closed ticket needs
+// close_reopen even though "in_progress" alone would otherwise only need
+// change_status). Uses callerHasPermission, never a bare hasPermission call,
+// so admin's implicit pass still works — admin holds no stored permission
+// grants at all (see the customerOrPermitted comment above for the same
+// warning already written down for this file). A customer caller is
+// rejected here too: customerOrPermitted isn't used because a customer has
+// no legitimate reason to reach this route at all (unlike POST / above),
+// and callerHasPermission already returns false for a role with neither key
+// stored — no separate customer branch needed.
+//
+// TODO: replies (POST /:id/messages below) and reassignment (PATCH /:id
+// above) still succeed on a closed ticket — this story doesn't add that
+// guard (closed-ticket lockdown is enforced in the frontend for now; see
+// ticket-management/update-ticket-status's plan for the scope decision).
+router.patch(
+  "/:id/status",
+  requireAuth,
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const parsed = updateTicketStatusSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+      return;
+    }
+    const { status: nextStatus } = parsed.data;
+
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const isCloseOrReopen = nextStatus === "closed" || ticket.status === "closed";
+    const requiredKey: PermissionKey = isCloseOrReopen ? "tickets:close_reopen" : "tickets:change_status";
+    if (!(await callerHasPermission(req, requiredKey))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+
+    const wasClosed = ticket.status === "closed";
+
+    try {
+      await applyStatusTransition({
+        ticket,
+        nextStatus,
+        changedBy: new Types.ObjectId(req.user!.id),
+        reason: "manual",
+      });
+    } catch (err) {
+      if (err instanceof InvalidStatusTransitionError) {
+        res.status(400).json({ error: "invalid_status_transition", from: err.from, to: err.to });
+        return;
+      }
+      throw err;
+    }
+
+    // Reopening is oversight-worthy on its own (unlike a routine reassignment
+    // above, which only notifies the two agents involved) — a ticket coming
+    // back from "closed" is more consequential. Both conditions are needed:
+    // wasClosed alone isn't enough — a same-state closed -> closed PATCH is
+    // a no-op inside applyStatusTransition (returns early, no mutation, no
+    // error), so it still reaches this line; checking ticket.status is no
+    // longer "closed" rules that case out.
+    if (wasClosed && ticket.status !== "closed") {
+      await notifyTicketOversight({ type: "ticket_reopened_oversight", ticketId: ticket._id });
+      if (ticket.assignedAgent) {
+        await createTicketNotification({
+          recipient: ticket.assignedAgent,
+          type: "ticket_reopened",
+          ticketId: ticket._id,
+        });
+      }
+    }
+
+    const populated = await ticket.populate<{
+      customer: { _id: Types.ObjectId; name: string; email: string };
+      assignedAgent: { _id: Types.ObjectId; name: string } | null;
+    }>([
+      { path: "customer", select: "name email" },
+      { path: "assignedAgent", select: "name" },
+    ]);
+    res.status(200).json(
+      toTicketDetailResponse(populated, {
+        id: populated.customer._id.toString(),
+        name: populated.customer.name,
+        email: populated.customer.email,
+      })
+    );
+  }
+);
+
 interface MessageSenderFields {
   id: string;
   name: string;
@@ -734,9 +844,21 @@ router.post(
       attachments,
     });
 
+    // ticket-management Story 11: route the automatic "answered" flip
+    // through the same audited helper the manual PATCH /:id/status uses, so
+    // this — the single most common status change — also lands in
+    // statusHistory instead of only the manual path being logged. Guarded
+    // the same way the pre-Story-11 code was: skip entirely on a closed
+    // ticket (replies are still allowed there, per the TODO above — status
+    // just doesn't flip). applyStatusTransition would otherwise reject
+    // "closed" -> "answered" as an illegal transition.
     if (ticket.status !== "closed") {
-      ticket.status = "answered";
-      await ticket.save();
+      await applyStatusTransition({
+        ticket,
+        nextStatus: "answered",
+        changedBy: new Types.ObjectId(req.user!.id),
+        reason: "auto_reply",
+      });
     }
 
     try {

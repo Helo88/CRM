@@ -17,6 +17,14 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 // the case auto-assignment can't handle at all: no agent was online, so the
 // ticket was created/left unassigned — oversight has to step in and use
 // manual reassignment (Story 25) since there was nobody to auto-assign to.
+// "ticket_reopened" / "ticket_reopened_oversight" (Story 11): same
+// assignee-vs-oversight split as creation above, sent together whenever a
+// PATCH /:id/status transition takes a ticket OUT of "closed" — the
+// assigned agent (if any) gets the "to you" nudge, admins/tickets:view_all
+// subadmins get the oversight fact regardless of whether the ticket is
+// assigned. Unlike reassignment (Story 25), which only notifies the two
+// agents involved, reopening is oversight-worthy on its own — a ticket
+// coming back from "closed" is more consequential than a routine handoff.
 export type NotificationType =
   | "ticket_assigned"
   | "ticket_escalated"
@@ -24,7 +32,9 @@ export type NotificationType =
   | "ticket_unassigned"
   | "ticket_created"
   | "ticket_auto_assigned"
-  | "ticket_needs_assignment";
+  | "ticket_needs_assignment"
+  | "ticket_reopened"
+  | "ticket_reopened_oversight";
 
 export interface INotification extends Document {
   recipient: Types.ObjectId;
@@ -48,6 +58,8 @@ const notificationSchema = new Schema<INotification>(
         "ticket_created",
         "ticket_auto_assigned",
         "ticket_needs_assignment",
+        "ticket_reopened",
+        "ticket_reopened_oversight",
       ],
       required: true,
     },
