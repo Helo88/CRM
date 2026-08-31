@@ -8,6 +8,7 @@ import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListPagination } from "@/components/ListPagination";
 import {
   Table,
   TableHeader,
@@ -17,6 +18,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { RowActions } from "./RowActions";
+import { AdminUsersFilterBar } from "./AdminUsersFilterBar";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("AdminUsersList");
@@ -37,12 +39,22 @@ interface StaffAccountRow {
 // Admin-only roster (Story 45, security-admin) — agent/admin/sub-admin
 // accounts. "admin" rows appear here for visibility even though they can
 // never be created through this router (see backend/src/routes/admin.routes.ts).
+interface AdminUsersListSearchParams {
+  page?: string;
+  q?: string;
+  role?: string;
+  isActive?: string;
+  isOnline?: string;
+  sort?: string;
+  _refreshed?: string;
+}
+
 export default async function AdminUsersListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; _refreshed?: string }>;
+  searchParams: Promise<AdminUsersListSearchParams>;
 }) {
-  const { page: pageParam, _refreshed } = await searchParams;
+  const { page: pageParam, q, role, isActive, isOnline, sort, _refreshed } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const t = await getTranslations("AdminUsersList");
 
@@ -50,21 +62,33 @@ export default async function AdminUsersListPage({
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const hasRefreshToken = Boolean(cookieStore.get(REFRESH_COOKIE)?.value);
 
+  const currentQuery = new URLSearchParams();
+  if (q) currentQuery.set("q", q);
+  if (role) currentQuery.set("role", role);
+  if (isActive) currentQuery.set("isActive", isActive);
+  if (isOnline) currentQuery.set("isOnline", isOnline);
+  if (sort) currentQuery.set("sort", sort);
+  const nextUrl = `/admin/users${currentQuery.toString() ? `?${currentQuery.toString()}` : ""}`;
+
   if (!token) {
     if (hasRefreshToken && !_refreshed) {
-      redirect(`/api/session/refresh?next=/admin/users${page > 1 ? `?page=${page}` : ""}`);
+      redirect(`/api/session/refresh?next=${encodeURIComponent(nextUrl)}`);
     }
     redirect("/");
   }
 
-  const res = await fetch(`${API_URL}/api/v1/admin/users?page=${page}&limit=20`, {
+  const listQuery = new URLSearchParams(currentQuery);
+  listQuery.set("page", String(page));
+  listQuery.set("limit", "20");
+
+  const res = await fetch(`${API_URL}/api/v1/admin/users?${listQuery.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
 
   if (res.status === 401) {
     if (!_refreshed) {
-      redirect(`/api/session/refresh?next=/admin/users${page > 1 ? `?page=${page}` : ""}`);
+      redirect(`/api/session/refresh?next=${encodeURIComponent(nextUrl)}`);
     }
     redirect("/login");
   }
@@ -82,7 +106,12 @@ export default async function AdminUsersListPage({
 
   const data: { users: StaffAccountRow[]; total: number; page: number; limit: number } =
     await res.json();
-  const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
+
+  function hrefForPage(nextPage: number) {
+    const params = new URLSearchParams(currentQuery);
+    params.set("page", String(nextPage));
+    return `/admin/users?${params.toString()}`;
+  }
 
   const { role: viewerRole, permissions: viewerPermissions = [] } = peekJwtPayload(token);
   const isViewerAdmin = viewerRole === "admin";
@@ -107,6 +136,8 @@ export default async function AdminUsersListPage({
             <Link href="/admin/users/new">{t("addAccount")}</Link>
           </Button>
         </div>
+
+        <AdminUsersFilterBar />
 
         {data.users.length === 0 ? (
           <p className="py-8 text-center text-muted-foreground">{t("empty")}</p>
@@ -202,31 +233,9 @@ export default async function AdminUsersListPage({
             </div>
           </>
         )}
-        {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between">
-            {page > 1 ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/admin/users?page=${page - 1}`}>{t("previous")}</Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled>
-                {t("previous")}
-              </Button>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {t("pageOf", { page, totalPages })}
-            </span>
-            {page < totalPages ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/admin/users?page=${page + 1}`}>{t("next")}</Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled>
-                {t("next")}
-              </Button>
-            )}
-          </div>
-        )}
+        <div className="mt-4">
+          <ListPagination total={data.total} page={data.page} limit={data.limit} hrefForPage={hrefForPage} />
+        </div>
       </main>
     </div>
   );

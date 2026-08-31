@@ -14,6 +14,14 @@ export function requiredString(message: string) {
   return z.string({ error: message }).trim().min(1, message);
 }
 
+// Shared by every paginated list route (customers, admin/users, and
+// ticket.schema.ts's listTicketsQuerySchema, which extends its own inline
+// copy predating this) so the page/limit contract can't drift between them.
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
 export const objectIdSchema = (message = "Invalid id") =>
   z.string({ error: message }).refine((val) => mongoose.isValidObjectId(val), { message });
 

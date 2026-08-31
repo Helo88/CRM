@@ -33,7 +33,9 @@
     "manageTicketCategories": "Manage ticket categories",
     "tickets": "Tickets",
     "myTickets": "My tickets",
-    "chats": "Chats"
+    "chats": "Chats",
+    "searchCustomersFor": "Search customers for “{query}”",
+    "searchAccountsFor": "Search accounts for “{query}”"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -153,9 +155,16 @@
     "statusInactive": "Inactive",
     "empty": "No customers yet.",
     "noAccess": "You don't have access to this page.",
-    "previous": "Previous",
-    "next": "Next",
-    "pageOf": "Page {page} of {totalPages}"
+    "filterStatus": "Status",
+    "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "sortLabel": "Sort by",
+    "sortJoinedDesc": "Joined (newest)",
+    "sortJoinedAsc": "Joined (oldest)",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "resetFilters": "Reset filters"
   },
   "NewCustomer": {
     "heading": "New customer",
@@ -231,9 +240,18 @@
     "cannotActOnAdmin": "Only a full admin can do this to another admin account.",
     "empty": "No staff accounts yet.",
     "noAccess": "You don't have access to this page.",
-    "previous": "Previous",
-    "next": "Next",
-    "pageOf": "Page {page} of {totalPages}"
+    "filterRole": "Role",
+    "filterStatus": "Status",
+    "filterOnline": "Online",
+    "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "sortLabel": "Sort by",
+    "sortJoinedDesc": "Joined (newest)",
+    "sortJoinedAsc": "Joined (oldest)",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "resetFilters": "Reset filters"
   },
   "AdminTicketCategories": {
     "heading": "Ticket categories",

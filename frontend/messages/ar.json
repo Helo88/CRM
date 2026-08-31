@@ -33,7 +33,9 @@
     "manageTicketCategories": "إدارة فئات التذاكر",
     "tickets": "التذاكر",
     "myTickets": "تذاكري",
-    "chats": "المحادثات"
+    "chats": "المحادثات",
+    "searchCustomersFor": "البحث في العملاء عن ”{query}“",
+    "searchAccountsFor": "البحث في الحسابات عن ”{query}“"
   },
   "UserMenu": {
     "memberNumber": "عضو رقم {number}",
@@ -153,9 +155,16 @@
     "statusInactive": "غير نشط",
     "empty": "لا يوجد عملاء بعد.",
     "noAccess": "ليس لديك صلاحية الوصول إلى هذه الصفحة.",
-    "previous": "السابق",
-    "next": "التالي",
-    "pageOf": "صفحة {page} من {totalPages}"
+    "filterStatus": "الحالة",
+    "filterAll": "الكل",
+    "filterSearch": "بحث",
+    "searchingFor": "”{query}“",
+    "sortLabel": "الترتيب حسب",
+    "sortJoinedDesc": "تاريخ الانضمام (الأحدث)",
+    "sortJoinedAsc": "تاريخ الانضمام (الأقدم)",
+    "sortNameAsc": "الاسم (أ–ي)",
+    "sortNameDesc": "الاسم (ي–أ)",
+    "resetFilters": "إعادة ضبط الفلاتر"
   },
   "NewCustomer": {
     "heading": "عميل جديد",
@@ -231,9 +240,18 @@
     "cannotActOnAdmin": "فقط المسؤول الكامل يمكنه تنفيذ هذا الإجراء على حساب مسؤول آخر.",
     "empty": "لا توجد حسابات فريق بعد.",
     "noAccess": "ليس لديك صلاحية الوصول إلى هذه الصفحة.",
-    "previous": "السابق",
-    "next": "التالي",
-    "pageOf": "صفحة {page} من {totalPages}"
+    "filterRole": "الدور",
+    "filterStatus": "الحالة",
+    "filterOnline": "الاتصال",
+    "filterAll": "الكل",
+    "filterSearch": "بحث",
+    "searchingFor": "”{query}“",
+    "sortLabel": "الترتيب حسب",
+    "sortJoinedDesc": "تاريخ الانضمام (الأحدث)",
+    "sortJoinedAsc": "تاريخ الانضمام (الأقدم)",
+    "sortNameAsc": "الاسم (أ–ي)",
+    "sortNameDesc": "الاسم (ي–أ)",
+    "resetFilters": "إعادة ضبط الفلاتر"
   },
   "AdminTicketCategories": {
     "heading": "فئات التذاكر",

@@ -9,7 +9,13 @@ import { uploadIdDocument, uploadGeneralAttachments, customerFilePath } from "..
 import fs from "fs";
 import { validateBody, validateParams } from "../middleware/validate";
 import { userIdParamsSchema } from "../validation/common";
-import { createCustomerBodySchema, noteBodySchema, updateCustomerBodySchema } from "../validation/customer.schema";
+import {
+  createCustomerBodySchema,
+  listCustomersQuerySchema,
+  noteBodySchema,
+  updateCustomerBodySchema,
+} from "../validation/customer.schema";
+import { escapeRegex } from "../utils/regex";
 
 // customers:manage now gates agent AND subadmin identically — reversed from
 // this route's original design (security-admin Story 46 Task 4, which
@@ -145,22 +151,41 @@ async function toProfileResponse(user: IUser, opts: { includeNotes: boolean; inc
 // flagged this as a gap ("no list/search endpoint... do not invent one
 // speculatively") and deferred it. Added at the user's direct request.
 // Staff-only: this is a customer roster, not the agent/admin account list
-// that Story 45 (security-admin) will own separately.
+// that Story 45 (security-admin) will own separately. Filters/search (`q`,
+// `isActive`, `sort`) added later, at the user's direct request, mirroring
+// ticket.routes.ts's GET /'s server-driven filter pattern.
 router.get(
   "/",
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   staffOrDelegatedSubadmin("customers:manage"),
   async (req: Request, res: Response) => {
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+  const parsed = listCustomersQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
+    return;
+  }
+  const { page, limit, q, isActive, sort } = parsed.data;
   const skip = (page - 1) * limit;
-  const filter = { role: "customer" as const };
+
+  const filter: Record<string, unknown> = { role: "customer" as const };
+  if (isActive !== undefined) filter.isActive = isActive === "true";
+  if (q) {
+    const regex = new RegExp(escapeRegex(q), "i");
+    filter.$or = [{ name: regex }, { email: regex }, { membershipNumber: regex }];
+  }
+
+  let sortSpec: Record<string, 1 | -1> = { createdAt: -1 };
+  if (sort) {
+    const descending = sort.startsWith("-");
+    const key = (descending ? sort.slice(1) : sort) as "createdAt" | "name";
+    sortSpec = { [key]: descending ? -1 : 1 };
+  }
 
   const [customers, total] = await Promise.all([
     User.find(filter)
       .select("name email membershipNumber phone isActive createdAt")
-      .sort({ createdAt: -1 })
+      .sort(sortSpec)
       .skip(skip)
       .limit(limit),
     User.countDocuments(filter),
