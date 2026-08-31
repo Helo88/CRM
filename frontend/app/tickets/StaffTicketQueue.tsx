@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { ListPagination } from "@/components/ListPagination";
 import { formatDateTime } from "@/lib/utils";
 import { TicketFilterBar } from "./TicketFilterBar";
+import { StatusQuickFilterChips } from "./StatusQuickFilterChips";
 import { ReassignAgentMenu } from "./ReassignAgentMenu";
 
 export interface StaffTicketRow {
@@ -26,6 +27,10 @@ interface StaffTicketQueueProps {
   total: number;
   page: number;
   limit: number;
+  // Plan 29: per-status counts scoped by the same category/priority/
+  // permission filters as `tickets`, but not by `status` itself — backs the
+  // quick-filter chip row above TicketFilterBar.
+  statusCounts: Record<StaffTicketRow["status"], number>;
   categories: string[];
   canViewAll: boolean;
   canReassign: boolean;
@@ -87,6 +92,7 @@ export async function StaffTicketQueue({
   total,
   page,
   limit,
+  statusCounts,
   categories,
   canViewAll,
   canReassign,
@@ -110,6 +116,7 @@ export async function StaffTicketQueue({
         <h1 className="text-xl font-bold tracking-tight md:text-2xl">{t("heading")}</h1>
       </div>
 
+      <StatusQuickFilterChips statusCounts={statusCounts} />
       <TicketFilterBar categories={categories} />
 
       {tickets.length === 0 ? (

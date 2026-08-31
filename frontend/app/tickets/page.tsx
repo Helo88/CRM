@@ -88,8 +88,15 @@ export default async function TicketsPage({
     redirect("/dashboard");
   }
 
-  const data: { tickets: (StaffTicketRow | CustomerTicketRow)[]; total: number; page: number; limit: number } =
-    await res.json();
+  const data: {
+    tickets: (StaffTicketRow | CustomerTicketRow)[];
+    total: number;
+    page: number;
+    limit: number;
+    // Plan 29: only present on the staff branch (see ticket.routes.ts's GET /) —
+    // the customer branch skips filter/sort UI entirely, chips included.
+    statusCounts?: Record<StaffTicketRow["status"], number>;
+  } = await res.json();
 
   if (!isStaff) {
     return (
@@ -124,6 +131,9 @@ export default async function TicketsPage({
           total={data.total}
           page={data.page}
           limit={data.limit}
+          statusCounts={
+            data.statusCounts ?? { new: 0, in_progress: 0, answered: 0, escalated: 0, closed: 0 }
+          }
           categories={categories.map((c) => c.name)}
           canViewAll={canViewAll}
           canReassign={canReassign}
