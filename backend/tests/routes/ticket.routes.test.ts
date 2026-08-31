@@ -1488,6 +1488,48 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.body.total).toBe(1);
     expect(res.body.tickets[0].status).toBe("closed");
   });
+
+  it("reports statusCounts scoped by category/priority but not narrowed by the selected status (Plan 29 chips)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await seedTicketFor(customer.id, { status: "new", category: "Billing" });
+    await seedTicketFor(customer.id, { status: "new", category: "Billing" });
+    await seedTicketFor(customer.id, { status: "closed", category: "Billing" });
+    await seedTicketFor(customer.id, { status: "closed", category: "Technical" });
+
+    const res = await request(app)
+      .get("/api/v1/tickets?category=Billing&status=new")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // The list itself is still narrowed by status=new...
+    expect(res.body.total).toBe(2);
+    // ...but statusCounts reflects every status under category=Billing alone.
+    expect(res.body.statusCounts).toEqual({ new: 2, in_progress: 0, answered: 0, escalated: 0, closed: 1 });
+  });
+
+  it("scopes statusCounts to only an agent's own tickets when they lack tickets:view_all", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { user: agent1, token: token1 } = await seedUser({ role: "agent" });
+    const { user: agent2 } = await seedUser({ role: "agent" });
+    await seedTicketFor(customer.id, { status: "new", assignedAgent: agent1.id });
+    await seedTicketFor(customer.id, { status: "closed", assignedAgent: agent2.id });
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token1}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statusCounts).toEqual({ new: 1, in_progress: 0, answered: 0, escalated: 0, closed: 0 });
+  });
+
+  it("omits statusCounts on the customer branch", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    await seedTicketFor(customer.id, { status: "new" });
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statusCounts).toBeUndefined();
+  });
 });
 
 describe("GET /api/v1/tickets/:id — customer ownership branch (Story 60)", () => {

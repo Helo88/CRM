@@ -623,6 +623,7 @@
     "filterCategory": "Category",
     "filterPriority": "Priority",
     "filterAll": "All",
+    "queueComposition": "Queue composition",
     "sortLabel": "Sort by",
     "sortUpdatedDesc": "Last updated (newest)",
     "sortUpdatedAsc": "Last updated (oldest)",

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { Types } from "mongoose";
 import { requireAuth, requirePermission, requireRole } from "../middleware/auth";
-import { Ticket, ITicket } from "../models/Ticket";
+import { Ticket, ITicket, TicketStatus } from "../models/Ticket";
 import { Message, IMessage } from "../models/Message";
 import { User } from "../models/User";
 import { Conversation } from "../models/Conversation";
@@ -269,6 +269,13 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 
   const filter: Record<string, unknown> = {};
   let sortSpec: Record<string, 1 | -1> = { updatedAt: -1 };
+  // ticket-management (Plan 29 — status quick-filter chips): the same scope
+  // as `filter`, minus `status`, so the chip row's per-status counts reflect
+  // the category/priority/permission scoping currently applied without also
+  // being narrowed by whichever status chip happens to be selected. Stays
+  // null for the customer branch — no chips there (Story 60's decision that
+  // the customer list skips filter/sort UI entirely still holds).
+  let countFilter: Record<string, unknown> | null = null;
 
   if (req.user!.role === "customer") {
     // Customer branch: always their own tickets, always newest-updated-first.
@@ -280,13 +287,15 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
   } else {
     // Staff branch: apply filters, then scope-enforce server-side — never
     // trust a client-supplied "show all" flag.
-    if (status) filter.status = status;
     if (category) filter.category = category;
     if (priority) filter.priority = priority;
 
     if (!(await callerHasPermission(req, "tickets:view_all"))) {
       filter.assignedAgent = new Types.ObjectId(req.user!.id);
     }
+
+    countFilter = { ...filter };
+    if (status) filter.status = status;
 
     if (sort) {
       const descending = sort.startsWith("-");
@@ -295,7 +304,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     }
   }
 
-  const [tickets, total] = await Promise.all([
+  const [tickets, total, countsAgg] = await Promise.all([
     Ticket.find(filter)
       .sort(sortSpec)
       .skip((page - 1) * limit)
@@ -303,13 +312,31 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
       .populate<{ customer: { _id: Types.ObjectId; name: string; email: string } }>("customer", "name email")
       .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name"),
     Ticket.countDocuments(filter),
+    countFilter
+      ? Ticket.aggregate<{ _id: TicketStatus; count: number }>([
+          { $match: countFilter },
+          { $group: { _id: "$status", count: { $sum: 1 } } },
+        ])
+      : Promise.resolve(null),
   ]);
+
+  // Piggybacked onto this same response rather than a second endpoint — a
+  // status-chip click already refetches this list on every change, so a
+  // separate `GET .../status-counts` would double the round-trips for no
+  // benefit; the extra cost here is one aggregation alongside the query this
+  // route already runs.
+  let statusCounts: Record<TicketStatus, number> | undefined;
+  if (countsAgg) {
+    statusCounts = { new: 0, in_progress: 0, answered: 0, escalated: 0, closed: 0 };
+    for (const row of countsAgg) statusCounts[row._id] = row.count;
+  }
 
   res.status(200).json({
     tickets: tickets.map((ticket) => toTicketListItem(ticket)),
     total,
     page,
     limit,
+    ...(statusCounts ? { statusCounts } : {}),
   });
 });
 
