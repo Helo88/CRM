@@ -17,6 +17,8 @@
     "notificationTicketCreated": "تم إرسال تذكرة جديدة",
     "notificationTicketAutoAssigned": "تم إسناد تذكرة تلقائيًا إلى موظف",
     "notificationTicketNeedsAssignment": "لا يوجد موظف متصل — تحتاج تذكرة إلى إسناد يدوي",
+    "notificationTicketReopened": "تمت إعادة فتح تذكرة مسندة إليك",
+    "notificationTicketReopenedOversight": "تمت إعادة فتح تذكرة مغلقة",
     "comingSoon": "قريبًا",
     "toggleTheme": "تبديل المظهر",
     "toggleLanguage": "تبديل اللغة",
@@ -360,6 +362,8 @@
       "tickets:categorize": "تصنيف التذاكر",
       "tickets:change_priority": "تغيير أولوية التذكرة",
       "tickets:reply": "الرد على التذاكر",
+      "tickets:change_status": "تغيير حالة التذكرة",
+      "tickets:close_reopen": "إغلاق التذاكر وإعادة فتحها",
       "chats:manage": "الوصول إلى الدردشة المباشرة",
       "sla:configure": "تكوين أهداف اتفاقية مستوى الخدمة",
       "kb:publish": "نشر مقالات قاعدة المعرفة",
@@ -513,7 +517,8 @@
     "emailReplyComingSoon": "لا يمكن للعملاء الرد على هذه المحادثة عبر البريد الإلكتروني بعد — أي رد منهم يتطلب حاليًا فتح تذكرة جديدة.",
     "assignedAgentLabel": "الموظف المُعيَّن",
     "unassignedOption": "غير مسندة",
-    "agentOfflineHint": "غير متصل"
+    "agentOfflineHint": "غير متصل",
+    "ticketClosedReadOnly": "هذه التذكرة مغلقة — أعد فتحها للرد."
   },
   "Chat": {
     "heading": "الدردشة المباشرة",

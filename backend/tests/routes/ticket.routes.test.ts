@@ -579,7 +579,12 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
 });
 
 async function seedTicket(
-  overrides: Partial<{ category: string | null; priority: string; assignedAgent: mongoose.Types.ObjectId | null }> = {}
+  overrides: Partial<{
+    category: string | null;
+    priority: string;
+    assignedAgent: mongoose.Types.ObjectId | null;
+    status: string;
+  }> = {}
 ) {
   const { user: customer } = await seedUser();
   return Ticket.create({
@@ -589,6 +594,7 @@ async function seedTicket(
     category: overrides.category ?? null,
     priority: overrides.priority ?? "medium",
     assignedAgent: overrides.assignedAgent ?? null,
+    status: overrides.status ?? "new",
   });
 }
 
@@ -1071,6 +1077,275 @@ describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
   });
 });
 
+describe("PATCH /api/v1/tickets/:id/status (Story 11)", () => {
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const res = await request(app).patch(`/api/v1/tickets/${ticket.id}/status`).send({ status: "in_progress" });
+    expect(res.status).toBe(401);
+  });
+
+  it("lets an agent holding tickets:change_status move new -> in_progress", async () => {
+    const ticket = await seedTicket();
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:change_status"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("in_progress");
+    const saved = await Ticket.findById(ticket.id);
+    expect(saved!.status).toBe("in_progress");
+    expect(saved!.statusHistory).toHaveLength(1);
+    expect(saved!.statusHistory[0]).toMatchObject({ status: "in_progress", changedBy: new mongoose.Types.ObjectId(agent.id) });
+  });
+
+  it("lets a subadmin holding tickets:close_reopen close a ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:close_reopen"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 403 for an agent missing tickets:change_status", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for an agent holding tickets:change_status but not tickets:close_reopen, trying to close", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_status"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an agent holding both keys close a ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(200);
+    expect((await Ticket.findById(ticket.id))!.status).toBe("closed");
+  });
+
+  it("requires tickets:close_reopen to reopen a closed ticket, even with tickets:change_status granted", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_status"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an agent holding tickets:close_reopen reopen a closed ticket back to in_progress", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:close_reopen"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(200);
+    expect((await Ticket.findById(ticket.id))!.status).toBe("in_progress");
+  });
+
+  it("returns 400 for an illegal transition (closed -> answered)", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "answered" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for a request targeting escalated (not a valid manual target)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "escalated" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown ticket id", async () => {
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${new mongoose.Types.ObjectId()}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an admin close and then reopen a ticket with no explicit permission grants (implicit admin pass)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+
+    const closeRes = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+    expect(closeRes.status).toBe(200);
+
+    const reopenRes = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+    expect(reopenRes.status).toBe(200);
+  });
+
+  it("no-ops on a same-state PATCH: 200, no new statusHistory entry", async () => {
+    const ticket = await seedTicket({ status: "in_progress" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_status"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(200);
+    expect((await Ticket.findById(ticket.id))!.statusHistory).toHaveLength(0);
+  });
+
+  it("notifies oversight (admin + tickets:view_all subadmin) and the assigned agent on reopen", async () => {
+    const agent = await seedActiveAgent();
+    const ticket = await seedTicket({ status: "closed", assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:close_reopen"] });
+    const { user: overseeingAdmin } = await seedUser({ role: "admin" });
+    const { user: viewAllSubadmin } = await seedUser({ role: "subadmin", permissions: ["tickets:view_all"] });
+    const { user: plainSubadmin } = await seedUser({ role: "subadmin", permissions: [] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+    expect(res.status).toBe(200);
+
+    const notifications = await Notification.find({});
+    const byRecipient = new Map(notifications.map((n) => [n.recipient.toString(), n.type]));
+    expect(byRecipient.get(agent.id)).toBe("ticket_reopened");
+    expect(byRecipient.get(overseeingAdmin.id)).toBe("ticket_reopened_oversight");
+    expect(byRecipient.get(viewAllSubadmin.id)).toBe("ticket_reopened_oversight");
+    expect(byRecipient.has(plainSubadmin.id)).toBe(false);
+  });
+
+  it("does not notify anyone for a reopen when the ticket has no assigned agent", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:close_reopen"] });
+    const { user: overseeingAdmin } = await seedUser({ role: "admin" });
+
+    await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    const notifications = await Notification.find({});
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].recipient.toString()).toBe(overseeingAdmin.id);
+    expect(notifications[0].type).toBe("ticket_reopened_oversight");
+  });
+
+  it("does not send reopen notifications for a plain (non-reopen) transition, e.g. new -> in_progress", async () => {
+    const agent = await seedActiveAgent();
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_status"] });
+    await seedUser({ role: "admin" });
+
+    await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(await Notification.countDocuments()).toBe(0);
+  });
+
+  it("does not send reopen notifications when closing a ticket", async () => {
+    const agent = await seedActiveAgent();
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:close_reopen"] });
+    await seedUser({ role: "admin" });
+
+    await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(await Notification.countDocuments()).toBe(0);
+  });
+
+  it("does not double-notify on a same-state closed -> closed no-op PATCH", async () => {
+    const agent = await seedActiveAgent();
+    const ticket = await seedTicket({ status: "closed", assignedAgent: agent._id });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:close_reopen"] });
+    await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(200);
+    expect(await Notification.countDocuments()).toBe(0);
+  });
+});
+
 describe("GET /api/v1/tickets/:id/messages (Story 56)", () => {
   it("returns 401 without a token", async () => {
     const ticket = await seedTicket();
@@ -1233,10 +1508,10 @@ describe("POST /api/v1/tickets/:id/messages (Story 56)", () => {
     expect(stored).not.toBeNull();
   });
 
-  it("flips a New/In Progress ticket to Answered", async () => {
+  it("flips a New/In Progress ticket to Answered, logged in statusHistory (Story 11)", async () => {
     vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
     const ticket = await seedTicket();
-    const { token } = await seedUser({ role: "agent", permissions: ["tickets:reply"] });
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:reply"] });
 
     const res = await request(app)
       .post(`/api/v1/tickets/${ticket.id}/messages`)
@@ -1246,6 +1521,11 @@ describe("POST /api/v1/tickets/:id/messages (Story 56)", () => {
     expect(res.status).toBe(201);
     const stored = await Ticket.findById(ticket.id);
     expect(stored!.status).toBe("answered");
+    expect(stored!.statusHistory).toHaveLength(1);
+    expect(stored!.statusHistory[0]).toMatchObject({
+      status: "answered",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
   });
 
   it("leaves a closed ticket closed", async () => {

@@ -10,6 +10,12 @@ export interface ITicketSla {
   breached: boolean;
 }
 
+export interface ITicketStatusHistoryEntry {
+  status: TicketStatus;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
 /**
  * Supports the ticket-management feature (Stories 8-13) and the sla-automation
  * feature (Stories 25-27) via the sla sub-document.
@@ -23,6 +29,11 @@ export interface ITicket extends Document {
   category: string | null;
   priority: TicketPriority;
   status: TicketStatus;
+  // ticket-management Story 11: append-only audit trail of every status
+  // change (who, when) — deliberately minimal rather than a first-class
+  // history collection; Story 13 may migrate this into a real history model
+  // later.
+  statusHistory: ITicketStatusHistoryEntry[];
   sla: ITicketSla;
   escalatedTo: Types.ObjectId | null;
   // Story 62 (live-chat): provenance only — set when the customer accepted
@@ -47,6 +58,21 @@ const ticketSchema = new Schema<ITicket>(
       type: String,
       enum: ["new", "in_progress", "answered", "escalated", "closed"],
       default: "new",
+    },
+    statusHistory: {
+      type: [
+        {
+          status: {
+            type: String,
+            enum: ["new", "in_progress", "answered", "escalated", "closed"],
+            required: true,
+          },
+          changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          changedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
     },
 
     sla: {

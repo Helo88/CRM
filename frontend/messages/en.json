@@ -17,6 +17,8 @@
     "notificationTicketCreated": "A new ticket was submitted",
     "notificationTicketAutoAssigned": "A ticket was auto-assigned to an agent",
     "notificationTicketNeedsAssignment": "No agent is online — a ticket needs manual assignment",
+    "notificationTicketReopened": "A ticket assigned to you was reopened",
+    "notificationTicketReopenedOversight": "A closed ticket was reopened",
     "comingSoon": "coming soon",
     "toggleTheme": "Toggle theme",
     "toggleLanguage": "Toggle language",
@@ -360,6 +362,8 @@
       "tickets:categorize": "Categorize tickets",
       "tickets:change_priority": "Change ticket priority",
       "tickets:reply": "Reply to tickets",
+      "tickets:change_status": "Change ticket status",
+      "tickets:close_reopen": "Close and reopen tickets",
       "chats:manage": "Access live chat",
       "sla:configure": "Configure SLA targets",
       "kb:publish": "Publish knowledge base articles",
@@ -513,7 +517,8 @@
     "emailReplyComingSoon": "Customers can't reply to this thread by email yet — a new reply from them would need a new ticket, for now.",
     "assignedAgentLabel": "Assigned agent",
     "unassignedOption": "Unassigned",
-    "agentOfflineHint": "Offline"
+    "agentOfflineHint": "Offline",
+    "ticketClosedReadOnly": "This ticket is closed — reopen it to reply."
   },
   "Chat": {
     "heading": "Live chat",

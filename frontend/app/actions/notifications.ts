@@ -15,7 +15,9 @@ export type NotificationType =
   | "ticket_unassigned"
   | "ticket_created"
   | "ticket_auto_assigned"
-  | "ticket_needs_assignment";
+  | "ticket_needs_assignment"
+  | "ticket_reopened"
+  | "ticket_reopened_oversight";
 
 export interface NotificationItem {
   id: string;

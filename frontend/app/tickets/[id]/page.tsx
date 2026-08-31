@@ -135,6 +135,17 @@ export default async function TicketDetailPage({
   const canChangePriority = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_priority"));
   const canReply = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reply"));
   const canReassign = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reassign"));
+  // Story 11: two independent keys, same "check separately" shape as the
+  // other per-field booleans above — an account can hold either without
+  // the other.
+  const canChangeStatus = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_status"));
+  const canCloseReopen = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:close_reopen"));
+  // Story 11's read-only-when-closed rule: Category/Priority/Assigned Agent
+  // lock regardless of the viewer's own permission for that field, and the
+  // reply composer is hidden outright. The status control is exempt — it
+  // stays interactive for a canCloseReopen holder, so the ticket can be
+  // reopened.
+  const isLocked = ticket.status === "closed";
   // Story 25's availability rule: admin/sub-admin bypass the online-only
   // restriction; a plain agent holding tickets:reassign does not.
   const viewerIsUnrestrictedReassigner = isViewerAdmin || role === "subadmin";
@@ -180,7 +191,12 @@ export default async function TicketDetailPage({
                   <TicketMessageThread messages={messages} ticketId={ticket.id} />
                   {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
                   {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
-                  {canReply && <TicketReplyComposer ticketId={ticket.id} />}
+                  {/* Story 11: a closed ticket is read-only — the composer never
+                      renders, regardless of canReply, until it's reopened. */}
+                  {isLocked && isStaffViewer && (
+                    <p className="text-xs italic text-muted-foreground">{t("ticketClosedReadOnly")}</p>
+                  )}
+                  {canReply && !isLocked && <TicketReplyComposer ticketId={ticket.id} />}
                 </div>
               </CardContent>
             </Card>
@@ -193,20 +209,18 @@ export default async function TicketDetailPage({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs text-muted-foreground">{t("status")}</span>
-                    <Badge variant="outline" className="w-fit">
-                      {t(STATUS_KEY[ticket.status])}
-                    </Badge>
-                  </div>
                   <TicketDetailSidebar
                     ticketId={ticket.id}
+                    status={ticket.status}
                     category={ticket.category}
                     priority={ticket.priority}
                     assignedAgent={ticket.assignedAgent}
                     canCategorize={canCategorize}
                     canChangePriority={canChangePriority}
                     canReassign={canReassign}
+                    canChangeStatus={canChangeStatus}
+                    canCloseReopen={canCloseReopen}
+                    isLocked={isLocked}
                     viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
                   />
                 </CardContent>
