@@ -28,6 +28,7 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
     "tickets:reply",
     "tickets:change_status",
     "tickets:close_reopen",
+    "tickets:escalate",
   ],
   chats: ["chats:manage"],
   sla: ["sla:configure"],

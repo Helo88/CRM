@@ -518,7 +518,18 @@
     "assignedAgentLabel": "Assigned agent",
     "unassignedOption": "Unassigned",
     "agentOfflineHint": "Offline",
-    "ticketClosedReadOnly": "This ticket is closed — reopen it to reply."
+    "ticketClosedReadOnly": "This ticket is closed — reopen it to reply.",
+    "loading": "Loading…",
+    "escalateButton": "⚠ Escalate ticket",
+    "escalateDialogTitle": "Escalate this ticket",
+    "escalateTargetLabel": "Escalate to",
+    "escalateTargetPlaceholder": "Choose an agent or admin",
+    "noEscalationTargets": "No eligible agents or admins available",
+    "escalateCancel": "Cancel",
+    "escalateConfirm": "Escalate",
+    "escalateConfirmPending": "Escalating…",
+    "escalatedToLabel": "Escalated to",
+    "alreadyEscalated": "This ticket is already escalated to someone else."
   },
   "Chat": {
     "heading": "Live chat",

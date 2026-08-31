@@ -933,6 +933,44 @@ describe("GET /api/v1/tickets/assignable-agents (Story 25)", () => {
   });
 });
 
+describe("GET /api/v1/tickets/escalation-targets (Story 12)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/tickets/escalation-targets");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a caller without tickets:escalate", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+    const res = await request(app)
+      .get("/api/v1/tickets/escalation-targets")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns active agents, admins, and subadmins, excludes the caller and inactive/customer accounts", async () => {
+    const { token, user: caller } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    await User.findByIdAndUpdate(caller.id, { name: "Caller" });
+    const { user: seniorAgent } = await seedUser({ role: "agent" });
+    await User.findByIdAndUpdate(seniorAgent.id, { name: "Senior Agent" });
+    const { user: admin } = await seedUser({ role: "admin" });
+    await User.findByIdAndUpdate(admin.id, { name: "Admin One" });
+    const { user: subadmin } = await seedUser({ role: "subadmin" });
+    await User.findByIdAndUpdate(subadmin.id, { name: "Sub One" });
+    const { user: inactiveAgent } = await seedUser({ role: "agent", isActive: false });
+    await User.findByIdAndUpdate(inactiveAgent.id, { name: "Inactive Agent" });
+    await seedUser({ role: "customer" }); // must be excluded
+
+    const res = await request(app)
+      .get("/api/v1/tickets/escalation-targets")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const names = res.body.map((u: { name: string }) => u.name).sort();
+    expect(names).toEqual(["Admin One", "Senior Agent", "Sub One"]);
+    expect(res.body.some((u: { name: string }) => u.name === "Caller")).toBe(false);
+  });
+});
+
 describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
   it("lets an admin reassign to an active but OFFLINE agent", async () => {
     const ticket = await seedTicket();
@@ -1343,6 +1381,203 @@ describe("PATCH /api/v1/tickets/:id/status (Story 11)", () => {
 
     expect(res.status).toBe(200);
     expect(await Notification.countDocuments()).toBe(0);
+  });
+});
+
+describe("POST /api/v1/tickets/:id/escalate (Story 12)", () => {
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const { user: target } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .send({ escalatedTo: target.id });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a caller without tickets:escalate", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an agent holding tickets:escalate escalate to an admin", async () => {
+    const ticket = await seedTicket();
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("escalated");
+    expect(res.body.escalatedTo).toMatchObject({ id: target.id });
+
+    const saved = await Ticket.findById(ticket.id);
+    expect(saved!.status).toBe("escalated");
+    expect(saved!.escalatedTo?.toString()).toBe(target.id);
+    expect(saved!.statusHistory).toHaveLength(1);
+    expect(saved!.statusHistory[0]).toMatchObject({
+      status: "escalated",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+  });
+
+  it("lets an admin escalate with no explicit permission grant (implicit admin pass)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+    const { user: target } = await seedUser({ role: "agent" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("notifies the target and oversight admins", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "agent" });
+    const { user: overseeingAdmin } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+    const targetNotifications = await Notification.find({ recipient: target._id, type: "ticket_escalated" });
+    expect(targetNotifications).toHaveLength(1);
+    const overseerNotifications = await Notification.find({
+      recipient: overseeingAdmin._id,
+      type: "ticket_escalated",
+    });
+    expect(overseerNotifications).toHaveLength(1);
+  });
+
+  it("returns 400 when the target is a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for self-escalation", async () => {
+    const ticket = await seedTicket();
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: agent.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when escalatedTo is missing or malformed", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown ticket id", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${new mongoose.Types.ObjectId()}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when escalating an already-closed ticket", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("is idempotent when re-escalating to the same target: 200, no duplicate notification", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "agent" });
+
+    const first = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+    expect(second.status).toBe(200);
+
+    const notifications = await Notification.find({ recipient: target._id, type: "ticket_escalated" });
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("returns 409 when re-escalating an already-escalated ticket to a different target", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: firstTarget } = await seedUser({ role: "admin" });
+    const { user: secondTarget } = await seedUser({ role: "admin" });
+
+    const first = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: firstTarget.id });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: secondTarget.id });
+    expect(second.status).toBe(409);
   });
 });
 

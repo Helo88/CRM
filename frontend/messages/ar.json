@@ -518,7 +518,18 @@
     "assignedAgentLabel": "الموظف المُعيَّن",
     "unassignedOption": "غير مسندة",
     "agentOfflineHint": "غير متصل",
-    "ticketClosedReadOnly": "هذه التذكرة مغلقة — أعد فتحها للرد."
+    "ticketClosedReadOnly": "هذه التذكرة مغلقة — أعد فتحها للرد.",
+    "loading": "جارٍ التحميل…",
+    "escalateButton": "⚠ تصعيد التذكرة",
+    "escalateDialogTitle": "تصعيد هذه التذكرة",
+    "escalateTargetLabel": "التصعيد إلى",
+    "escalateTargetPlaceholder": "اختر موظفًا أو مسؤولًا",
+    "noEscalationTargets": "لا يوجد موظفون أو مسؤولون مؤهلون متاحون",
+    "escalateCancel": "إلغاء",
+    "escalateConfirm": "تصعيد",
+    "escalateConfirmPending": "جارٍ التصعيد…",
+    "escalatedToLabel": "مُصعَّدة إلى",
+    "alreadyEscalated": "هذه التذكرة مُصعَّدة بالفعل إلى شخص آخر."
   },
   "Chat": {
     "heading": "الدردشة المباشرة",

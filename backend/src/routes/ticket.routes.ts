@@ -16,6 +16,7 @@ import {
   createTicketBodySchema,
   updateTicketBodySchema,
   updateTicketStatusSchema,
+  escalateTicketBodySchema,
   replyToTicketBodySchema,
   listTicketsQuerySchema,
   ALLOWED_PRIORITIES,
@@ -23,6 +24,7 @@ import {
 import { findByNameCaseInsensitive } from "./ticketCategory.routes";
 import { uploadTicketMessageAttachments, ticketFilePath } from "../middleware/upload";
 import { applyStatusTransition, InvalidStatusTransitionError } from "../services/ticketStatus.service";
+import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
 
 const router = express.Router();
 
@@ -386,6 +388,31 @@ router.get(
   }
 );
 
+// Story 12: backs the "Escalate ticket" target picker. Unlike
+// /assignable-agents above (agents only, for reassignment), an escalation
+// target may be an agent, admin, or subadmin — "a senior agent or admin" per
+// the story — so this is its own endpoint rather than widening
+// /assignable-agents' role filter for an unrelated caller. Excludes the
+// caller themself (self-escalation is rejected server-side anyway, but
+// there's no reason to offer it as an option).
+router.get(
+  "/escalation-targets",
+  requireAuth,
+  requirePermission("tickets:escalate"),
+  async (req: Request, res: Response) => {
+    const targets = await User.find({
+      _id: { $ne: req.user!.id },
+      role: { $in: ["agent", "admin", "subadmin"] },
+      isActive: true,
+      isDeleted: false,
+    })
+      .select("_id name role")
+      .sort({ name: 1 })
+      .lean();
+    res.status(200).json(targets.map((u) => ({ id: u._id.toString(), name: u.name, role: u.role })));
+  }
+);
+
 // Populate() replaces `customer`/`assignedAgent` with the populated document,
 // so this takes only the fields it actually reads off `ticket` rather than
 // the full ITicket (whose `customer`/`assignedAgent: Types.ObjectId | null`
@@ -393,7 +420,14 @@ router.get(
 type TicketDetailFields = Pick<
   ITicket,
   "ticketNumber" | "subject" | "description" | "status" | "category" | "priority" | "createdAt" | "updatedAt"
-> & { _id: Types.ObjectId; assignedAgent: { _id: Types.ObjectId; name: string } | null };
+> & {
+  _id: Types.ObjectId;
+  assignedAgent: { _id: Types.ObjectId; name: string } | null;
+  // ticket-management Story 12: populated (not the raw ObjectId) so the
+  // sidebar can render "Escalated to <name>" without a second round trip —
+  // same reasoning as assignedAgent above.
+  escalatedTo: { _id: Types.ObjectId; name: string } | null;
+};
 
 function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: string; name: string; email: string }) {
   return {
@@ -408,6 +442,7 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
     assignedAgent: ticket.assignedAgent
       ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
       : null,
+    escalatedTo: ticket.escalatedTo ? { id: ticket.escalatedTo._id.toString(), name: ticket.escalatedTo.name } : null,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
   };
@@ -461,7 +496,10 @@ router.get(
       }>("customer", "name email")
       .populate<{
         assignedAgent: { _id: Types.ObjectId; name: string } | null;
-      }>("assignedAgent", "name");
+      }>("assignedAgent", "name")
+      .populate<{
+        escalatedTo: { _id: Types.ObjectId; name: string } | null;
+      }>("escalatedTo", "name");
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
@@ -488,13 +526,6 @@ router.get(
 // requirePermission can't gate this route at the middleware level since the
 // required key depends on which fields are present in this specific
 // request body.
-//
-// TODO(Story 12 — escalate a ticket): once that story adds a status
-// transition to "escalated" (whether inline here or a dedicated route),
-// call createTicketNotification({ recipient: <escalatedTo>, type:
-// "ticket_escalated", ticketId: ticket._id }) right after that write
-// succeeds, mirroring the reassignment call below. No such transition
-// exists yet — this PATCH only ever touches category/priority/assignedAgent.
 router.patch(
   "/:id",
   requireAuth,
@@ -618,9 +649,11 @@ router.patch(
     const populated = await ticket.populate<{
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;
+      escalatedTo: { _id: Types.ObjectId; name: string } | null;
     }>([
       { path: "customer", select: "name email" },
       { path: "assignedAgent", select: "name" },
+      { path: "escalatedTo", select: "name" },
     ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {
@@ -721,9 +754,102 @@ router.patch(
     const populated = await ticket.populate<{
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;
+      escalatedTo: { _id: Types.ObjectId; name: string } | null;
     }>([
       { path: "customer", select: "name email" },
       { path: "assignedAgent", select: "name" },
+      { path: "escalatedTo", select: "name" },
+    ]);
+    res.status(200).json(
+      toTicketDetailResponse(populated, {
+        id: populated.customer._id.toString(),
+        name: populated.customer.name,
+        email: populated.customer.email,
+      })
+    );
+  }
+);
+
+// ticket-management Story 12: manual escalation to a senior agent or admin.
+// A dedicated endpoint, not a value PATCH /:id/status accepts — the escalate
+// action also writes `escalatedTo` and fires notifications, neither of which
+// generic status-transition handler above knows about (see
+// ticketEscalation.service.ts). ALLOWED_MANUAL_STATUSES still rejects a
+// direct PATCH /:id/status { status: "escalated" } request, so this is the
+// only way in.
+router.post(
+  "/:id/escalate",
+  requireAuth,
+  requirePermission("tickets:escalate"),
+  validateBody(escalateTicketBodySchema),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const { escalatedTo } = req.body as { escalatedTo: string };
+
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    // Idempotent on a repeat click to the same target (no new notification,
+    // no history entry); re-escalating to a DIFFERENT target is rejected —
+    // that's a follow-up "re-escalate" story's call, not silently overwritten
+    // here.
+    if (ticket.status === "escalated") {
+      if (String(ticket.escalatedTo) === escalatedTo) {
+        const populated = await ticket.populate<{
+          customer: { _id: Types.ObjectId; name: string; email: string };
+          assignedAgent: { _id: Types.ObjectId; name: string } | null;
+          escalatedTo: { _id: Types.ObjectId; name: string } | null;
+        }>([
+          { path: "customer", select: "name email" },
+          { path: "assignedAgent", select: "name" },
+          { path: "escalatedTo", select: "name" },
+        ]);
+        res.status(200).json(
+          toTicketDetailResponse(populated, {
+            id: populated.customer._id.toString(),
+            name: populated.customer.name,
+            email: populated.customer.email,
+          })
+        );
+        return;
+      }
+      res.status(409).json({ error: "Ticket is already escalated" });
+      return;
+    }
+
+    try {
+      await escalateTicket({
+        ticket,
+        escalatedToUserId: new Types.ObjectId(escalatedTo),
+        changedBy: new Types.ObjectId(req.user!.id),
+        reason: "manual",
+      });
+    } catch (err) {
+      if (err instanceof InvalidEscalationTargetError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err instanceof InvalidStatusTransitionError) {
+        res.status(409).json({ error: "Ticket cannot be escalated from its current status" });
+        return;
+      }
+      throw err;
+    }
+
+    const populated = await ticket.populate<{
+      customer: { _id: Types.ObjectId; name: string; email: string };
+      assignedAgent: { _id: Types.ObjectId; name: string } | null;
+      escalatedTo: { _id: Types.ObjectId; name: string } | null;
+    }>([
+      { path: "customer", select: "name email" },
+      { path: "assignedAgent", select: "name" },
+      { path: "escalatedTo", select: "name" },
     ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {

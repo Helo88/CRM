@@ -36,6 +36,11 @@ export const PERMISSION_KEYS = [
   // close/reopen a ticket, or vice versa.
   "tickets:change_status",
   "tickets:close_reopen",
+  // ticket-management Story 12: manual escalation to a senior agent or
+  // admin — agent-tier, same reasoning as tickets:change_status above (an
+  // account can be granted this without also getting close/reopen or vice
+  // versa).
+  "tickets:escalate",
   "chats:manage",
   "sla:configure",
   "kb:publish",
@@ -90,6 +95,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionK
     "tickets:reply",
     "tickets:change_status",
     "tickets:close_reopen",
+    "tickets:escalate",
     "chats:manage",
     // customers:manage added when agents started being gated on it (see
     // customer.routes.ts) — pre-existing agent accounts won't have it and

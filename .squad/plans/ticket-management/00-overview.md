@@ -18,6 +18,8 @@ Entry point for the **ticket-management** feature. Stories execute in order by t
 | 26 | `26-story-in-app-notifications-for-ticket-events.md` | In-app notifications for ticket events | in-app-notifications-for-ticket-events | — |
 | 28 | `28-story-update-ticket-status.md` | Update ticket status | update-ticket-status | — |
 | 29 | `29-story-status-quick-filter-chips-on-the-ticket-queue.md` | Status quick-filter chips on the ticket queue | status-quick-filter-chips-on-the-ticket-queue | — |
+| 31 | `31-story-escalate-a-ticket.md` | Escalate a ticket | escalate-a-ticket | — |
+| 32 | `32-story-view-full-ticket-history.md` | View full ticket history | view-full-ticket-history | — |
 
 ## Dependency notes
 

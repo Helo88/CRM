@@ -4,6 +4,15 @@ import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { listActiveTicketCategories } from "../new/actions";
 import { UNSPECIFIED_CATEGORY } from "../new/constants";
 import {
@@ -12,15 +21,17 @@ import {
   updateTicketStatus,
   reassignTicket,
   listAssignableAgents,
+  escalateTicket,
+  listEscalationTargets,
+  type EscalationTarget,
 } from "./actions";
 
 type Priority = "low" | "medium" | "high" | "urgent";
 type ManualStatus = "new" | "in_progress" | "answered" | "closed";
-// The ticket's actual status can also be "escalated" (Story 12, not
-// reachable yet — nothing sets it today) — accepted here so this
-// component's prop type matches the page's full TicketStatus without
-// narrowing it, even though the select below only ever offers the four
-// manual options.
+// The ticket's actual status can also be "escalated" (Story 12) — accepted
+// here so this component's prop type matches the page's full TicketStatus
+// without narrowing it, even though the select below only ever offers the
+// four manual options (escalation is its own action, below).
 type Status = ManualStatus | "escalated";
 
 const PRIORITY_KEY: Record<Priority, string> = {
@@ -30,10 +41,11 @@ const PRIORITY_KEY: Record<Priority, string> = {
   urgent: "priorityUrgent",
 };
 
-// ticket-management Story 11: "escalated" is deliberately absent — it isn't
-// a valid manual target of this select (Story 12 owns that transition), and
-// nothing sets a ticket to "escalated" yet, so the current value is always
-// one of these four in practice.
+// ticket-management Story 11: "escalated" is deliberately absent from the
+// pickable options — it's set exclusively by the dedicated Escalate action
+// below (Story 12), never by picking it from this dropdown. The current
+// value can still legitimately BE "escalated" now that Story 12 ships; see
+// the disabled item rendered for that case where this is used.
 const STATUS_OPTIONS: ManualStatus[] = ["new", "in_progress", "answered", "closed"];
 
 const STATUS_KEY: Record<ManualStatus, string> = {
@@ -72,11 +84,13 @@ export function TicketDetailSidebar({
   category,
   priority,
   assignedAgent,
+  escalatedTo,
   canCategorize,
   canChangePriority,
   canReassign,
   canChangeStatus,
   canCloseReopen,
+  canEscalate,
   isLocked,
   viewerIsUnrestrictedReassigner,
 }: {
@@ -85,11 +99,15 @@ export function TicketDetailSidebar({
   category: string | null;
   priority: Priority;
   assignedAgent: { id: string; name: string } | null;
+  // ticket-management Story 12: who the ticket is currently escalated to, if
+  // it is — null whenever status !== "escalated".
+  escalatedTo: { id: string; name: string } | null;
   canCategorize: boolean;
   canChangePriority: boolean;
   canReassign: boolean;
   canChangeStatus: boolean;
   canCloseReopen: boolean;
+  canEscalate: boolean;
   // Story 11: true when the ticket's current status is "closed" — forces
   // Category/Priority/Assigned Agent to lock regardless of their own
   // permission booleans above. Status itself is exempt (see
@@ -123,6 +141,13 @@ export function TicketDetailSidebar({
     null
   );
   const [assignedAgentPending, startAssignedAgentTransition] = useTransition();
+
+  const [escalateOpen, setEscalateOpen] = useState(false);
+  const [escalateTargets, setEscalateTargets] = useState<EscalationTarget[] | null>(null);
+  const [escalateSelected, setEscalateSelected] = useState<string>("");
+  const [escalateError, setEscalateError] = useState<string | null>(null);
+  const [escalatePending, startEscalateTransition] = useTransition();
+  const [escalatedToValue, setEscalatedToValue] = useState(escalatedTo);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +236,33 @@ export function TicketDetailSidebar({
     });
   }
 
+  function handleEscalateOpenChange(next: boolean) {
+    setEscalateOpen(next);
+    if (next) {
+      setEscalateSelected("");
+      setEscalateError(null);
+      if (escalateTargets === null) {
+        listEscalationTargets().then(setEscalateTargets);
+      }
+    }
+  }
+
+  function handleEscalateConfirm() {
+    if (!escalateSelected) return;
+    const target = escalateTargets?.find((t) => t.id === escalateSelected);
+    setEscalateError(null);
+    startEscalateTransition(async () => {
+      const result = await escalateTicket(ticketId, escalateSelected);
+      if (result.error) {
+        setEscalateError(result.error);
+      } else {
+        setEscalateOpen(false);
+        setStatusValue("escalated");
+        if (target) setEscalatedToValue({ id: target.id, name: target.name });
+      }
+    });
+  }
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -224,6 +276,15 @@ export function TicketDetailSidebar({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            {/* Story 12: "escalated" isn't a pickable manual option (only
+                escalateTicket sets it), but it's now a reachable current
+                value — render it disabled so SelectValue has a matching item
+                to render the label from, instead of going blank. */}
+            {statusValue === "escalated" && (
+              <SelectItem value="escalated" disabled>
+                {t("statusEscalated")}
+              </SelectItem>
+            )}
             {STATUS_OPTIONS.map((option) => (
               <SelectItem
                 key={option}
@@ -324,6 +385,69 @@ export function TicketDetailSidebar({
             </p>
           )}
         </div>
+      )}
+
+      {/* ticket-management Story 12: manual escalation to a senior agent or
+          admin. Escalating a closed ticket is rejected server-side (409), so
+          the trigger is hidden once isLocked, same as Category/Priority/
+          Assigned Agent above — a fresh escalation only makes sense on a
+          ticket that's still open. */}
+      {escalatedToValue ? (
+        <div className="flex flex-col gap-1.5">
+          <Label>{t("escalatedToLabel")}</Label>
+          <p className="text-sm font-medium text-destructive">{escalatedToValue.name}</p>
+        </div>
+      ) : (
+        canEscalate &&
+        !isLocked && (
+          <Dialog open={escalateOpen} onOpenChange={handleEscalateOpenChange}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="destructive">
+                {t("escalateButton")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("escalateDialogTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="escalate-target">{t("escalateTargetLabel")}</Label>
+                <Select value={escalateSelected} onValueChange={setEscalateSelected} disabled={escalatePending}>
+                  <SelectTrigger id="escalate-target" className="w-full">
+                    <SelectValue placeholder={t("escalateTargetPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {escalateTargets === null ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">{t("loading")}</div>
+                    ) : escalateTargets.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">{t("noEscalationTargets")}</div>
+                    ) : (
+                      escalateTargets.map((target) => (
+                        <SelectItem key={target.id} value={target.id}>
+                          {target.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {escalateError && <p className="text-sm text-destructive">{escalateError}</p>}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEscalateOpen(false)}>
+                  {t("escalateCancel")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={!escalateSelected || escalatePending}
+                  onClick={handleEscalateConfirm}
+                >
+                  {escalatePending ? t("escalateConfirmPending") : t("escalateConfirm")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )
       )}
     </>
   );

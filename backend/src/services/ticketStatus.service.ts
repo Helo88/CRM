@@ -22,14 +22,18 @@ export class InvalidStatusTransitionError extends Error {
   }
 }
 
-// "escalated" is deliberately absent as both a key and a value here — Story
-// 12 owns that transition. A ticket currently "escalated" (unreachable
-// today; nothing sets this status until Story 12 ships) or a request
-// targeting "escalated" both fall through to the reject branch below.
+// "escalated" is only ever entered/exited through escalateTicket()
+// (ticketEscalation.service.ts, Story 12) — that function additionally
+// writes `escalatedTo` and fires notifications, which this generic helper
+// knows nothing about. PATCH /:id/status still rejects a request that
+// directly targets "escalated" at the validation layer
+// (ALLOWED_MANUAL_STATUSES in ticket.schema.ts), even though the transition
+// table below now allows it, so the only way in is the dedicated endpoint.
 const ALLOWED_TRANSITIONS: Partial<Record<TicketStatus, TicketStatus[]>> = {
-  new: ["in_progress", "answered", "closed"],
-  in_progress: ["answered", "closed", "new"],
-  answered: ["in_progress", "closed"],
+  new: ["in_progress", "answered", "closed", "escalated"],
+  in_progress: ["answered", "closed", "new", "escalated"],
+  answered: ["in_progress", "closed", "escalated"],
+  escalated: ["in_progress", "closed"],
   closed: ["in_progress"],
 };
 

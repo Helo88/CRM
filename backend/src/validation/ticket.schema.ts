@@ -105,6 +105,14 @@ export const REPLY_TEXT_MAX_LENGTH = DESCRIPTION_MAX_LENGTH;
 // validateBody assumes req.body is already the full request payload, but
 // multer's own body-parsing populates req.body with only the non-file
 // fields as strings, which this schema is shaped to match.
+// ticket-management Story 12: POST /:id/escalate body. A dedicated schema,
+// not a reuse of updateTicketBodySchema's assignedAgent field — escalation
+// targets are agent/admin/subadmin, not just agents, and this endpoint is
+// unrelated to reassignment.
+export const escalateTicketBodySchema = z.object({
+  escalatedTo: objectIdSchema("escalatedTo must be a valid user id"),
+});
+
 export const replyToTicketBodySchema = z.object({
   text: requiredString("reply text is required").max(
     REPLY_TEXT_MAX_LENGTH,
