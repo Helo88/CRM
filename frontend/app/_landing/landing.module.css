@@ -225,6 +225,8 @@
   position: relative;
   padding: 76px 0 88px;
   overflow: clip;
+  @media (max-width: 720px)
+   { padding: 60px 0 0px;}
 }
 .hero::before {
   content: "";
@@ -277,7 +279,8 @@
   background: var(--primary-tint);
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
   padding: 6px 12px 6px 10px;
-  border-radius: 999px;
+  border-radius: 999px; 
+  margin-bottom:16px
 }
 @media (max-width: 720px) {
   /* At narrow widths the pill is forced close to the full content width to
@@ -285,7 +288,8 @@
      cramped against its rounded edges relative to how roomy it looks at
      desktop width — give it more breathing room here specifically. */
   .eyebrow {
-    padding: 9px 16px 9px 13px;
+    padding: 9px 24px 9px 13px;
+    margin-bottom:16px
   }
 }
 .eyebrowDot {
@@ -855,9 +859,18 @@
 .section {
   padding: 104px 0;
 }
+
 @media (max-width: 720px) {
   .section {
     padding: 72px 0;
+  }
+}
+.sectionNoPadding {
+  padding:60px 0px 104px;
+}
+@media (max-width: 720px) {
+  .sectionNoPadding {
+    padding: 0;
   }
 }
 .sectionAlt {
@@ -903,7 +916,7 @@
   font-weight: 600;
   line-height: 1.35;
   max-width: 760px;
-  margin-bottom: 36px;
+  margin-bottom: 36px !important;
   color: var(--ink);
 }
 .problemGrid {

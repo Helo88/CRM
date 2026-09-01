@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
 import { Typewriter } from "@/components/Typewriter";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { CircleCheckIcon } from "./icons";
 import styles from "./landing.module.css";
 
@@ -94,12 +94,12 @@ export function Hero({ copy }: { copy: HeroCopy }) {
                 the text is never accessibly absent; Typewriter carries its
                 own sr-only copy once it takes over, so the wrapper around
                 it must NOT be aria-hidden or that would suppress it too. */}
-            <span style={{ position: "relative", display: "inline-block" }}>
+            <span style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap" }}>
               <span aria-hidden="true" style={{ visibility: "hidden" }}>
                 {copy.eyebrow}
               </span>
               {!showTypewriter && <span className="sr-only">{copy.eyebrow}</span>}
-              <span style={{ position: "absolute", insetInlineStart: 0, top: 0 }}>
+              <span style={{ position: "absolute", insetInlineStart: 0, top: 0, whiteSpace: "nowrap" }}>
                 {showTypewriter ? <Typewriter text={copy.eyebrow} /> : null}
               </span>
             </span>
@@ -108,7 +108,7 @@ export function Hero({ copy }: { copy: HeroCopy }) {
             {copy.headlineLead}
             <em className={styles.heroEmphasis}>{copy.headlineEmphasis}</em>
           </h1>
-          <p className={cn(styles.heroSub, styles.heroSubStagger)}>{copy.sub}</p>
+          <p className={cn(styles.heroSub, styles.heroSubStagger,"mt-5!")}>{copy.sub}</p>
           <div className={cn(styles.heroActions, styles.heroActionsStagger)}>
             <Link href="/register" className={cn(styles.btn, styles.btnPrimary)}>
               {copy.ctaPrimary}

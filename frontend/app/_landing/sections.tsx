@@ -13,7 +13,7 @@ import styles from "./landing.module.css";
 export async function ProblemSection() {
   const t = await getTranslations("Home.Problem");
   return (
-    <section id="problem" className={styles.section}>
+    <section id="problem" className={styles.sectionNoPadding}>
       <div className={styles.wrap}>
         <Reveal>
           <div className={styles.sectionHead}>
