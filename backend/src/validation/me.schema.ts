@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isValidPhone } from "../utils/phone";
-import { emailSchema } from "./common";
+import { emailSchema, flexibleDateSchema } from "./common";
 
 // Format-only — "this is already your current email" / "email already in
 // use" / the confirm-email send both depend on the loaded user document and
@@ -17,4 +17,17 @@ export const contactBodySchema = z.object({
 
 export const availabilityBodySchema = z.object({
   isOnline: z.boolean({ error: "isOnline must be a boolean" }),
+});
+
+// Backs the "view all notifications" history page. All fields optional and
+// only meaningfully used together — GET /me/notifications switches into
+// full-history mode (paginated, date-filterable, newest-first) whenever
+// ANY of these is present; with none present it keeps its original
+// bell-dropdown behavior (unread-first, capped at 50, plain array) so that
+// existing caller is untouched.
+export const notificationHistoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+  from: flexibleDateSchema().optional(),
+  to: flexibleDateSchema().optional(),
 });

@@ -17,6 +17,11 @@ import {
 import { fetchNotifications, markNotificationRead, type NotificationItem } from "@/app/actions/notifications";
 
 const POLL_INTERVAL_MS = 60_000;
+// The dropdown is a quick-glance surface, not a browsable history — capped
+// at 10 with a "View all" link to the dedicated /notifications page (which
+// has real pagination + date filtering) rather than letting this list grow
+// unbounded as notifications pile up.
+const DROPDOWN_ITEM_LIMIT = 10;
 
 const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_assigned: "notificationTicketAssigned",
@@ -110,7 +115,7 @@ export function NotificationBell() {
             {t("notificationsEmpty")}
           </DropdownMenuLabel>
         ) : (
-          items.map((item) => (
+          items.slice(0, DROPDOWN_ITEM_LIMIT).map((item) => (
             <DropdownMenuItem key={item.id} asChild className="flex-col items-start gap-0.5">
               <Link href={`/tickets/${item.ticket.id}`} onClick={() => handleItemClick(item)}>
                 <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
@@ -123,6 +128,10 @@ export function NotificationBell() {
             </DropdownMenuItem>
           ))
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="justify-center text-sm font-medium text-primary">
+          <Link href="/notifications">{t("viewAllNotifications")}</Link>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

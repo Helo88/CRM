@@ -1,8 +1,32 @@
 import { z } from "zod";
 import { PERMISSION_KEYS } from "../constants/permissions";
-import { emailSchema, passwordSchema, requiredString, userIdParamsSchema } from "./common";
+import { emailSchema, passwordSchema, paginationQuerySchema, requiredString, userIdParamsSchema } from "./common";
 
 export const staffIdParamsSchema = userIdParamsSchema;
+
+const SEARCH_QUERY_MAX_LENGTH = 200;
+
+export const ALLOWED_STAFF_SORT_KEYS = ["createdAt", "name"] as const;
+
+// Query params for GET / (the staff/agent/admin roster) — filters added at
+// the user's direct request, mirroring ticket.schema.ts's
+// listTicketsQuerySchema pattern. `role` here is any roster TARGET
+// (agent/admin/subadmin), unlike creatableRoleSchema below which excludes
+// "admin" — admin accounts are visible in the roster even though they can't
+// be created through this router.
+export const listStaffAccountsQuerySchema = paginationQuerySchema.extend({
+  q: z.string().trim().min(1).max(SEARCH_QUERY_MAX_LENGTH).optional(),
+  role: z.enum(["agent", "admin", "subadmin"]).optional(),
+  isActive: z.enum(["true", "false"]).optional(),
+  isOnline: z.enum(["true", "false"]).optional(),
+  sort: z
+    .string()
+    .regex(
+      new RegExp(`^-?(${ALLOWED_STAFF_SORT_KEYS.join("|")})$`),
+      `sort must be one of: ${ALLOWED_STAFF_SORT_KEYS.join(", ")}, optionally prefixed with -`
+    )
+    .optional(),
+});
 
 // "admin" is a valid STAFF_ROLE (a roster target) but never a CREATABLE one
 // — see admin.routes.ts's CREATABLE_STAFF_ROLES comment. Kept as its own

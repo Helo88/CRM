@@ -10,6 +10,7 @@
     "searchPlaceholderShort": "Search…",
     "notifications": "Notifications",
     "notificationsEmpty": "No notifications yet",
+    "viewAllNotifications": "View all notifications",
     "notificationTicketAssigned": "A ticket was assigned to you",
     "notificationTicketEscalated": "A ticket was escalated to you",
     "notificationTicketReassigned": "A ticket was reassigned to you",
@@ -32,7 +33,10 @@
     "manageTicketCategories": "Manage ticket categories",
     "tickets": "Tickets",
     "myTickets": "My tickets",
-    "chats": "Chats"
+    "chats": "Chats",
+    "searchCustomersFor": "Search customers for “{query}”",
+    "searchAccountsFor": "Search accounts for “{query}”",
+    "searchTicketsFor": "Search tickets for “{query}”"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -152,9 +156,16 @@
     "statusInactive": "Inactive",
     "empty": "No customers yet.",
     "noAccess": "You don't have access to this page.",
-    "previous": "Previous",
-    "next": "Next",
-    "pageOf": "Page {page} of {totalPages}"
+    "filterStatus": "Status",
+    "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "sortLabel": "Sort by",
+    "sortJoinedDesc": "Joined (newest)",
+    "sortJoinedAsc": "Joined (oldest)",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "resetFilters": "Reset filters"
   },
   "NewCustomer": {
     "heading": "New customer",
@@ -230,9 +241,18 @@
     "cannotActOnAdmin": "Only a full admin can do this to another admin account.",
     "empty": "No staff accounts yet.",
     "noAccess": "You don't have access to this page.",
-    "previous": "Previous",
-    "next": "Next",
-    "pageOf": "Page {page} of {totalPages}"
+    "filterRole": "Role",
+    "filterStatus": "Status",
+    "filterOnline": "Online",
+    "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "sortLabel": "Sort by",
+    "sortJoinedDesc": "Joined (newest)",
+    "sortJoinedAsc": "Joined (oldest)",
+    "sortNameAsc": "Name (A–Z)",
+    "sortNameDesc": "Name (Z–A)",
+    "resetFilters": "Reset filters"
   },
   "AdminTicketCategories": {
     "heading": "Ticket categories",
@@ -364,6 +384,7 @@
       "tickets:reply": "Reply to tickets",
       "tickets:change_status": "Change ticket status",
       "tickets:close_reopen": "Close and reopen tickets",
+      "tickets:escalate": "Escalate tickets",
       "chats:manage": "Access live chat",
       "sla:configure": "Configure SLA targets",
       "kb:publish": "Publish knowledge base articles",
@@ -518,7 +539,19 @@
     "assignedAgentLabel": "Assigned agent",
     "unassignedOption": "Unassigned",
     "agentOfflineHint": "Offline",
-    "ticketClosedReadOnly": "This ticket is closed — reopen it to reply."
+    "ticketClosedReadOnly": "This ticket is closed — reopen it to reply.",
+    "loading": "Loading…",
+    "escalateButton": "⚠ Escalate ticket",
+    "escalateDialogTitle": "Escalate this ticket",
+    "escalateTargetLabel": "Escalate to",
+    "escalateTargetPlaceholder": "Choose an agent or admin",
+    "noEscalationTargets": "No eligible agents or admins available",
+    "escalateCancel": "Cancel",
+    "escalateConfirm": "Escalate",
+    "escalateConfirmPending": "Escalating…",
+    "escalatedToLabel": "Escalated to",
+    "alreadyEscalated": "This ticket is already escalated to someone else.",
+    "youLabel": "You"
   },
   "Chat": {
     "heading": "Live chat",
@@ -627,7 +660,17 @@
     "filterStatus": "Status",
     "filterCategory": "Category",
     "filterPriority": "Priority",
+    "filterCreated": "Created",
+    "filterUpdated": "Last updated",
+    "filterDateFrom": "From",
+    "filterDateTo": "To",
     "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "filtersLabel": "Filters",
+    "filterGroupAttributes": "Ticket attributes",
+    "filterGroupDates": "Date range",
+    "done": "Done",
     "queueComposition": "Queue composition",
     "sortLabel": "Sort by",
     "sortUpdatedDesc": "Last updated (newest)",
@@ -645,5 +688,16 @@
     "agentOfflineHint": "Offline",
     "loading": "Loading…",
     "noAssignableAgents": "No agents available"
+  },
+  "NotificationsPage": {
+    "metaTitle": "Notifications",
+    "heading": "Notifications",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "resetFilters": "Reset filters",
+    "columnType": "Notification",
+    "columnTicket": "Ticket",
+    "columnDate": "Date",
+    "empty": "No notifications found."
   }
 }

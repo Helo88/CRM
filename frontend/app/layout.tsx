@@ -40,6 +40,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       lang={locale}
       dir={dir}
       className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}
+      // Browser extensions commonly inject their own attributes onto <html>
+      // before React hydrates (the reported data-qb-installed one is exactly
+      // that) — React then reports a hydration mismatch it can't actually do
+      // anything about. This is Next.js's own documented remedy for that
+      // case; it does NOT suppress mismatches in this element's children,
+      // only attribute diffs on <html> itself.
+      suppressHydrationWarning
     >
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>

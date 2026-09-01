@@ -113,6 +113,23 @@ describe("tickets:change_status / tickets:close_reopen (Story 11)", () => {
   });
 });
 
+// Story 12: manual escalation to a senior agent or admin — same day-to-day
+// agent tier as Story 11's change_status/close_reopen keys above, never
+// sub-admin-only.
+describe("tickets:escalate (Story 12)", () => {
+  it("is a recognized permission key", () => {
+    expect(PERMISSION_KEYS).toContain("tickets:escalate");
+  });
+
+  it("is not sub-admin-only", () => {
+    expect(SUBADMIN_ONLY_PERMISSIONS.has("tickets:escalate")).toBe(false);
+  });
+
+  it("is granted by default to a freshly-created agent", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).toContain("tickets:escalate");
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

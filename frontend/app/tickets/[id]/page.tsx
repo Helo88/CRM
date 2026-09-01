@@ -27,6 +27,7 @@ interface TicketDetailResponse {
   priority: "low" | "medium" | "high" | "urgent";
   customer: { id: string; name: string; email: string };
   assignedAgent: { id: string; name: string } | null;
+  escalatedTo: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,7 +86,7 @@ export default async function TicketDetailPage({
     redirect("/");
   }
 
-  const { role, permissions: viewerPermissions = [] } = peekJwtPayload(accessToken);
+  const { id: viewerId, role, permissions: viewerPermissions = [] } = peekJwtPayload(accessToken);
   const isStaffViewer = role === "agent" || role === "admin" || role === "subadmin";
   if (!isStaffViewer && role !== "customer") {
     redirect("/dashboard");
@@ -140,6 +141,8 @@ export default async function TicketDetailPage({
   // the other.
   const canChangeStatus = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_status"));
   const canCloseReopen = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:close_reopen"));
+  // Story 12: manual escalation to a senior agent or admin.
+  const canEscalate = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:escalate"));
   // Story 11's read-only-when-closed rule: Category/Priority/Assigned Agent
   // lock regardless of the viewer's own permission for that field, and the
   // reply composer is hidden outright. The status control is exempt — it
@@ -215,11 +218,14 @@ export default async function TicketDetailPage({
                     category={ticket.category}
                     priority={ticket.priority}
                     assignedAgent={ticket.assignedAgent}
+                    escalatedTo={ticket.escalatedTo}
+                    currentUserId={viewerId}
                     canCategorize={canCategorize}
                     canChangePriority={canChangePriority}
                     canReassign={canReassign}
                     canChangeStatus={canChangeStatus}
                     canCloseReopen={canCloseReopen}
+                    canEscalate={canEscalate}
                     isLocked={isLocked}
                     viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
                   />

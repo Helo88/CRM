@@ -8,6 +8,7 @@ import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListPagination } from "@/components/ListPagination";
 import {
   Table,
   TableHeader,
@@ -16,6 +17,7 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { CustomerFilterBar } from "./CustomerFilterBar";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("CustomersList");
@@ -37,12 +39,20 @@ interface CustomerRow {
 // customer; this is deliberately NOT where per-ticket detail lives — that's
 // a separate, ticket-management-owned table/list later (one row per ticket,
 // customer name linking back to /customers/[id]), not merged into this one.
+interface CustomersListSearchParams {
+  page?: string;
+  q?: string;
+  isActive?: string;
+  sort?: string;
+  _refreshed?: string;
+}
+
 export default async function CustomersListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; _refreshed?: string }>;
+  searchParams: Promise<CustomersListSearchParams>;
 }) {
-  const { page: pageParam, _refreshed } = await searchParams;
+  const { page: pageParam, q, isActive, sort, _refreshed } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const t = await getTranslations("CustomersList");
 
@@ -50,21 +60,31 @@ export default async function CustomersListPage({
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const hasRefreshToken = Boolean(cookieStore.get(REFRESH_COOKIE)?.value);
 
+  const currentQuery = new URLSearchParams();
+  if (q) currentQuery.set("q", q);
+  if (isActive) currentQuery.set("isActive", isActive);
+  if (sort) currentQuery.set("sort", sort);
+  const nextUrl = `/customers${currentQuery.toString() ? `?${currentQuery.toString()}` : ""}`;
+
   if (!token) {
     if (hasRefreshToken && !_refreshed) {
-      redirect(`/api/session/refresh?next=/customers${page > 1 ? `?page=${page}` : ""}`);
+      redirect(`/api/session/refresh?next=${encodeURIComponent(nextUrl)}`);
     }
     redirect("/");
   }
 
-  const res = await fetch(`${API_URL}/api/v1/customers?page=${page}&limit=20`, {
+  const listQuery = new URLSearchParams(currentQuery);
+  listQuery.set("page", String(page));
+  listQuery.set("limit", "10");
+
+  const res = await fetch(`${API_URL}/api/v1/customers?${listQuery.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
 
   if (res.status === 401) {
     if (!_refreshed) {
-      redirect(`/api/session/refresh?next=/customers${page > 1 ? `?page=${page}` : ""}`);
+      redirect(`/api/session/refresh?next=${encodeURIComponent(nextUrl)}`);
     }
     redirect("/login");
   }
@@ -82,7 +102,12 @@ export default async function CustomersListPage({
 
   const data: { customers: CustomerRow[]; total: number; page: number; limit: number } =
     await res.json();
-  const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
+
+  function hrefForPage(nextPage: number) {
+    const params = new URLSearchParams(currentQuery);
+    params.set("page", String(nextPage));
+    return `/customers?${params.toString()}`;
+  }
 
   // Mirrors backend/src/routes/customer.routes.ts's GET /:id gate exactly —
   // admin always, agent and sub-admin both only with the same
@@ -103,6 +128,8 @@ export default async function CustomersListPage({
             <Link href="/customers/new">{t("addCustomer")}</Link>
           </Button>
         </div>
+
+        <CustomerFilterBar />
 
         {data.customers.length === 0 ? (
           <p className="py-8 text-center text-muted-foreground">{t("empty")}</p>
@@ -207,31 +234,9 @@ export default async function CustomersListPage({
             </div>
           </>
         )}
-        {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between">
-            {page > 1 ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/customers?page=${page - 1}`}>{t("previous")}</Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled>
-                {t("previous")}
-              </Button>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {t("pageOf", { page, totalPages })}
-            </span>
-            {page < totalPages ? (
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/customers?page=${page + 1}`}>{t("next")}</Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled>
-                {t("next")}
-              </Button>
-            )}
-          </div>
-        )}
+        <div className="mt-4">
+          <ListPagination total={data.total} page={data.page} limit={data.limit} hrefForPage={hrefForPage} />
+        </div>
       </main>
     </div>
   );

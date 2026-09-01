@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { User } from "../models/User";
 import { Notification } from "../models/Notification";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
-import { contactBodySchema, availabilityBodySchema } from "../validation/me.schema";
+import { contactBodySchema, availabilityBodySchema, notificationHistoryQuerySchema } from "../validation/me.schema";
 
 const router = express.Router();
 
@@ -66,41 +66,98 @@ router.patch("/availability", requireAuth, async (req: Request, res: Response) =
   res.status(200).json({ isOnline: user.isOnline });
 });
 
+function toNotificationItem(n: {
+  _id: Types.ObjectId;
+  type: string;
+  read: boolean;
+  createdAt: Date;
+  ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null;
+}) {
+  return {
+    id: n._id.toString(),
+    type: n.type,
+    read: n.read,
+    createdAt: n.createdAt,
+    ticket: {
+      id: n.ticketId!._id.toString(),
+      reference: `TCK-${n.ticketId!.ticketNumber}`,
+      subject: n.ticketId!.subject,
+    },
+  };
+}
+
 // Story 54 (ticket-management): "my notifications" — every authenticated
 // staff account reads/marks-read only its own, same self-scoped shape as
 // /me/status and /me/contact above, so requireAuth only, no permission key
 // (see this story's intake for why: it's "my own data," not a resource
-// gated by role/permission). Unread-first, newest-first within each bucket,
-// capped at 50 — this backs a nav badge/dropdown, not a full history page.
+// gated by role/permission).
+//
+// Two modes on one route, not two routes: with no query params at all
+// (the bell's plain fetchNotifications() call), this keeps its ORIGINAL
+// behavior exactly — unread-first then newest-first, capped at 50, a plain
+// array — so the existing dropdown is untouched. The moment ANY of
+// page/limit/from/to is present (the "view all" history page's call),
+// it switches to a paginated, newest-first-only, optionally date-filtered
+// mode returning { notifications, total, page, limit } instead. Checked
+// against the RAW query, not the schema-defaulted parsed result, same
+// "presence vs. value" reasoning ticket.routes.ts's PATCH /:id uses for its
+// optional fields — the schema defaults page/limit even when the caller
+// sent neither.
 router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
-  const notifications = await Notification.find({ recipient: req.user!.id })
-    .sort({ read: 1, createdAt: -1 })
-    .limit(50)
-    .populate<{ ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null }>(
-      "ticketId",
-      "ticketNumber subject"
-    )
-    .lean();
+  const isHistoryMode = ["page", "limit", "from", "to"].some((key) => key in req.query);
 
-  res.status(200).json(
-    notifications
-      // A notification whose ticket was hard-deleted (never happens today —
-      // tickets are never hard-deleted — but populate() nulling a dangling
-      // ref is cheaper to guard than to assume away) is dropped rather than
-      // shown with a broken link.
-      .filter((n) => n.ticketId)
-      .map((n) => ({
-        id: n._id.toString(),
-        type: n.type,
-        read: n.read,
-        createdAt: n.createdAt,
-        ticket: {
-          id: (n.ticketId as { _id: Types.ObjectId })._id.toString(),
-          reference: `TCK-${(n.ticketId as { ticketNumber: number }).ticketNumber}`,
-          subject: (n.ticketId as { subject: string }).subject,
-        },
-      }))
-  );
+  if (!isHistoryMode) {
+    const notifications = await Notification.find({ recipient: req.user!.id })
+      .sort({ read: 1, createdAt: -1 })
+      .limit(50)
+      .populate<{ ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null }>(
+        "ticketId",
+        "ticketNumber subject"
+      )
+      .lean();
+
+    // A notification whose ticket was hard-deleted (never happens today —
+    // tickets are never hard-deleted — but populate() nulling a dangling
+    // ref is cheaper to guard than to assume away) is dropped rather than
+    // shown with a broken link.
+    res.status(200).json(notifications.filter((n) => n.ticketId).map(toNotificationItem));
+    return;
+  }
+
+  const parsed = notificationHistoryQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
+    return;
+  }
+  const { page, limit, from, to } = parsed.data;
+
+  const filter: Record<string, unknown> = { recipient: req.user!.id };
+  if (from || to) {
+    filter.createdAt = {
+      ...(from ? { $gte: new Date(from) } : {}),
+      ...(to ? { $lte: new Date(to) } : {}),
+    };
+  }
+
+  const [notifications, total] = await Promise.all([
+    Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate<{ ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null }>(
+        "ticketId",
+        "ticketNumber subject"
+      )
+      .lean(),
+    Notification.countDocuments(filter),
+  ]);
+
+  res.status(200).json({
+    notifications: notifications.filter((n) => n.ticketId).map(toNotificationItem),
+    total,
+    page,
+    limit,
+  });
 });
 
 router.patch("/notifications/:id/read", requireAuth, async (req: Request<{ id: string }>, res: Response) => {

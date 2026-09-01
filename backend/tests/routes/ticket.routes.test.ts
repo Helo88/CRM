@@ -933,6 +933,44 @@ describe("GET /api/v1/tickets/assignable-agents (Story 25)", () => {
   });
 });
 
+describe("GET /api/v1/tickets/escalation-targets (Story 12)", () => {
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/tickets/escalation-targets");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a caller without tickets:escalate", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+    const res = await request(app)
+      .get("/api/v1/tickets/escalation-targets")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns active agents, admins, and subadmins, excludes the caller and inactive/customer accounts", async () => {
+    const { token, user: caller } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    await User.findByIdAndUpdate(caller.id, { name: "Caller" });
+    const { user: seniorAgent } = await seedUser({ role: "agent" });
+    await User.findByIdAndUpdate(seniorAgent.id, { name: "Senior Agent" });
+    const { user: admin } = await seedUser({ role: "admin" });
+    await User.findByIdAndUpdate(admin.id, { name: "Admin One" });
+    const { user: subadmin } = await seedUser({ role: "subadmin" });
+    await User.findByIdAndUpdate(subadmin.id, { name: "Sub One" });
+    const { user: inactiveAgent } = await seedUser({ role: "agent", isActive: false });
+    await User.findByIdAndUpdate(inactiveAgent.id, { name: "Inactive Agent" });
+    await seedUser({ role: "customer" }); // must be excluded
+
+    const res = await request(app)
+      .get("/api/v1/tickets/escalation-targets")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const names = res.body.map((u: { name: string }) => u.name).sort();
+    expect(names).toEqual(["Admin One", "Senior Agent", "Sub One"]);
+    expect(res.body.some((u: { name: string }) => u.name === "Caller")).toBe(false);
+  });
+});
+
 describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
   it("lets an admin reassign to an active but OFFLINE agent", async () => {
     const ticket = await seedTicket();
@@ -1346,6 +1384,203 @@ describe("PATCH /api/v1/tickets/:id/status (Story 11)", () => {
   });
 });
 
+describe("POST /api/v1/tickets/:id/escalate (Story 12)", () => {
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const { user: target } = await seedUser({ role: "admin" });
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .send({ escalatedTo: target.id });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a caller without tickets:escalate", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an agent holding tickets:escalate escalate to an admin", async () => {
+    const ticket = await seedTicket();
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("escalated");
+    expect(res.body.escalatedTo).toMatchObject({ id: target.id });
+
+    const saved = await Ticket.findById(ticket.id);
+    expect(saved!.status).toBe("escalated");
+    expect(saved!.escalatedTo?.toString()).toBe(target.id);
+    expect(saved!.statusHistory).toHaveLength(1);
+    expect(saved!.statusHistory[0]).toMatchObject({
+      status: "escalated",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+  });
+
+  it("lets an admin escalate with no explicit permission grant (implicit admin pass)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+    const { user: target } = await seedUser({ role: "agent" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("notifies the target and oversight admins", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "agent" });
+    const { user: overseeingAdmin } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(200);
+    const targetNotifications = await Notification.find({ recipient: target._id, type: "ticket_escalated" });
+    expect(targetNotifications).toHaveLength(1);
+    const overseerNotifications = await Notification.find({
+      recipient: overseeingAdmin._id,
+      type: "ticket_escalated",
+    });
+    expect(overseerNotifications).toHaveLength(1);
+  });
+
+  it("returns 400 when the target is a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for self-escalation", async () => {
+    const ticket = await seedTicket();
+    const { token, user: agent } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: agent.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when escalatedTo is missing or malformed", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown ticket id", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${new mongoose.Types.ObjectId()}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when escalating an already-closed ticket", async () => {
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("is idempotent when re-escalating to the same target: 200, no duplicate notification", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: target } = await seedUser({ role: "agent" });
+
+    const first = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: target.id });
+    expect(second.status).toBe(200);
+
+    const notifications = await Notification.find({ recipient: target._id, type: "ticket_escalated" });
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("returns 409 when re-escalating an already-escalated ticket to a different target", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:escalate"] });
+    const { user: firstTarget } = await seedUser({ role: "admin" });
+    const { user: secondTarget } = await seedUser({ role: "admin" });
+
+    const first = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: firstTarget.id });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/escalate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ escalatedTo: secondTarget.id });
+    expect(second.status).toBe(409);
+  });
+});
+
 describe("GET /api/v1/tickets/:id/messages (Story 56)", () => {
   it("returns 401 without a token", async () => {
     const ticket = await seedTicket();
@@ -1640,10 +1875,16 @@ describe("GET /api/v1/tickets/:id/messages/:messageId/attachments/:attachmentId 
 // Story 60 (merged with customer-portal Story 36, platform Story 59).
 async function seedTicketFor(
   customerId: string,
-  overrides: Partial<{ status: string; category: string | null; priority: string; assignedAgent: string }> = {}
+  overrides: Partial<{
+    status: string;
+    category: string | null;
+    priority: string;
+    assignedAgent: string;
+    subject: string;
+  }> = {}
 ) {
   return Ticket.create({
-    subject: "Something is broken",
+    subject: overrides.subject ?? "Something is broken",
     description: "Details here",
     customer: customerId,
     status: overrides.status ?? "new",
@@ -1723,9 +1964,176 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.body.tickets[0].status).toBe("closed");
   });
 
+  it("defaults to a page size of 10", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    for (let i = 0; i < 12; i++) {
+      await seedTicketFor(customer.id);
+    }
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(10);
+    expect(res.body.tickets).toHaveLength(10);
+    expect(res.body.total).toBe(12);
+  });
+
+  it("searches by ticket subject", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id, { subject: "Refund request for order 42" });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app).get("/api/v1/tickets?q=refund").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("searches by customer name, even though the name lives on the referenced User, not the Ticket", async () => {
+    const { user: matchingCustomer } = await seedUser({ role: "customer", name: "Priya Sharma" });
+    const { user: otherCustomer } = await seedUser({ role: "customer", name: "Jamal Cole" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(matchingCustomer.id);
+    await seedTicketFor(otherCustomer.id);
+
+    const res = await request(app).get("/api/v1/tickets?q=priya").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("searches by assigned-agent name", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { user: matchingAgent } = await seedUser({ role: "agent", name: "Dana Osei" });
+    const { user: otherAgent } = await seedUser({ role: "agent", name: "Leo Farr" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id, { assignedAgent: matchingAgent.id });
+    await seedTicketFor(customer.id, { assignedAgent: otherAgent.id });
+
+    const res = await request(app).get("/api/v1/tickets?q=osei").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("returns an empty list, not everything, when q matches nothing", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app)
+      .get("/api/v1/tickets?q=nonexistent-search-term")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.tickets).toHaveLength(0);
+  });
+
+  it("scopes a customer's own search to their tickets' subjects only", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const matching = await seedTicketFor(customer.id, { subject: "Refund request" });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app).get("/api/v1/tickets?q=refund").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
   it("rejects an unsupported sort key with 400", async () => {
     const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
     const res = await request(app).get("/api/v1/tickets?sort=notarealfield").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("filters by createdAt date range (createdFrom/createdTo)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const oldTicket = await seedTicketFor(customer.id);
+    const recentTicket = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: oldTicket._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(recentTicket.id);
+  });
+
+  it("filters by updatedAt date range (updatedFrom/updatedTo), independently of createdAt", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const staleTicket = await seedTicketFor(customer.id);
+    const freshTicket = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: staleTicket._id },
+      { $set: { updatedAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?updatedFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(freshTicket.id);
+  });
+
+  it("applies both createdAt and updatedAt ranges together", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id);
+    const wrongCreated = await seedTicketFor(customer.id);
+    await Ticket.collection.updateOne(
+      { _id: wrongCreated._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01&updatedFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("scopes date-filtered statusCounts the same way as the list itself", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const oldTicket = await seedTicketFor(customer.id, { status: "closed" });
+    await seedTicketFor(customer.id, { status: "new" });
+    await Ticket.collection.updateOne(
+      { _id: oldTicket._id },
+      { $set: { createdAt: new Date("2020-01-01T00:00:00.000Z") } }
+    );
+
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=2024-01-01")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.statusCounts.closed).toBe(0);
+    expect(res.body.statusCounts.new).toBe(1);
+  });
+
+  it("returns 400 for a malformed date value", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const res = await request(app)
+      .get("/api/v1/tickets?createdFrom=not-a-date")
+      .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(400);
   });
 

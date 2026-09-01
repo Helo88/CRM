@@ -9,8 +9,10 @@ import { validateBody, validateParams } from "../middleware/validate";
 import {
   staffIdParamsSchema,
   createStaffAccountBodySchema,
+  listStaffAccountsQuerySchema,
   updateStaffAccountBodySchema,
 } from "../validation/admin.schema";
+import { escapeRegex } from "../utils/regex";
 
 const router = express.Router();
 
@@ -71,21 +73,46 @@ async function canManageTarget(
 // security-admin Story 46: a sub-admin delegated agent/sub-admin account
 // management needs to see the roster to act on it — admin always passes via
 // requirePermission's own short-circuit. Excludes soft-deleted accounts.
+// Filters/search (`q`, `role`, `isActive`, `isOnline`, `sort`) added at the
+// user's direct request, mirroring ticket.routes.ts's GET /'s server-driven
+// filter pattern — `role` narrows within STAFF_ROLES rather than replacing
+// the roster scope, so it can never be used to escalate past it.
 router.get(
   "/",
   requireAuth,
   requireRole("agent", "admin", "subadmin"),
   requirePermission("staff:view_list"),
   async (req: Request, res: Response) => {
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const parsed = listStaffAccountsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
+      return;
+    }
+    const { page, limit, q, role, isActive, isOnline, sort } = parsed.data;
     const skip = (page - 1) * limit;
-    const filter = { role: { $in: STAFF_ROLES }, isDeleted: { $ne: true } };
+
+    const filter: Record<string, unknown> = {
+      role: role ?? { $in: STAFF_ROLES },
+      isDeleted: { $ne: true },
+    };
+    if (isActive !== undefined) filter.isActive = isActive === "true";
+    if (isOnline !== undefined) filter.isOnline = isOnline === "true";
+    if (q) {
+      const regex = new RegExp(escapeRegex(q), "i");
+      filter.$or = [{ name: regex }, { email: regex }, { membershipNumber: regex }];
+    }
+
+    let sortSpec: Record<string, 1 | -1> = { createdAt: -1 };
+    if (sort) {
+      const descending = sort.startsWith("-");
+      const key = (descending ? sort.slice(1) : sort) as "createdAt" | "name";
+      sortSpec = { [key]: descending ? -1 : 1 };
+    }
 
     const [users, total] = await Promise.all([
       User.find(filter)
         .select("name email membershipNumber role isActive isOnline permissions createdAt")
-        .sort({ createdAt: -1 })
+        .sort(sortSpec)
         .skip(skip)
         .limit(limit),
       User.countDocuments(filter),

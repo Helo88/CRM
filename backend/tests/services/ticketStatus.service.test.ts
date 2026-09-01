@@ -47,6 +47,15 @@ describe("applyStatusTransition (ticket-management Story 11)", () => {
     ["answered", "in_progress"],
     ["answered", "closed"],
     ["closed", "in_progress"],
+    // ticket-management Story 12: escalation's entry/exit rows. Entry is
+    // reachable from any open state; exit only goes back to in_progress or
+    // closed (an escalated ticket is picked back up or closed, never
+    // silently reset to "new"/"answered").
+    ["new", "escalated"],
+    ["in_progress", "escalated"],
+    ["answered", "escalated"],
+    ["escalated", "in_progress"],
+    ["escalated", "closed"],
   ])("allows %s -> %s, appending a statusHistory entry", async (from, to) => {
     const ticket = await seedTicket(from);
     const changedBy = new mongoose.Types.ObjectId();
@@ -71,9 +80,10 @@ describe("applyStatusTransition (ticket-management Story 11)", () => {
   it.each([
     ["closed", "answered"],
     ["closed", "new"],
-    ["new", "escalated"],
+    // ticket-management Story 12: escalated only exits to in_progress/closed
+    // — not back to new/answered.
     ["escalated", "new"],
-    ["escalated", "closed"],
+    ["escalated", "answered"],
   ])("rejects %s -> %s with InvalidStatusTransitionError", async (from, to) => {
     const ticket = await seedTicket(from);
     const changedBy = new mongoose.Types.ObjectId();

@@ -14,8 +14,22 @@ export function requiredString(message: string) {
   return z.string({ error: message }).trim().min(1, message);
 }
 
+// Shared by every paginated list route (customers, admin/users, and
+// ticket.schema.ts's listTicketsQuerySchema, which extends its own inline
+// copy predating this) so the page/limit contract can't drift between them.
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(10),
+});
+
 export const objectIdSchema = (message = "Invalid id") =>
   z.string({ error: message }).refine((val) => mongoose.isValidObjectId(val), { message });
+
+// Accepts either a plain date ("2026-01-31") or a full ISO datetime with
+// offset — every from/to date-range query param in the app (notifications
+// history, ticket list) uses this same shape so the frontend's date-only
+// pickers and any future datetime-precise caller both work unmodified.
+export const flexibleDateSchema = () => z.union([z.iso.datetime({ offset: true }), z.iso.date()]);
 
 // Shared by every `:id`-as-a-user-document route (admin staff accounts,
 // customer profiles) — same format check, same message, in every one of them.

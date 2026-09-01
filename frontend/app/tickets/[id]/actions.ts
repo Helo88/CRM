@@ -141,6 +141,78 @@ export async function listAssignableAgents(): Promise<AssignableAgent[]> {
   return (await res.json()) as AssignableAgent[];
 }
 
+export interface EscalationTarget {
+  id: string;
+  name: string;
+  role: "agent" | "admin" | "subadmin";
+}
+
+// ticket-management Story 12: backs the escalate dialog's target picker.
+// Returns [] on any failure — same "degrade to empty" reasoning as
+// listAssignableAgents above.
+export async function listEscalationTargets(): Promise<EscalationTarget[]> {
+  const token = await getBearerToken();
+  if (!token) return [];
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/tickets/escalation-targets`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) return [];
+    res = await doFetch(refreshedToken);
+  }
+  if (!res.ok) return [];
+  return (await res.json()) as EscalationTarget[];
+}
+
+export interface EscalateTicketState {
+  error: string | null;
+}
+
+// ticket-management Story 12: POST, not PATCH /:id/status — escalation also
+// writes escalatedTo and fires notifications, which the generic status
+// endpoint knows nothing about (see backend/src/services/ticketEscalation.service.ts).
+export async function escalateTicket(ticketId: string, escalatedTo: string): Promise<EscalateTicketState> {
+  const t = await getTranslations("TicketDetail");
+  const token = await getBearerToken();
+  if (!token) {
+    return { error: t("changeFailed") };
+  }
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/tickets/${ticketId}/escalate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ escalatedTo }),
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) {
+      return { error: t("changeFailed") };
+    }
+    res = await doFetch(refreshedToken);
+  }
+
+  if (!res.ok) {
+    if (res.status === 403) return { error: t("noAccess") };
+    if (res.status === 409) return { error: t("alreadyEscalated") };
+    const data = await res.json().catch(() => null);
+    if (typeof data?.error === "string") return { error: data.error };
+    return { error: t("changeFailed") };
+  }
+
+  revalidatePath(`/tickets/${ticketId}`);
+  revalidatePath("/tickets");
+  return { error: null };
+}
+
 export interface SendTicketReplyState {
   error: string | null;
 }
