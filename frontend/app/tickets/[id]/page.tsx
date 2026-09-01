@@ -6,7 +6,6 @@ import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
-import { Phone, Mail, MapPin, CircleEllipsis, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
@@ -56,13 +55,24 @@ export interface TicketMessage {
 
 // Story 63: shown as a badge on the subject line only for a staff-created
 // ticket — "customer_portal" and legacy (null) tickets render no badge at
-// all (see the render site below).
-const CREATED_VIA_ICON: Record<"ai" | "phone" | "email" | "in_person" | "other", typeof Phone> = {
-  ai: Bot,
-  phone: Phone,
-  email: Mail,
-  in_person: MapPin,
-  other: CircleEllipsis,
+// all (see the render site below). Each channel gets its own emoji + vivid
+// color (globals.css's --channel-* tokens) rather than one flat "secondary"
+// badge for all of them — see memory: icons/badges carry their own color,
+// never inherit the surrounding muted text.
+const CREATED_VIA_EMOJI: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "🤖",
+  phone: "📞",
+  email: "✉️",
+  in_person: "🧑‍💼",
+  other: "🧩",
+};
+
+const CREATED_VIA_BADGE_CLASS: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "border-transparent bg-channel-ai/10 text-channel-ai",
+  phone: "border-transparent bg-channel-phone/10 text-channel-phone",
+  email: "border-transparent bg-channel-email/10 text-channel-email",
+  in_person: "border-transparent bg-channel-in-person/10 text-channel-in-person",
+  other: "border-transparent bg-channel-other/10 text-channel-other",
 };
 
 const CREATED_VIA_KEY: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
@@ -208,18 +218,15 @@ export default async function TicketDetailPage({
                     {/* Story 63: only a staff-created ticket carries a
                         meaningful channel — "customer_portal" and legacy
                         (null) tickets render no badge at all. */}
-                    {isStaffViewer &&
-                      ticket.createdVia &&
-                      ticket.createdVia !== "customer_portal" &&
-                      (() => {
-                        const Icon = CREATED_VIA_ICON[ticket.createdVia];
-                        return (
-                          <Badge variant="secondary" className="shrink-0 gap-1">
-                            <Icon className="size-3" />
-                            {t(CREATED_VIA_KEY[ticket.createdVia])}
-                          </Badge>
-                        );
-                      })()}
+                    {isStaffViewer && ticket.createdVia && ticket.createdVia !== "customer_portal" && (
+                      <Badge
+                        variant="outline"
+                        className={`shrink-0 gap-1 ${CREATED_VIA_BADGE_CLASS[ticket.createdVia]}`}
+                      >
+                        <span aria-hidden="true">{CREATED_VIA_EMOJI[ticket.createdVia]}</span>
+                        {t(CREATED_VIA_KEY[ticket.createdVia])}
+                      </Badge>
+                    )}
                   </div>
                   {/* Story 60: customer-facing read-only view shows status inline
                       here instead of in the staff-only sidebar Card below. */}

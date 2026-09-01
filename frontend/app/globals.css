@@ -145,6 +145,21 @@ html[dir="rtl"] h5 {
   --color-icon-priority: var(--icon-priority);
   --color-icon-date: var(--icon-date);
   --color-icon-source: var(--icon-source);
+
+  /* Per-channel accents for the ticket "source"/"created via" badges
+     (StaffTicketQueue.tsx's Source column, the subject-line badge in
+     tickets/[id]/page.tsx) — one vivid, distinct hue per channel so the
+     badge itself carries the identity instead of every channel rendering as
+     the same flat gray "secondary" pill. Same reasoning as --icon-source
+     etc. above: decorative/categorical, not a status, so deliberately
+     distinct from --success/--warning/--destructive. --channel-portal
+     reuses --primary on purpose — the customer portal is this app's own
+     default channel, not one more category to distinguish. */
+  --color-channel-ai: var(--channel-ai);
+  --color-channel-phone: var(--channel-phone);
+  --color-channel-email: var(--channel-email);
+  --color-channel-in-person: var(--channel-in-person);
+  --color-channel-other: var(--channel-other);
 }
 
 @keyframes fade-in {
@@ -254,6 +269,16 @@ html[dir="rtl"] h5 {
   --icon-date: #C42B78;
 
   --icon-source: #6B9E1E;
+
+  --channel-ai: #5A5FCC;
+
+  --channel-phone: #0E8A93;
+
+  --channel-email: #2F6FE0;
+
+  --channel-in-person: #B4267A;
+
+  --channel-other: #64748B;
 }
 
 .dark {
@@ -339,6 +364,16 @@ html[dir="rtl"] h5 {
   --icon-date: #F2679E;
 
   --icon-source: #A8E063;
+
+  --channel-ai: #9AA3F5;
+
+  --channel-phone: #4FD6DE;
+
+  --channel-email: #7EA9FF;
+
+  --channel-in-person: #F27EB8;
+
+  --channel-other: #9CA3AF;
 }
 
 @keyframes chip-pop {
