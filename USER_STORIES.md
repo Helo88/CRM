@@ -99,7 +99,7 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 
 ## Feature: ticket-management
 
-> **Numbering note:** Stories 53, 54, 56, 57, 58, 60, and 61 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 57 right after Story 8 (the staff-side equivalent of customer submission), Story 58 right before Story 9 (categories have to exist before Story 9 can assign one), Story 54 between Story 9 and Story 10 (infrastructure the very next story needs), Story 60 right after Story 10 (an agent needs their queue before they can open anything in it), Story 56 between Story 60 and Story 11 (a reply is what normally drives a ticket into "Answered"), and Story 61 directly after Story 56 (the two-way extension of the same one-way email delivery Story 56 ships). Story 60 also depends on `platform` Story 59 (the shared pagination component), which was itself pulled forward the same way Story 50 was — see the numbering note under `platform`. **Story 61 is deferred/not started** — added to the backlog as a known gap, not queued for immediate implementation.
+> **Numbering note:** Stories 53, 54, 56, 57, 58, 60, 61, and 63 below were added after the rest of this backlog was already numbered and cross-referenced across 70+ files, so they keep their high numbers rather than triggering a full renumber. Their *position* in this section — not their number — reflects where they actually belong in the logical/dependency order: Story 53 first (it's the entry point into everything else in this feature), Story 57 right after Story 8 (the staff-side equivalent of customer submission), Story 58 right before Story 9 (categories have to exist before Story 9 can assign one), Story 54 between Story 9 and Story 10 (infrastructure the very next story needs), Story 60 right after Story 10 (an agent needs their queue before they can open anything in it), Story 56 between Story 60 and Story 11 (a reply is what normally drives a ticket into "Answered"), Story 61 directly after Story 56 (the two-way extension of the same one-way email delivery Story 56 ships), and Story 63 directly before Story 13 (its `createdBy`/`createdVia` fields are the origin fact Story 13's history view surfaces). Story 60 also depends on `platform` Story 59 (the shared pagination component), which was itself pulled forward the same way Story 50 was — see the numbering note under `platform`. **Story 61 is deferred/not started** — added to the backlog as a known gap, not queued for immediate implementation.
 
 ### Story 53: Get support — choose a ticket or live chat
 **As a** logged-in customer, **I want to** land on one clear starting point that lets me choose between submitting a ticket or starting a live chat, **so that** I don't have to guess which nav link gets me help.
@@ -185,11 +185,20 @@ then paste that story's **User Story** + **Acceptance Criteria** into the genera
 - Escalating notifies the target person and visibly flags the ticket in lists/dashboards.
 - The full ticket history travels with the escalation, so context isn't lost.
 
+### Story 63: Track how a ticket was created
+**As an** agent or admin, **I want to** see who created a ticket and, if staff created it on the customer's behalf, how they learned about the issue, **so that** I have context on a ticket's origin when reviewing or auditing it.
+- **Numbering note:** added after the rest of the backlog was already numbered — same reason, same fix as the other numbering notes in this file. Positioned here (right after Story 57, right before Story 13) since Story 13's history view should be able to show a ticket's origin, and this is the story that makes that origin a real, persisted fact instead of nothing.
+- Every ticket records who created it (`createdBy`) and how (`createdVia`): a customer's own self-submission (Story 8), or a staff member creating it on the customer's behalf (Story 57) — in which case the agent/admin also records the contact method that led to it (phone call, email, in person, or other), matching the "reported by phone, in person, or through another channel" language already in Story 57.
+- This does **not** add any new automated intake channel (no inbound-email or phone-call ticket creation — those stay out of scope per this platform's channel scope notes). It only records, as metadata, how staff learned about an issue they're logging manually.
+- Surfaced as a compact source indicator in the ticket queue table and as a "Created by / via" line in the ticket detail sidebar.
+- Tickets created before this story ships have no recorded creator/channel — shown as "Unknown," never guessed or backfilled.
+
 ### Story 13: View full ticket history
 **As an** agent or admin, **I want to** view the complete history/audit trail of a ticket, **so that** I can see what actions were taken, by whom, and when.
 - History includes status changes, reassignments, category changes, replies, and internal notes.
 - History is read-only for regular agents.
 - History is exportable for record-keeping.
+- Includes the ticket's origin (Story 63's `createdBy`/`createdVia`) as the first entry in the trail.
 
 ---
 
