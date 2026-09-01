@@ -741,7 +741,12 @@
       "unknownUser": "مستخدم غير معروف",
       "event": {
         "created": "تم إنشاء التذكرة بواسطة {name}",
+        "createdVia": "تم إنشاء التذكرة بواسطة {name}، عبر {channel}",
         "statusChanged": "تم تغيير الحالة إلى {status} بواسطة {name}",
+        "categoryChanged": "تم تغيير الفئة إلى {category} بواسطة {name}",
+        "priorityChanged": "تم تغيير الأولوية إلى {priority} بواسطة {name}",
+        "assigneeChanged": "تمت إعادة الإسناد إلى {agent} بواسطة {name}",
+        "assigneeUnassigned": "تم إلغاء الإسناد بواسطة {name}",
         "replyPosted": "رد من {name}",
         "internalNoteAdded": "ملاحظة داخلية من {name}"
       }
@@ -771,7 +776,7 @@
     "talkToHuman": "التحدث مع موظف",
     "talkToHumanRequesting": "جارٍ تحويلك إلى موظف دعم…",
     "escalatedWaiting": "أنت الآن في قائمة الانتظار لموظف دعم. سينضم أحدهم إلى هذه المحادثة قريبًا.",
-    "agentJoined": "انضم موظف دعم إلى المحادثة.",
+    "agentJoined": "انضم موظف الدعم الفني إلى المحادثة.",
     "noAgentAvailableTitle": "لا يوجد موظف دعم متاح حاليًا",
     "noAgentAvailableBody": "يمكنك متابعة المحادثة مع المساعد الذكي، أو إغلاق هذه المحادثة.",
     "noAgentKeepChattingAi": "متابعة المحادثة مع الذكاء الاصطناعي",

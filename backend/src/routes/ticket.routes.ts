@@ -692,6 +692,16 @@ router.patch(
         }
         ticket.assignedAgent = targetAgent._id;
       }
+      // ticket-management Story 13 follow-up: audit trail for reassignment —
+      // pushed unconditionally whenever the field is explicitly present in
+      // the request (even a no-op reassign to the same agent), same as the
+      // console.info line below it. Distinct from newAgentId/previousAgentId
+      // above, which only track an actual change for notification purposes.
+      ticket.assignedAgentHistory.push({
+        assignedAgent: ticket.assignedAgent,
+        changedBy: new Types.ObjectId(req.user!.id),
+        changedAt: new Date(),
+      });
       console.info(
         `[ticket-reassigned] ticket=${req.params.id} from=${previousAgentId ?? "null"} to=${ticket.assignedAgent ?? "null"} by=${req.user!.id} at=${new Date().toISOString()}`
       );
@@ -708,11 +718,21 @@ router.patch(
         }
         ticket.category = existing.name; // canonical stored casing, not the caller's
       }
+      ticket.categoryHistory.push({
+        category: ticket.category,
+        changedBy: new Types.ObjectId(req.user!.id),
+        changedAt: new Date(),
+      });
       console.info(`[tickets] ${req.params.id} category changed by ${req.user!.id} to ${ticket.category}`);
     }
 
     if ("priority" in rawBody) {
       ticket.priority = priority!;
+      ticket.priorityHistory.push({
+        priority: ticket.priority,
+        changedBy: new Types.ObjectId(req.user!.id),
+        changedAt: new Date(),
+      });
       console.info(`[tickets] ${req.params.id} priority changed by ${req.user!.id} to ${priority}`);
     }
 

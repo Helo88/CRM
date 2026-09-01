@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { CirclePlus, Download, History, MessageSquare, RefreshCw, StickyNote } from "lucide-react";
+import { CirclePlus, Download, Flag, History, MessageSquare, RefreshCw, StickyNote, Tag, UserCog } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -85,8 +85,23 @@ const RECENT_ACTIVITY_TEASER_COUNT = 5;
 const HISTORY_EVENT_ICON: Record<TicketHistoryEvent["kind"], typeof CirclePlus> = {
   created: CirclePlus,
   status_changed: RefreshCw,
+  category_changed: Tag,
+  priority_changed: Flag,
+  assignee_changed: UserCog,
   reply_posted: MessageSquare,
   internal_note_added: StickyNote,
+};
+
+// Story 63: the "created" event's data.createdVia rides along so the label
+// can distinguish "just submitted the form" from "accepted the AI's
+// suggestion" / "logged by staff via X" — reuses the same badge label keys
+// already added for the subject-line channel badge (page.tsx).
+const CREATED_VIA_LABEL_KEY: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "createdViaAi",
+  phone: "createdViaPhone",
+  email: "createdViaEmail",
+  in_person: "createdViaInPerson",
+  other: "createdViaOther",
 };
 
 // Unlike STATUS_KEY above (pickable manual options only), a status_changed
@@ -321,11 +336,30 @@ export function TicketDetailSidebar({
   function historyEventLabel(event: TicketHistoryEvent): string {
     const name = event.actor?.name ?? t("history.unknownUser");
     switch (event.kind) {
-      case "created":
+      case "created": {
+        const via = event.data.createdVia as keyof typeof CREATED_VIA_LABEL_KEY | "customer_portal" | null;
+        if (via && via !== "customer_portal") {
+          return t("history.event.createdVia", { name, channel: t(CREATED_VIA_LABEL_KEY[via]) });
+        }
         return t("history.event.created", { name });
+      }
       case "status_changed": {
         const to = event.data.to as Status;
         return t("history.event.statusChanged", { name, status: t(FULL_STATUS_KEY[to] ?? "statusNew") });
+      }
+      case "category_changed": {
+        const to = event.data.to as string | null;
+        return t("history.event.categoryChanged", { name, category: to ?? t("categoryUnspecified") });
+      }
+      case "priority_changed": {
+        const to = event.data.to as Priority;
+        return t("history.event.priorityChanged", { name, priority: t(PRIORITY_KEY[to]) });
+      }
+      case "assignee_changed": {
+        const to = event.data.to as { id: string; name: string } | null;
+        return to
+          ? t("history.event.assigneeChanged", { name, agent: to.name })
+          : t("history.event.assigneeUnassigned", { name });
       }
       case "reply_posted":
         return t("history.event.replyPosted", { name });

@@ -24,6 +24,28 @@ export interface ITicketStatusHistoryEntry {
   changedAt: Date;
 }
 
+// ticket-management Story 13 follow-up: category/priority/assignedAgent
+// used to have no audit trail at all — only the current-state scalar field
+// existed, so a change was silent (nothing for buildTicketHistory to read).
+// Mirrors ITicketStatusHistoryEntry's shape exactly, one array per field.
+export interface ITicketCategoryHistoryEntry {
+  category: string | null;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
+export interface ITicketPriorityHistoryEntry {
+  priority: TicketPriority;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
+export interface ITicketAssignedAgentHistoryEntry {
+  assignedAgent: Types.ObjectId | null;
+  changedBy: Types.ObjectId;
+  changedAt: Date;
+}
+
 /**
  * Supports the ticket-management feature (Stories 8-13) and the sla-automation
  * feature (Stories 25-27) via the sla sub-document.
@@ -42,6 +64,9 @@ export interface ITicket extends Document {
   // history collection; Story 13 may migrate this into a real history model
   // later.
   statusHistory: ITicketStatusHistoryEntry[];
+  categoryHistory: ITicketCategoryHistoryEntry[];
+  priorityHistory: ITicketPriorityHistoryEntry[];
+  assignedAgentHistory: ITicketAssignedAgentHistoryEntry[];
   sla: ITicketSla;
   escalatedTo: Types.ObjectId | null;
   // Story 62 (live-chat): provenance only — set when the customer accepted
@@ -81,6 +106,39 @@ const ticketSchema = new Schema<ITicket>(
             enum: ["new", "in_progress", "answered", "escalated", "closed"],
             required: true,
           },
+          changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          changedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
+    categoryHistory: {
+      type: [
+        {
+          category: { type: String, default: null },
+          changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          changedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
+    priorityHistory: {
+      type: [
+        {
+          priority: { type: String, enum: ["low", "medium", "high", "urgent"], required: true },
+          changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          changedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
+    assignedAgentHistory: {
+      type: [
+        {
+          assignedAgent: { type: Schema.Types.ObjectId, ref: "User", default: null },
           changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
           changedAt: { type: Date, required: true },
         },

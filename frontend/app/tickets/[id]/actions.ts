@@ -214,7 +214,14 @@ export async function escalateTicket(ticketId: string, escalatedTo: string): Pro
 }
 
 export interface TicketHistoryEvent {
-  kind: "created" | "status_changed" | "reply_posted" | "internal_note_added";
+  kind:
+    | "created"
+    | "status_changed"
+    | "category_changed"
+    | "priority_changed"
+    | "assignee_changed"
+    | "reply_posted"
+    | "internal_note_added";
   at: string;
   actor: { id: string; name: string | null; role: string } | null;
   data: Record<string, unknown>;

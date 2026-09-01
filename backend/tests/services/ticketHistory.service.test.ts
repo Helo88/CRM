@@ -179,4 +179,86 @@ describe("buildTicketHistory (ticket-management Story 13)", () => {
     const replyEvent = events.find((e) => e.kind === "reply_posted");
     expect(replyEvent?.actor).toBeNull();
   });
+
+  it("emits category_changed, priority_changed, and assignee_changed events from their history arrays", async () => {
+    const customer = await seedCustomer();
+    const admin = await seedAgent("Ann Admin");
+    const targetAgent = await seedAgent("Target Agent");
+    const base = Date.now();
+    const ticket = await Ticket.create({
+      subject: "S",
+      description: "D",
+      customer: customer._id,
+      categoryHistory: [{ category: "Billing", changedBy: admin._id, changedAt: new Date(base + 1000) }],
+      priorityHistory: [{ priority: "high", changedBy: admin._id, changedAt: new Date(base + 2000) }],
+      assignedAgentHistory: [
+        { assignedAgent: targetAgent._id, changedBy: admin._id, changedAt: new Date(base + 3000) },
+      ],
+    });
+
+    const events = await buildTicketHistory(ticket._id);
+
+    const categoryEvent = events.find((e) => e.kind === "category_changed");
+    expect(categoryEvent).toMatchObject({
+      actor: { id: admin.id, name: "Ann Admin" },
+      data: { to: "Billing" },
+    });
+
+    const priorityEvent = events.find((e) => e.kind === "priority_changed");
+    expect(priorityEvent).toMatchObject({
+      actor: { id: admin.id, name: "Ann Admin" },
+      data: { to: "high" },
+    });
+
+    const assigneeEvent = events.find((e) => e.kind === "assignee_changed");
+    expect(assigneeEvent).toMatchObject({
+      actor: { id: admin.id, name: "Ann Admin" },
+      data: { to: { id: targetAgent.id, name: "Target Agent" } },
+    });
+  });
+
+  it("emits an assignee_changed event with data.to: null when unassigned", async () => {
+    const customer = await seedCustomer();
+    const admin = await seedAgent("Ann Admin");
+    const ticket = await Ticket.create({
+      subject: "S",
+      description: "D",
+      customer: customer._id,
+      assignedAgentHistory: [{ assignedAgent: null, changedBy: admin._id, changedAt: new Date() }],
+    });
+
+    const events = await buildTicketHistory(ticket._id);
+
+    const assigneeEvent = events.find((e) => e.kind === "assignee_changed");
+    expect(assigneeEvent?.data).toEqual({ to: null });
+  });
+
+  it("uses createdBy (not customer) as the 'created' event's actor for a staff-created ticket, and carries createdVia", async () => {
+    const customer = await seedCustomer();
+    const staffCreator = await seedAgent("Staffer Sam");
+    const ticket = await Ticket.create({
+      subject: "S",
+      description: "D",
+      customer: customer._id,
+      createdBy: staffCreator._id,
+      createdVia: "phone",
+    });
+
+    const events = await buildTicketHistory(ticket._id);
+
+    const createdEvent = events.find((e) => e.kind === "created");
+    expect(createdEvent?.actor).toMatchObject({ id: staffCreator.id, name: "Staffer Sam", role: "agent" });
+    expect(createdEvent?.data).toMatchObject({ createdVia: "phone" });
+  });
+
+  it("falls back to the customer as the 'created' event's actor when createdBy is null (legacy ticket)", async () => {
+    const customer = await seedCustomer();
+    const ticket = await Ticket.create({ subject: "S", description: "D", customer: customer._id });
+
+    const events = await buildTicketHistory(ticket._id);
+
+    const createdEvent = events.find((e) => e.kind === "created");
+    expect(createdEvent?.actor).toMatchObject({ id: customer.id, name: customer.name, role: "customer" });
+    expect(createdEvent?.data).toMatchObject({ createdVia: null });
+  });
 });

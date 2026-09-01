@@ -967,6 +967,33 @@ describe("PATCH /api/v1/tickets/:id (Story 9)", () => {
 
     expect(res.status).toBe(403);
   });
+
+  it("appends to categoryHistory and priorityHistory (Story 13 follow-up audit trail)", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    const ticket = await seedTicket();
+    const { user: agent, token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:categorize", "tickets:change_priority"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing", priority: "high" });
+
+    expect(res.status).toBe(200);
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.categoryHistory).toHaveLength(1);
+    expect(stored!.categoryHistory[0]).toMatchObject({
+      category: "Billing",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+    expect(stored!.priorityHistory).toHaveLength(1);
+    expect(stored!.priorityHistory[0]).toMatchObject({
+      priority: "high",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+  });
 });
 
 async function seedActiveAgent(overrides: Partial<{ isOnline: boolean; email: string }> = {}) {
@@ -1068,6 +1095,25 @@ describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
     expect(res.status).toBe(200);
     expect(res.body.assignedAgent).toEqual({ id: agent.id, name: agent.name });
     expect((await Ticket.findById(ticket.id))!.assignedAgent?.toString()).toBe(agent.id);
+  });
+
+  it("appends to assignedAgentHistory (Story 13 follow-up audit trail)", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: false });
+    const { user: admin, token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.assignedAgentHistory).toHaveLength(1);
+    expect(stored!.assignedAgentHistory[0]).toMatchObject({
+      assignedAgent: new mongoose.Types.ObjectId(agent.id),
+      changedBy: new mongoose.Types.ObjectId(admin.id),
+    });
   });
 
   it("lets a sub-admin holding tickets:reassign reassign to an OFFLINE agent, same as admin", async () => {
@@ -2441,6 +2487,31 @@ describe("GET /api/v1/tickets/:id/history (Story 13)", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.events.some((e: { kind: string }) => e.kind === "internal_note_added")).toBe(false);
+  });
+
+  it("includes category_changed, priority_changed, and assignee_changed events end-to-end through PATCH /:id (Story 13 follow-up)", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    const ticket = await seedTicket();
+    const agentTarget = await seedActiveAgent({ isOnline: false });
+    const { token } = await seedUser({
+      role: "admin",
+    });
+
+    const patchRes = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing", priority: "high", assignedAgent: agentTarget.id });
+    expect(patchRes.status).toBe(200);
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const kinds = res.body.events.map((e: { kind: string }) => e.kind);
+    expect(kinds).toEqual(
+      expect.arrayContaining(["category_changed", "priority_changed", "assignee_changed"])
+    );
+    const assigneeEvent = res.body.events.find((e: { kind: string }) => e.kind === "assignee_changed");
+    expect(assigneeEvent.data.to).toMatchObject({ id: agentTarget.id, name: agentTarget.name });
   });
 });
 

@@ -3,11 +3,18 @@ import { Ticket } from "../models/Ticket";
 import { Message } from "../models/Message";
 import { User } from "../models/User";
 
-// ticket-management Story 13: aggregates every meaningful thing that has
-// happened on a ticket (creation, status changes, replies, internal notes)
-// into one chronological timeline. Category/assignment changes have no
-// history sub-document yet (see Ticket.ts) — TODO(story-future) below.
-export type TicketHistoryEventKind = "created" | "status_changed" | "reply_posted" | "internal_note_added";
+// ticket-management Story 13 (+ follow-up): aggregates every meaningful
+// thing that has happened on a ticket (creation, status/category/priority/
+// assignee changes, replies, internal notes) into one chronological
+// timeline.
+export type TicketHistoryEventKind =
+  | "created"
+  | "status_changed"
+  | "category_changed"
+  | "priority_changed"
+  | "assignee_changed"
+  | "reply_posted"
+  | "internal_note_added";
 
 export interface TicketHistoryEvent {
   kind: TicketHistoryEventKind;
@@ -34,40 +41,68 @@ export interface BuildTicketHistoryOptions {
   redactInternalBodies?: boolean;
 }
 
+type UserLean = { _id: Types.ObjectId; name: string; role: string };
+
 export async function buildTicketHistory(
   ticketId: Types.ObjectId,
   options: BuildTicketHistoryOptions = {}
 ): Promise<TicketHistoryEvent[]> {
   const ticket = await Ticket.findById(ticketId)
     .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
-    .populate<{ escalatedTo: { _id: Types.ObjectId; name: string } | null }>("escalatedTo", "name");
+    .populate<{ escalatedTo: { _id: Types.ObjectId; name: string } | null }>("escalatedTo", "name")
+    .populate<{ createdBy: { _id: Types.ObjectId; name: string; role: string } | null }>("createdBy", "name role");
   if (!ticket) {
     throw new TicketNotFoundError();
   }
 
   const events: TicketHistoryEvent[] = [];
 
+  // ticket-management Story 63: prefer createdBy (the actual creator — a
+  // staff member for a create-on-behalf-of ticket) over ticket.customer
+  // (just the ticket's owner, not necessarily who created it). Falls back
+  // to customer for a ticket created before Story 63 shipped, when
+  // createdBy is still null — the only provenance available for those.
+  const creator = ticket.createdBy
+    ? { _id: ticket.createdBy._id, name: ticket.createdBy.name, role: ticket.createdBy.role }
+    : ticket.customer
+      ? { _id: ticket.customer._id, name: ticket.customer.name, role: "customer" }
+      : null;
   events.push({
     kind: "created",
     at: ticket.createdAt,
-    actor: ticket.customer ? { id: ticket.customer._id.toString(), name: ticket.customer.name, role: "customer" } : null,
-    data: { ticketNumber: ticket.ticketNumber, subject: ticket.subject },
+    actor: creator ? { id: creator._id.toString(), name: creator.name, role: creator.role } : null,
+    // createdVia rides along so the frontend can render a channel-aware
+    // label ("via AI suggestion", "via phone", ...) instead of a generic
+    // "created by X" that reads as if they typed it up unassisted.
+    data: { ticketNumber: ticket.ticketNumber, subject: ticket.subject, createdVia: ticket.createdVia },
   });
 
-  const changedByIds = [...new Set(ticket.statusHistory.map((entry) => entry.changedBy.toString()))];
-  const changedByUsers =
-    changedByIds.length > 0
-      ? await User.find({ _id: { $in: changedByIds } }, { name: 1, role: 1 }).lean()
-      : [];
-  const changedByMap = new Map(changedByUsers.map((u) => [u._id.toString(), u]));
+  // One batched User lookup covers every "who did this" reference across
+  // all four history arrays, plus the "who got assigned" target of each
+  // assignedAgentHistory entry — a single query rather than one per array.
+  const userIds = new Set<string>();
+  for (const entry of ticket.statusHistory) userIds.add(entry.changedBy.toString());
+  for (const entry of ticket.categoryHistory) userIds.add(entry.changedBy.toString());
+  for (const entry of ticket.priorityHistory) userIds.add(entry.changedBy.toString());
+  for (const entry of ticket.assignedAgentHistory) {
+    userIds.add(entry.changedBy.toString());
+    if (entry.assignedAgent) userIds.add(entry.assignedAgent.toString());
+  }
+  const users =
+    userIds.size > 0 ? await User.find({ _id: { $in: [...userIds] } }, { name: 1, role: 1 }).lean<UserLean[]>() : [];
+  const usersById = new Map(users.map((u) => [u._id.toString(), u]));
+
+  function actorFor(changedBy: Types.ObjectId): TicketHistoryEvent["actor"] {
+    const user = usersById.get(changedBy.toString());
+    return user ? { id: changedBy.toString(), name: user.name, role: user.role } : null;
+  }
 
   const lastEscalatedIndex = [...ticket.statusHistory].map((e) => e.status).lastIndexOf("escalated");
   ticket.statusHistory.forEach((entry, index) => {
-    const changer = changedByMap.get(entry.changedBy.toString());
     events.push({
       kind: "status_changed",
       at: entry.changedAt,
-      actor: changer ? { id: entry.changedBy.toString(), name: changer.name, role: changer.role } : null,
+      actor: actorFor(entry.changedBy),
       data: {
         to: entry.status,
         ...(entry.status === "escalated" && index === lastEscalatedIndex && ticket.escalatedTo
@@ -76,6 +111,36 @@ export async function buildTicketHistory(
       },
     });
   });
+
+  for (const entry of ticket.categoryHistory) {
+    events.push({
+      kind: "category_changed",
+      at: entry.changedAt,
+      actor: actorFor(entry.changedBy),
+      data: { to: entry.category },
+    });
+  }
+
+  for (const entry of ticket.priorityHistory) {
+    events.push({
+      kind: "priority_changed",
+      at: entry.changedAt,
+      actor: actorFor(entry.changedBy),
+      data: { to: entry.priority },
+    });
+  }
+
+  for (const entry of ticket.assignedAgentHistory) {
+    const targetUser = entry.assignedAgent ? usersById.get(entry.assignedAgent.toString()) : null;
+    events.push({
+      kind: "assignee_changed",
+      at: entry.changedAt,
+      actor: actorFor(entry.changedBy),
+      data: {
+        to: entry.assignedAgent && targetUser ? { id: entry.assignedAgent.toString(), name: targetUser.name } : null,
+      },
+    });
+  }
 
   const messageFilter: Record<string, unknown> = { parentType: "ticket", parentId: ticket._id };
   if (options.viewerRole === "customer") {
@@ -99,11 +164,3 @@ export async function buildTicketHistory(
   events.sort((a, b) => a.at.getTime() - b.at.getTime());
   return events;
 }
-
-// TODO(story-future): this timeline has no "category_changed" or
-// "assignee_changed" event kind — Ticket.ts carries only current-state
-// scalars (category, assignedAgent), not a history array, for either field
-// (unlike statusHistory). Whichever future story adds an audit-log
-// sub-document for Story 9 (categorize) / Story 25 (reassign) should wire
-// the new event source into buildTicketHistory above, not build a second
-// aggregator.
