@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import styles from "./landing.module.css";
 
 // Scroll-triggered fade/rise, ported from the artifact's shared
-// IntersectionObserver (threshold 0.15, rootMargin "0px 0px -60px 0px",
+// IntersectionObserver (threshold 0.1, rootMargin "0px 0px -60px 0px",
 // reveals once then stops observing). Purely behavioral — this only ever
 // carries the reveal opacity/transform, never layout classes; the section
 // puts its own layout class on a child element.
@@ -29,7 +29,7 @@ export function Reveal({ className, children }: { className?: string; children: 
           }
         });
       },
-      { threshold: 0.15, rootMargin: "0px 0px -60px 0px" }
+      { threshold: 0.1, rootMargin: "0px 0px -60px 0px" }
     );
     io.observe(el);
     return () => io.disconnect();

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
+import { Cairo, JetBrains_Mono } from "next/font/google";
 import { getTranslations } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { Hero, type HeroCopy } from "./_landing/Hero";
@@ -18,11 +18,13 @@ import styles from "./_landing/landing.module.css";
 // Display and data/mono faces for the landing page only (the "Warm Stone"
 // design system) — scoped via .variable on the page wrapper below, not
 // applied to <html>/<body> in layout.tsx, so the rest of the app keeps
-// Inter as its only face. Body text reuses --font-sans (Inter), already
-// loaded once, site-wide, in layout.tsx.
-const displayFont = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+// a single bilingual face. Body text reuses --font-sans (IBM Plex Sans
+// Arabic), already loaded once, site-wide, in layout.tsx.
+// Cairo is a variable font (wght 200–1000), so no weight list is passed —
+// landing.module.css uses odd values like 650/750 that only resolve against
+// the full wght axis.
+const displayFont = Cairo({
+  subsets: ["latin", "arabic"],
   variable: "--font-display",
 });
 const monoFont = JetBrains_Mono({
