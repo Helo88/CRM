@@ -8,13 +8,14 @@ import { visibleStaffNavItems, visibleStaffActionItems } from "@/lib/staffNav";
 import { CUSTOMER_SEARCH_ITEMS } from "@/lib/customerSearch";
 
 // List pages that support a server-side `?q=` text search (see each page's
-// filter bar — CustomerFilterBar/AdminUsersFilterBar surface the active `q`
-// as a clearable chip). Exact-path only: a detail/new sub-route (e.g.
-// /customers/123) has no table to search, so it's excluded even though it
-// shares the prefix.
+// filter bar — CustomerFilterBar/AdminUsersFilterBar/TicketFilterBar surface
+// the active `q` as a clearable chip). Exact-path only: a detail/new
+// sub-route (e.g. /customers/123) has no table to search, so it's excluded
+// even though it shares the prefix.
 const PAGE_SEARCH_TARGETS: Record<string, string> = {
   "/customers": "searchCustomersFor",
   "/admin/users": "searchAccountsFor",
+  "/tickets": "searchTicketsFor",
 };
 
 // Real quick-nav-and-action search (not decorative) — jumps to pages

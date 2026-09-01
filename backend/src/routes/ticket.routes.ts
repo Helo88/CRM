@@ -12,6 +12,7 @@ import { createTicketNotification, notifyTicketOversight } from "../services/not
 import type { PermissionKey } from "../constants/permissions";
 import { hasPermission, isActiveAccount } from "../services/permissions";
 import { validateBody } from "../middleware/validate";
+import { escapeRegex } from "../utils/regex";
 import {
   createTicketBodySchema,
   updateTicketBodySchema,
@@ -274,8 +275,9 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
     return;
   }
-  const { page, limit, status, category, priority, sort, createdFrom, createdTo, updatedFrom, updatedTo } =
+  const { page, limit, status, category, priority, sort, createdFrom, createdTo, updatedFrom, updatedTo, q } =
     parsed.data;
+  const searchRegex = q ? new RegExp(escapeRegex(q), "i") : null;
 
   const filter: Record<string, unknown> = {};
   let sortSpec: Record<string, 1 | -1> = { updatedAt: -1 };
@@ -294,6 +296,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     // category/priority/sort stay staff-only concepts and are ignored here.
     filter.customer = new Types.ObjectId(req.user!.id);
     if (status) filter.status = status;
+    if (searchRegex) filter.subject = searchRegex;
   } else {
     // Staff branch: apply filters, then scope-enforce server-side — never
     // trust a client-supplied "show all" flag.
@@ -317,6 +320,21 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 
     if (!(await callerHasPermission(req, "tickets:view_all"))) {
       filter.assignedAgent = new Types.ObjectId(req.user!.id);
+    }
+
+    // Subject lives on Ticket; customer/agent names live on the referenced
+    // User documents, so a same-collection regex can't reach them — resolve
+    // matching User ids first, then match tickets by subject OR either
+    // reference pointing at one of those ids.
+    if (searchRegex) {
+      const matchedUsers = await User.find({ name: searchRegex }, { _id: 1 }).lean();
+      const matchedUserIds = matchedUsers.map((u) => u._id);
+      filter.$or = [
+        { subject: searchRegex },
+        ...(matchedUserIds.length
+          ? [{ customer: { $in: matchedUserIds } }, { assignedAgent: { $in: matchedUserIds } }]
+          : []),
+      ];
     }
 
     countFilter = { ...filter };

@@ -72,7 +72,7 @@ export interface NotificationHistoryResult {
   limit: number;
 }
 
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 10;
 
 // Backs the dedicated "view all notifications" page — unlike
 // fetchNotifications() above (bell dropdown: unread-first, capped at 50,

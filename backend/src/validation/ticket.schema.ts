@@ -4,6 +4,7 @@ import { requiredString, objectIdSchema, flexibleDateSchema } from "./common";
 export const SUBJECT_MAX_LENGTH = 200;
 export const DESCRIPTION_MAX_LENGTH = 4000;
 export const CATEGORY_MAX_LENGTH = 100;
+const SEARCH_QUERY_MAX_LENGTH = 200;
 
 const REQUIRED_MESSAGE = "subject and description are required";
 
@@ -72,10 +73,15 @@ export const updateTicketBodySchema = z.object({
 // scope) that this schema has no knowledge of; it only validates shape.
 export const listTicketsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(10),
   status: z.enum(ALLOWED_STATUSES).optional(),
   category: z.string().trim().min(1).optional(),
   priority: z.enum(ALLOWED_PRIORITIES).optional(),
+  // Story 60 follow-up: free-text search across subject, customer name, and
+  // assigned-agent name (see ticket.routes.ts's GET / — customer/agent names
+  // live on the referenced User documents, not on Ticket itself, so the
+  // route resolves matching User ids before building the Mongo filter).
+  q: z.string().trim().min(1).max(SEARCH_QUERY_MAX_LENGTH).optional(),
   sort: z
     .string()
     .regex(

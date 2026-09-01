@@ -35,7 +35,8 @@
     "myTickets": "تذاكري",
     "chats": "المحادثات",
     "searchCustomersFor": "البحث في العملاء عن ”{query}“",
-    "searchAccountsFor": "البحث في الحسابات عن ”{query}“"
+    "searchAccountsFor": "البحث في الحسابات عن ”{query}“",
+    "searchTicketsFor": "البحث في التذاكر عن ”{query}“"
   },
   "UserMenu": {
     "memberNumber": "عضو رقم {number}",
@@ -664,6 +665,8 @@
     "filterDateFrom": "من",
     "filterDateTo": "إلى",
     "filterAll": "الكل",
+    "filterSearch": "بحث",
+    "searchingFor": "”{query}“",
     "queueComposition": "تكوين قائمة التذاكر",
     "sortLabel": "ترتيب حسب",
     "sortUpdatedDesc": "آخر تحديث (الأحدث)",

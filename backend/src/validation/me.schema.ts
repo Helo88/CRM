@@ -27,7 +27,7 @@ export const availabilityBodySchema = z.object({
 // existing caller is untouched.
 export const notificationHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
-  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
   from: flexibleDateSchema().optional(),
   to: flexibleDateSchema().optional(),
 });

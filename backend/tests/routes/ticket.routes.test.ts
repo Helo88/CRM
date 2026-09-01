@@ -1875,10 +1875,16 @@ describe("GET /api/v1/tickets/:id/messages/:messageId/attachments/:attachmentId 
 // Story 60 (merged with customer-portal Story 36, platform Story 59).
 async function seedTicketFor(
   customerId: string,
-  overrides: Partial<{ status: string; category: string | null; priority: string; assignedAgent: string }> = {}
+  overrides: Partial<{
+    status: string;
+    category: string | null;
+    priority: string;
+    assignedAgent: string;
+    subject: string;
+  }> = {}
 ) {
   return Ticket.create({
-    subject: "Something is broken",
+    subject: overrides.subject ?? "Something is broken",
     description: "Details here",
     customer: customerId,
     status: overrides.status ?? "new",
@@ -1956,6 +1962,89 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);
     expect(res.body.tickets[0].status).toBe("closed");
+  });
+
+  it("defaults to a page size of 10", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    for (let i = 0; i < 12; i++) {
+      await seedTicketFor(customer.id);
+    }
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(10);
+    expect(res.body.tickets).toHaveLength(10);
+    expect(res.body.total).toBe(12);
+  });
+
+  it("searches by ticket subject", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id, { subject: "Refund request for order 42" });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app).get("/api/v1/tickets?q=refund").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("searches by customer name, even though the name lives on the referenced User, not the Ticket", async () => {
+    const { user: matchingCustomer } = await seedUser({ role: "customer", name: "Priya Sharma" });
+    const { user: otherCustomer } = await seedUser({ role: "customer", name: "Jamal Cole" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(matchingCustomer.id);
+    await seedTicketFor(otherCustomer.id);
+
+    const res = await request(app).get("/api/v1/tickets?q=priya").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("searches by assigned-agent name", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { user: matchingAgent } = await seedUser({ role: "agent", name: "Dana Osei" });
+    const { user: otherAgent } = await seedUser({ role: "agent", name: "Leo Farr" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    const matching = await seedTicketFor(customer.id, { assignedAgent: matchingAgent.id });
+    await seedTicketFor(customer.id, { assignedAgent: otherAgent.id });
+
+    const res = await request(app).get("/api/v1/tickets?q=osei").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
+  });
+
+  it("returns an empty list, not everything, when q matches nothing", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app)
+      .get("/api/v1/tickets?q=nonexistent-search-term")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.tickets).toHaveLength(0);
+  });
+
+  it("scopes a customer's own search to their tickets' subjects only", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const matching = await seedTicketFor(customer.id, { subject: "Refund request" });
+    await seedTicketFor(customer.id, { subject: "Cannot log in" });
+
+    const res = await request(app).get("/api/v1/tickets?q=refund").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].id).toBe(matching.id);
   });
 
   it("rejects an unsupported sort key with 400", async () => {

@@ -34,31 +34,38 @@ export function NotificationDateFilter() {
   }
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card/50 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-5 sm:gap-y-3 sm:p-4">
-      <DatePickerField
-        id="notifications-from"
-        label={t("filterFrom")}
-        value={fromDate}
-        maxDate={toDate}
-        onChange={(v) => updateParam("from", v)}
-      />
-      <DatePickerField
-        id="notifications-to"
-        label={t("filterTo")}
-        value={toDate}
-        minDate={fromDate}
-        onChange={(v) => updateParam("to", v)}
-      />
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card/50 p-3 sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-5 sm:gap-y-3">
+        <DatePickerField
+          id="notifications-from"
+          label={t("filterFrom")}
+          value={fromDate}
+          maxDate={toDate}
+          onChange={(v) => updateParam("from", v)}
+        />
+        <DatePickerField
+          id="notifications-to"
+          label={t("filterTo")}
+          value={toDate}
+          minDate={fromDate}
+          onChange={(v) => updateParam("to", v)}
+        />
+      </div>
+
+      {/* Its own row, outside the fields' wrap flow above, so toggling it
+          on/off can never reflow those controls' line-wrapping. */}
       {(from || to) && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-muted-foreground sm:w-auto"
-          onClick={() => router.push("/notifications")}
-        >
-          <X className="size-3.5" />
-          {t("resetFilters")}
-        </Button>
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => router.push("/notifications")}
+          >
+            <X className="size-3.5" />
+            {t("resetFilters")}
+          </Button>
+        </div>
       )}
     </div>
   );

@@ -35,7 +35,8 @@
     "myTickets": "My tickets",
     "chats": "Chats",
     "searchCustomersFor": "Search customers for “{query}”",
-    "searchAccountsFor": "Search accounts for “{query}”"
+    "searchAccountsFor": "Search accounts for “{query}”",
+    "searchTicketsFor": "Search tickets for “{query}”"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -664,6 +665,8 @@
     "filterDateFrom": "From",
     "filterDateTo": "To",
     "filterAll": "All",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
     "queueComposition": "Queue composition",
     "sortLabel": "Sort by",
     "sortUpdatedDesc": "Last updated (newest)",

@@ -75,7 +75,7 @@ export default async function CustomersListPage({
 
   const listQuery = new URLSearchParams(currentQuery);
   listQuery.set("page", String(page));
-  listQuery.set("limit", "20");
+  listQuery.set("limit", "10");
 
   const res = await fetch(`${API_URL}/api/v1/customers?${listQuery.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },

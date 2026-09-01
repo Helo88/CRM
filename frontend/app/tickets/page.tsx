@@ -19,6 +19,11 @@ interface TicketListSearchParams {
   category?: string;
   priority?: string;
   sort?: string;
+  q?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
   _refreshed?: string;
 }
 
@@ -33,7 +38,19 @@ export default async function TicketsPage({
 }: {
   searchParams: Promise<TicketListSearchParams>;
 }) {
-  const { page: pageParam, status, category, priority, sort, _refreshed } = await searchParams;
+  const {
+    page: pageParam,
+    status,
+    category,
+    priority,
+    sort,
+    q,
+    createdFrom,
+    createdTo,
+    updatedFrom,
+    updatedTo,
+    _refreshed,
+  } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
   const cookieStore = await cookies();
@@ -45,6 +62,11 @@ export default async function TicketsPage({
   if (category) currentQuery.set("category", category);
   if (priority) currentQuery.set("priority", priority);
   if (sort) currentQuery.set("sort", sort);
+  if (q) currentQuery.set("q", q);
+  if (createdFrom) currentQuery.set("createdFrom", createdFrom);
+  if (createdTo) currentQuery.set("createdTo", createdTo);
+  if (updatedFrom) currentQuery.set("updatedFrom", updatedFrom);
+  if (updatedTo) currentQuery.set("updatedTo", updatedTo);
   const nextUrl = `/tickets${currentQuery.toString() ? `?${currentQuery.toString()}` : ""}`;
 
   if (!token) {
