@@ -98,18 +98,21 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("scopes an agent's list to their own assigned escalated/with_agent conversations", async () => {
+  it("scopes an agent's list to conversations they're handling plus unclaimed ones — never another agent's claimed chat", async () => {
     const { user: customer } = await seedUser();
     const { user: agent, token: agentToken } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
     const { user: otherAgent } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
     const mine = await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "with_agent" });
+    const unclaimed = await Conversation.create({ customer: customer._id, assignedAgent: null, status: "escalated" });
     await Conversation.create({ customer: customer._id, assignedAgent: otherAgent._id, status: "with_agent" });
     await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "resolved" });
 
     const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${agentToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.conversations).toHaveLength(1);
-    expect(res.body.conversations[0]._id).toBe(mine.id);
+    expect(res.body.conversations).toHaveLength(2);
+    const ids = res.body.conversations.map((c: { _id: string }) => c._id);
+    expect(ids).toContain(mine.id);
+    expect(ids).toContain(unclaimed.id);
   });
 
   it("returns every active conversation for an admin, regardless of assignment", async () => {

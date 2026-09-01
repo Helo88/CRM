@@ -20,6 +20,12 @@ export interface IConversation extends Document {
   // Story 62: once the customer declines the AI's "open a ticket" suggestion
   // once, the AI must not suggest again in this same conversation.
   aiTicketSuggestionDeclined: boolean;
+  // Set the first time an agent/admin/subadmin actually sends a message in
+  // this conversation — distinct from `assignedAgent` being set, which only
+  // means the auto-assign picker claimed the conversation in the DB and
+  // says nothing about whether that person has shown up. The customer-facing
+  // "a support agent has joined" hint keys off this flag, not off assignment.
+  agentJoinedAnnounced: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +47,7 @@ const conversationSchema = new Schema<IConversation>(
     },
 
     aiTicketSuggestionDeclined: { type: Boolean, default: false },
+    agentJoinedAnnounced: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

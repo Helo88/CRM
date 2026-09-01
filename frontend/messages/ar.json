@@ -20,6 +20,8 @@
     "notificationTicketNeedsAssignment": "لا يوجد موظف متصل — تحتاج تذكرة إلى إسناد يدوي",
     "notificationTicketReopened": "تمت إعادة فتح تذكرة مسندة إليك",
     "notificationTicketReopenedOversight": "تمت إعادة فتح تذكرة مغلقة",
+    "notificationChatNeedsAgent": "هناك محادثة مباشرة بحاجة إلى من يستلمها",
+    "notificationChatLabel": "محادثة مباشرة",
     "comingSoon": "قريبًا",
     "toggleTheme": "تبديل المظهر",
     "toggleLanguage": "تبديل اللغة",
@@ -748,7 +750,9 @@
         "assigneeChanged": "تمت إعادة الإسناد إلى {agent} بواسطة {name}",
         "assigneeUnassigned": "تم إلغاء الإسناد بواسطة {name}",
         "replyPosted": "رد من {name}",
-        "internalNoteAdded": "ملاحظة داخلية من {name}"
+        "internalNoteAdded": "ملاحظة داخلية من {name}",
+        "chatParticipantJoined": "{name} انضم إلى المحادثة المباشرة",
+        "chatParticipantLeft": "{name} غادر المحادثة المباشرة"
       }
     }
   },
@@ -777,10 +781,6 @@
     "talkToHumanRequesting": "جارٍ تحويلك إلى موظف دعم…",
     "escalatedWaiting": "أنت الآن في قائمة الانتظار لموظف دعم. سينضم أحدهم إلى هذه المحادثة قريبًا.",
     "agentJoined": "انضم موظف الدعم الفني إلى المحادثة.",
-    "noAgentAvailableTitle": "لا يوجد موظف دعم متاح حاليًا",
-    "noAgentAvailableBody": "يمكنك متابعة المحادثة مع المساعد الذكي، أو إغلاق هذه المحادثة.",
-    "noAgentKeepChattingAi": "متابعة المحادثة مع الذكاء الاصطناعي",
-    "noAgentClose": "إغلاق المحادثة",
     "suggestionTitle": "يبدو أن هذا الأمر قد يكون أنسب كتذكرة",
     "suggestionSubjectLabel": "الموضوع",
     "suggestionDescriptionLabel": "الوصف",
@@ -802,7 +802,9 @@
     "empty": "لا توجد محادثات نشطة.",
     "columnCustomer": "العميل",
     "columnStatus": "الحالة",
+    "columnHandledBy": "يتولاها",
     "columnUpdated": "آخر تحديث",
+    "unclaimedRow": "غير مستلَمة",
     "open": "فتح",
     "statusAiHandling": "يتولاها الذكاء الاصطناعي",
     "statusEscalated": "تم التصعيد",
@@ -818,6 +820,12 @@
     "youLabel": "أنت",
     "agentLabel": "موظف الدعم",
     "composerPlaceholder": "اكتب ردك…",
+    "joinToReplyPlaceholder": "انضم إلى هذه المحادثة لتتمكن من الرد…",
+    "chatUnclaimed": "لا أحد يتولى هذه المحادثة حتى الآن.",
+    "chatClaimedByYou": "أنت تتولى هذه المحادثة.",
+    "chatClaimedBy": "{name} يتولى هذه المحادثة.",
+    "joinChat": "الانضمام إلى المحادثة",
+    "leaveChat": "مغادرة المحادثة",
     "send": "إرسال",
     "markResolved": "وضع علامة كمُنجَزة",
     "markResolvedConfirmTitle": "إغلاق هذه المحادثة؟",
@@ -904,7 +912,7 @@
     "filterTo": "إلى",
     "resetFilters": "إعادة تعيين عوامل التصفية",
     "columnType": "الإشعار",
-    "columnTicket": "التذكرة",
+    "columnTicket": "التذكرة / المحادثة",
     "columnDate": "التاريخ",
     "empty": "لا توجد إشعارات."
   }

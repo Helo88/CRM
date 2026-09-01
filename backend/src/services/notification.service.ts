@@ -46,3 +46,42 @@ export async function notifyTicketOversight(params: {
     console.error("[notifications] failed to create oversight notifications", err);
   }
 }
+
+// live-chat: conversation-side counterpart of notifyTicketOversight above,
+// fired on EVERY escalation (chat.socket.ts's conversation:escalate
+// handler) — unlike tickets, chat has no auto-assign step to attempt first,
+// so there's no "only when that failed" condition here. Deliberately
+// broader than the ticket version's recipient set: a ticket needing manual
+// reassignment can only be rescued by oversight (admin/tickets:view_all
+// subadmin), but a chat can be claimed by any agent who holds chats:manage
+// — the same permission scope the "Join chat" action itself requires — so
+// plain agents holding that permission are notified too, not just
+// oversight roles.
+export async function notifyChatOversight(params: {
+  type: NotificationType;
+  conversationId: Types.ObjectId | string;
+}): Promise<void> {
+  try {
+    const recipients = await User.find({
+      isActive: true,
+      isDeleted: { $ne: true },
+      $or: [
+        { role: "admin" },
+        { role: "subadmin", permissions: "chats:manage" },
+        { role: "agent", permissions: "chats:manage" },
+      ],
+    })
+      .select("_id")
+      .lean();
+    if (recipients.length === 0) return;
+    await Notification.insertMany(
+      recipients.map((recipient) => ({
+        recipient: recipient._id,
+        type: params.type,
+        conversationId: params.conversationId,
+      }))
+    );
+  } catch (err) {
+    console.error("[notifications] failed to create chat oversight notifications", err);
+  }
+}

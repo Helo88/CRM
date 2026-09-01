@@ -199,10 +199,6 @@ export function LiveChatPanel({ token }: { token: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiTyping, setAiTyping] = useState(false);
   const [escalationState, setEscalationState] = useState<EscalationState>("idle");
-  // Story 17: shown when escalation finds no online agent — offers the two
-  // options (keep chatting with AI, or close) instead of the old
-  // email/ticket suggestion.
-  const [noAgentAvailable, setNoAgentAvailable] = useState(false);
   const [conversationClosed, setConversationClosed] = useState(false);
   // Story 62: once the customer declines one suggestion, every suggestion
   // card in this conversation hides (mirrors the server's
@@ -278,19 +274,10 @@ export function LiveChatPanel({ token }: { token: string }) {
       socket.on("conversation:assigned", () => {
         if (cancelled) return;
         setEscalationState("assigned");
-        setNoAgentAvailable(false);
-      });
-      socket.on("conversation:no-agent-available", () => {
-        if (cancelled) return;
-        // Backend already reverted status to ai_handling — reset to "idle"
-        // so "Talk to a human" is reachable again once the hint is dismissed.
-        setEscalationState("idle");
-        setNoAgentAvailable(true);
       });
       socket.on("conversation:closed", () => {
         if (cancelled) return;
         setConversationClosed(true);
-        setNoAgentAvailable(false);
       });
       socket.on("conversation:error", (payload: { error: string }) => {
         if (!cancelled) {
@@ -346,16 +333,9 @@ export function LiveChatPanel({ token }: { token: string }) {
     socketRef.current.emit("conversation:escalate", { conversationId: conversationIdRef.current });
   }
 
-  // Story 17: dismiss the no-agent hint — nothing to emit, the backend
-  // already reverted status to ai_handling, so the next message the
-  // customer sends naturally hits the Story 15 AI branch again.
-  function handleKeepChattingWithAi() {
-    setNoAgentAvailable(false);
-  }
-
-  // The customer ending the chat on their own (header X button, or the
-  // no-agent hint's close option) lands them on their tickets list — there's
-  // nothing more to do in this widget once they've decided to leave.
+  // The customer ending the chat on their own (header X button) lands them
+  // on their tickets list — there's nothing more to do in this widget once
+  // they've decided to leave.
   function handleCloseConversation() {
     if (!socketRef.current || !conversationIdRef.current) return;
     socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
@@ -438,25 +418,6 @@ export function LiveChatPanel({ token }: { token: string }) {
             <AlertDescription>{t("agentJoined")}</AlertDescription>
           </Alert>
         )}
-        {noAgentAvailable && (
-          <Alert>
-            <MessageSquareWarning />
-            <AlertDescription className="flex flex-col gap-2">
-              <div>
-                <p className="font-medium">{t("noAgentAvailableTitle")}</p>
-                <p>{t("noAgentAvailableBody")}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={handleKeepChattingWithAi}>
-                  {t("noAgentKeepChattingAi")}
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={handleCloseConversation}>
-                  {t("noAgentClose")}
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
         {conversationClosed && (
           <Alert variant="destructive">
             <CircleAlert />
@@ -466,6 +427,20 @@ export function LiveChatPanel({ token }: { token: string }) {
         {messages.map((message) => {
           const isCustomer = message.senderType === "customer";
           const acceptedTicket = acceptedTickets[message._id];
+          // Story 16/17: a "system" message (currently just the escalation
+          // acknowledgment) is a status update, not a chat turn — it gets an
+          // eye-catching full-width banner instead of a bubble, since "help
+          // is on the way" is exactly the kind of detail a customer must not
+          // miss in a scrolling thread. Kept in its natural chronological
+          // position in the list, not pinned/hoisted.
+          if (message.senderType === "system") {
+            return (
+              <Alert key={message._id} className="border-primary/40 bg-primary/10 text-primary [&>svg]:text-primary">
+                <MessageSquareWarning />
+                <AlertDescription className="font-medium">{message.text}</AlertDescription>
+              </Alert>
+            );
+          }
           return (
             <div key={message._id} className="contents">
               <div className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>

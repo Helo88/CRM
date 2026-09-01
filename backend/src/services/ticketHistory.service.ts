@@ -14,7 +14,9 @@ export type TicketHistoryEventKind =
   | "priority_changed"
   | "assignee_changed"
   | "reply_posted"
-  | "internal_note_added";
+  | "internal_note_added"
+  | "chat_participant_joined"
+  | "chat_participant_left";
 
 export interface TicketHistoryEvent {
   kind: TicketHistoryEventKind;
@@ -88,6 +90,7 @@ export async function buildTicketHistory(
     userIds.add(entry.changedBy.toString());
     if (entry.assignedAgent) userIds.add(entry.assignedAgent.toString());
   }
+  for (const entry of ticket.chatPresenceHistory) userIds.add(entry.user.toString());
   const users =
     userIds.size > 0 ? await User.find({ _id: { $in: [...userIds] } }, { name: 1, role: 1 }).lean<UserLean[]>() : [];
   const usersById = new Map(users.map((u) => [u._id.toString(), u]));
@@ -139,6 +142,15 @@ export async function buildTicketHistory(
       data: {
         to: entry.assignedAgent && targetUser ? { id: entry.assignedAgent.toString(), name: targetUser.name } : null,
       },
+    });
+  }
+
+  for (const entry of ticket.chatPresenceHistory) {
+    events.push({
+      kind: entry.event === "joined" ? "chat_participant_joined" : "chat_participant_left",
+      at: entry.at,
+      actor: actorFor(entry.user),
+      data: {},
     });
   }
 

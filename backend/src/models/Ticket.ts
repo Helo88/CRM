@@ -46,6 +46,17 @@ export interface ITicketAssignedAgentHistoryEntry {
   changedAt: Date;
 }
 
+// live-chat: append-only log of a staff member claiming/releasing a live
+// chat that has a ticket opened from it (sourceConversation below) — same
+// shape/reasoning as the four history arrays above, recorded from
+// chat.socket.ts's conversation:claim/conversation:unclaim handlers (and
+// the disconnect fallback that auto-releases an abandoned claim).
+export interface ITicketChatPresenceHistoryEntry {
+  event: "joined" | "left";
+  user: Types.ObjectId;
+  at: Date;
+}
+
 /**
  * Supports the ticket-management feature (Stories 8-13) and the sla-automation
  * feature (Stories 25-27) via the sla sub-document.
@@ -67,6 +78,7 @@ export interface ITicket extends Document {
   categoryHistory: ITicketCategoryHistoryEntry[];
   priorityHistory: ITicketPriorityHistoryEntry[];
   assignedAgentHistory: ITicketAssignedAgentHistoryEntry[];
+  chatPresenceHistory: ITicketChatPresenceHistoryEntry[];
   sla: ITicketSla;
   escalatedTo: Types.ObjectId | null;
   // Story 62 (live-chat): provenance only — set when the customer accepted
@@ -141,6 +153,17 @@ const ticketSchema = new Schema<ITicket>(
           assignedAgent: { type: Schema.Types.ObjectId, ref: "User", default: null },
           changedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
           changedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
+    chatPresenceHistory: {
+      type: [
+        {
+          event: { type: String, enum: ["joined", "left"], required: true },
+          user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          at: { type: Date, required: true },
         },
       ],
       default: [],

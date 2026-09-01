@@ -261,4 +261,26 @@ describe("buildTicketHistory (ticket-management Story 13)", () => {
     expect(createdEvent?.actor).toMatchObject({ id: customer.id, name: customer.name, role: "customer" });
     expect(createdEvent?.data).toMatchObject({ createdVia: null });
   });
+
+  it("emits chat_participant_joined/left events from chatPresenceHistory, in order, with a populated actor", async () => {
+    const customer = await seedCustomer();
+    const agent = await seedAgent("Priya Presence");
+    const base = Date.now();
+    const ticket = await Ticket.create({
+      subject: "S",
+      description: "D",
+      customer: customer._id,
+      chatPresenceHistory: [
+        { event: "joined", user: agent._id, at: new Date(base + 1000) },
+        { event: "left", user: agent._id, at: new Date(base + 2000) },
+      ],
+    });
+
+    const events = await buildTicketHistory(ticket._id);
+
+    const chatEvents = events.filter((e) => e.kind === "chat_participant_joined" || e.kind === "chat_participant_left");
+    expect(chatEvents.map((e) => e.kind)).toEqual(["chat_participant_joined", "chat_participant_left"]);
+    expect(chatEvents[0].actor).toMatchObject({ id: agent.id, name: "Priya Presence", role: "agent" });
+    expect(chatEvents[0].data).toEqual({});
+  });
 });

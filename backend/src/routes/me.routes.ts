@@ -66,23 +66,30 @@ router.patch("/availability", requireAuth, async (req: Request, res: Response) =
   res.status(200).json({ isOnline: user.isOnline });
 });
 
+// live-chat: a notification now carries exactly one of ticketId/
+// conversationId (never both — see notification.service.ts's two creation
+// helpers), so `ticket`/`conversation` in the response are each nullable,
+// and the caller picks whichever is non-null to build its link. Unlike
+// ticket (reference + subject), a conversation has no equivalent
+// human-readable label to surface here — the frontend renders a generic
+// "Live chat" subtext for those instead.
 function toNotificationItem(n: {
   _id: Types.ObjectId;
   type: string;
   read: boolean;
   createdAt: Date;
   ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null;
+  conversationId: { _id: Types.ObjectId } | null;
 }) {
   return {
     id: n._id.toString(),
     type: n.type,
     read: n.read,
     createdAt: n.createdAt,
-    ticket: {
-      id: n.ticketId!._id.toString(),
-      reference: `TCK-${n.ticketId!.ticketNumber}`,
-      subject: n.ticketId!.subject,
-    },
+    ticket: n.ticketId
+      ? { id: n.ticketId._id.toString(), reference: `TCK-${n.ticketId.ticketNumber}`, subject: n.ticketId.subject }
+      : null,
+    conversation: n.conversationId ? { id: n.conversationId._id.toString() } : null,
   };
 }
 
@@ -114,13 +121,14 @@ router.get("/notifications", requireAuth, async (req: Request, res: Response) =>
         "ticketId",
         "ticketNumber subject"
       )
+      .populate<{ conversationId: { _id: Types.ObjectId } | null }>("conversationId", "_id")
       .lean();
 
-    // A notification whose ticket was hard-deleted (never happens today —
-    // tickets are never hard-deleted — but populate() nulling a dangling
-    // ref is cheaper to guard than to assume away) is dropped rather than
-    // shown with a broken link.
-    res.status(200).json(notifications.filter((n) => n.ticketId).map(toNotificationItem));
+    // A notification whose ticket/conversation was hard-deleted (never
+    // happens today for tickets; conversations are never hard-deleted
+    // either — but populate() nulling a dangling ref is cheaper to guard
+    // than to assume away) is dropped rather than shown with a broken link.
+    res.status(200).json(notifications.filter((n) => n.ticketId || n.conversationId).map(toNotificationItem));
     return;
   }
 
@@ -148,12 +156,13 @@ router.get("/notifications", requireAuth, async (req: Request, res: Response) =>
         "ticketId",
         "ticketNumber subject"
       )
+      .populate<{ conversationId: { _id: Types.ObjectId } | null }>("conversationId", "_id")
       .lean(),
     Notification.countDocuments(filter),
   ]);
 
   res.status(200).json({
-    notifications: notifications.filter((n) => n.ticketId).map(toNotificationItem),
+    notifications: notifications.filter((n) => n.ticketId || n.conversationId).map(toNotificationItem),
     total,
     page,
     limit,

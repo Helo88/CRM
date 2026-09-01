@@ -9,6 +9,8 @@ import { registerChatHandlers } from "../../src/sockets/chat.socket";
 import { User } from "../../src/models/User";
 import { Conversation } from "../../src/models/Conversation";
 import { Message } from "../../src/models/Message";
+import { Notification } from "../../src/models/Notification";
+import { Ticket } from "../../src/models/Ticket";
 import * as liveChatAiService from "../../src/services/liveChatAi.service";
 
 vi.mock("../../src/services/liveChatAi.service", () => ({
@@ -45,13 +47,22 @@ beforeEach(async () => {
   await User.deleteMany({});
   await Conversation.deleteMany({});
   await Message.deleteMany({});
+  await Notification.deleteMany({});
+  await Ticket.deleteMany({});
   vi.mocked(liveChatAiService.getAiReply).mockReset();
   vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockReset();
   vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
 });
 
-function tokenFor(user: { id: string; role: string }) {
-  return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET as string);
+// Story 41-adjacent: real login tokens carry { sub, role, name } (see
+// middleware/auth.ts's JwtPayload) — chat.socket.ts's io.use now reads
+// `name` off the verified payload for the claim broadcast, so test tokens
+// must include it too or every claimed.agent.name comes back undefined.
+function tokenFor(user: { id: string; role: string; name?: string }) {
+  return jwt.sign(
+    { sub: user.id, role: user.role, name: user.name ?? "Test User" },
+    process.env.JWT_SECRET as string
+  );
 }
 
 async function seedUser(role = "customer") {
@@ -61,7 +72,7 @@ async function seedUser(role = "customer") {
     passwordHash: "irrelevant-for-these-tests",
     role,
   });
-  return { user, token: tokenFor({ id: user.id, role }) };
+  return { user, token: tokenFor({ id: user.id, role, name: user.name }) };
 }
 
 async function seedOnlineAgent() {
@@ -72,9 +83,13 @@ async function seedOnlineAgent() {
     role: "agent",
     isOnline: true,
     isActive: true,
-    // chats:manage is now required to be an auto-assignment candidate for a
-    // conversation (assignment.service.ts's pickAndClaimAgentForConversation)
-    // — this helper's whole purpose is seeding an agent meant to be picked.
+    // chats:manage is required to claim a conversation (conversation:claim)
+    // and to be an eligible chat_needs_agent notification recipient — this
+    // helper's whole purpose is seeding an agent meant to be eligible for
+    // both. "isOnline" no longer gates eligibility for either (there's no
+    // more auto-assign step that only considered online agents), but the
+    // name is kept since most call sites still want an online, eligible
+    // agent for realism.
     permissions: ["chats:manage"],
   });
 }
@@ -424,18 +439,20 @@ describe("chat.socket.ts escalate (Story 16)", () => {
     socket.disconnect();
   });
 
-  it("after escalation, with an agent online to claim it, a customer message persists but does not trigger the AI branch", async () => {
-    // Story 17: an online agent claims the conversation right after
-    // escalation, which is what keeps the AI branch off afterward — without
-    // one, Story 17 reverts status to ai_handling on purpose (see that
-    // story's own describe block below).
-    await seedOnlineAgent();
+  it("after escalation, a customer message persists but does not trigger the AI branch", async () => {
+    // Status leaves "ai_handling" the moment escalation succeeds — this no
+    // longer depends on anyone claiming the chat (claiming is a separate,
+    // explicit staff action; see the claim/unclaim describe block below).
     const { user, token } = await seedUser();
     const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
     const socket = await joinedSocket(conversation.id, token);
 
     await new Promise((resolve) => {
-      socket.on("conversation:assigned", resolve);
+      // Escalation's own persisted acknowledgment ("someone will join
+      // shortly") is the first "system"-sender message broadcast — waiting
+      // on it confirms escalation finished before the customer message
+      // below is sent.
+      socket.on("conversation:message", resolve);
       socket.emit("conversation:escalate", { conversationId: conversation.id });
     });
 
@@ -443,14 +460,51 @@ describe("chat.socket.ts escalate (Story 16)", () => {
     await new Promise((resolve) => socket.on("conversation:message", resolve));
 
     expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
-    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
     expect(await Message.countDocuments({ senderType: "customer" })).toBe(1);
+    expect((await Conversation.findById(conversation.id))!.status).toBe("escalated");
+
+    socket.disconnect();
+  });
+
+  it("sends the escalation ack (senderType system) and a chat_needs_agent notification to every eligible staff member", async () => {
+    const { user: admin } = await seedUser("admin");
+    const onlineEligibleAgent = await seedOnlineAgent();
+    const offlineEligibleAgent = await User.create({
+      name: "Offline Agent",
+      email: `offline-agent-${new mongoose.Types.ObjectId().toHexString()}@example.com`,
+      passwordHash: "irrelevant-for-these-tests",
+      role: "agent",
+      isOnline: false,
+      isActive: true,
+      permissions: ["chats:manage"],
+    });
+    // No chats:manage permission — must NOT be notified, online or not.
+    const uninvolvedAgent = await seedUser("agent");
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    const socket = await joinedSocket(conversation.id, token);
+
+    const ack = new Promise<Record<string, unknown>>((resolve) => socket.on("conversation:message", resolve));
+    socket.emit("conversation:escalate", { conversationId: conversation.id });
+    const ackMessage = await ack;
+
+    expect(ackMessage.senderType).toBe("system");
+    expect(ackMessage.text).toMatch(/someone will join shortly/i);
+
+    for (const recipient of [admin, onlineEligibleAgent, offlineEligibleAgent]) {
+      const notifications = await Notification.find({ recipient: recipient._id });
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].type).toBe("chat_needs_agent");
+      expect(notifications[0].conversationId!.toString()).toBe(conversation.id);
+      expect(notifications[0].ticketId).toBeNull();
+    }
+    expect(await Notification.find({ recipient: uninvolvedAgent.user._id })).toHaveLength(0);
 
     socket.disconnect();
   });
 });
 
-describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
+describe("chat.socket.ts conversation:claim / conversation:unclaim", () => {
   async function joinedSocket(conversationId: string, token: string): Promise<ClientSocket> {
     const socket = await connect(token);
     await new Promise((resolve) => {
@@ -460,43 +514,237 @@ describe("chat.socket.ts auto-assign on escalate (Story 17)", () => {
     return socket;
   }
 
-  it("auto-assigns to the online agent and emits conversation:assigned to the room", async () => {
-    const agent = await seedOnlineAgent();
-    const { user, token } = await seedUser();
-    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
-    const socket = await joinedSocket(conversation.id, token);
+  it("lets an eligible agent claim an escalated conversation, broadcasting conversation:claimed and conversation:assigned", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    await User.updateOne({ _id: agent._id }, { $set: { permissions: ["chats:manage"] } });
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
 
-    const assigned = new Promise<Record<string, unknown>>((resolve) =>
-      socket.on("conversation:assigned", resolve)
+    const claimed = new Promise<Record<string, unknown>>((resolve) =>
+      agentSocket.on("conversation:claimed", resolve)
     );
-    socket.emit("conversation:escalate", { conversationId: conversation.id });
+    const assigned = new Promise<Record<string, unknown>>((resolve) =>
+      customerSocket.on("conversation:assigned", resolve)
+    );
+    agentSocket.emit("conversation:claim", { conversationId: conversation.id });
 
-    const payload = await assigned;
-    expect(payload).toEqual({ conversationId: conversation.id, agentId: agent.id, status: "with_agent" });
+    await expect(claimed).resolves.toEqual({
+      conversationId: conversation.id,
+      agent: { id: agent.id, name: agent.name },
+    });
+    await expect(assigned).resolves.toEqual({
+      conversationId: conversation.id,
+      agentId: agent.id,
+      status: "with_agent",
+    });
 
     const reloaded = await Conversation.findById(conversation.id);
     expect(reloaded!.status).toBe("with_agent");
     expect(reloaded!.assignedAgent?.toString()).toBe(agent.id);
+    expect(reloaded!.agentJoinedAnnounced).toBe(true);
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("rejects a second staff member's claim once someone else already holds it", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agentA, token: tokenA } = await seedUser("agent");
+    const { user: agentB, token: tokenB } = await seedUser("agent");
+    await User.updateMany(
+      { _id: { $in: [agentA._id, agentB._id] } },
+      { $set: { permissions: ["chats:manage"] } }
+    );
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    const socketA = await joinedSocket(conversation.id, tokenA);
+    const socketB = await joinedSocket(conversation.id, tokenB);
+
+    await new Promise((resolve) => {
+      socketA.on("conversation:claimed", resolve);
+      socketA.emit("conversation:claim", { conversationId: conversation.id });
+    });
+
+    const errored = new Promise((resolve) => socketB.on("conversation:error", resolve));
+    socketB.emit("conversation:claim", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({
+      error: "This chat is already being handled by another staff member.",
+    });
+    expect((await Conversation.findById(conversation.id))!.assignedAgent?.toString()).toBe(agentA.id);
+
+    socketA.disconnect();
+    socketB.disconnect();
+  });
+
+  it("rejects a claim from the conversation's own customer", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+
+    // The customer CAN view their own conversation (isAuthorizedOnConversation),
+    // just never claim it (canClaimConversation) — so joinedSocket() (which
+    // expects the join itself to succeed) applies here.
+    const socket = await joinedSocket(conversation.id, customerToken);
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:claim", { conversationId: conversation.id });
+    await expect(errored).resolves.toEqual({ error: "You do not have permission to claim this conversation" });
+    socket.disconnect();
+
+    expect((await Conversation.findById(conversation.id))!.assignedAgent).toBeNull();
+  });
+
+  it("rejects a claim (and the earlier join) from an agent without chats:manage on someone else's conversation", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { token: plainAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+
+    // An agent with no chats:manage isn't even authorized to VIEW an
+    // unclaimed conversation that isn't theirs — unlike the customer case
+    // above, this rejects at conversation:join already, so plain connect()
+    // is used instead of joinedSocket() (which would hang waiting for a
+    // "conversation:joined" that never fires).
+    const socket = await connect(plainAgentToken);
+    const joinError = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:join", conversation.id);
+    await expect(joinError).resolves.toEqual({ error: "You do not have permission to join this conversation" });
+
+    const claimError = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:claim", { conversationId: conversation.id });
+    await expect(claimError).resolves.toEqual({ error: "You do not have permission to claim this conversation" });
+    socket.disconnect();
+
+    expect((await Conversation.findById(conversation.id))!.assignedAgent).toBeNull();
+  });
+
+  it("lets an admin claim regardless of chats:manage, with no bypass for replying without claiming first", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { token: adminToken } = await seedUser("admin");
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    const socket = await joinedSocket(conversation.id, adminToken);
+
+    // Story 18's old "any admin can jump straight into any chat" behavior is
+    // gone — even an admin must claim before a message is accepted.
+    const beforeClaimError = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "too early" });
+    await expect(beforeClaimError).resolves.toEqual({
+      error: "Join this chat before replying — it hasn't been claimed by you.",
+    });
+
+    await new Promise((resolve) => {
+      socket.on("conversation:claimed", resolve);
+      socket.emit("conversation:claim", { conversationId: conversation.id });
+    });
+
+    const received = new Promise<Record<string, unknown>>((resolve) =>
+      socket.on("conversation:message", resolve)
+    );
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "Admin stepping in" });
+    const message = await received;
+    expect(message.senderType).toBe("agent");
+    expect(message.text).toBe("Admin stepping in");
 
     socket.disconnect();
   });
 
-  it("emits conversation:no-agent-available to the caller only and reverts status to ai_handling when no agent is online", async () => {
-    const { user, token } = await seedUser();
-    const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
-    const socket = await joinedSocket(conversation.id, token);
+  it("releases the claim on conversation:unclaim, reverting to escalated and broadcasting conversation:unclaimed", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
 
-    const noAgent = new Promise<Record<string, unknown>>((resolve) =>
-      socket.on("conversation:no-agent-available", resolve)
+    const unclaimed = new Promise<Record<string, unknown>>((resolve) =>
+      customerSocket.on("conversation:unclaimed", resolve)
     );
-    socket.emit("conversation:escalate", { conversationId: conversation.id });
+    agentSocket.emit("conversation:unclaim", { conversationId: conversation.id });
 
-    const payload = await noAgent;
-    expect(payload).toEqual({ conversationId: conversation.id });
-
+    await expect(unclaimed).resolves.toEqual({ conversationId: conversation.id });
     const reloaded = await Conversation.findById(conversation.id);
-    expect(reloaded!.status).toBe("ai_handling");
     expect(reloaded!.assignedAgent).toBeNull();
+    expect(reloaded!.status).toBe("escalated");
+
+    customerSocket.disconnect();
+    agentSocket.disconnect();
+  });
+
+  it("rejects unclaim from someone who isn't the current claimant", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent } = await seedUser("agent");
+    const { token: otherAgentToken } = await seedUser("agent");
+    const conversation = await Conversation.create({
+      customer: customer._id,
+      assignedAgent: agent._id,
+      status: "with_agent",
+    });
+    const socket = await connect(otherAgentToken);
+
+    const errored = new Promise((resolve) => socket.on("conversation:error", resolve));
+    socket.emit("conversation:unclaim", { conversationId: conversation.id });
+
+    await expect(errored).resolves.toEqual({ error: "You are not currently handling this conversation" });
+    expect((await Conversation.findById(conversation.id))!.assignedAgent?.toString()).toBe(agent.id);
+
+    socket.disconnect();
+  });
+
+  it("auto-releases the claim when the claimant's socket disconnects, so someone else can claim it", async () => {
+    const { user: customer, token: customerToken } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    await User.updateOne({ _id: agent._id }, { $set: { permissions: ["chats:manage"] } });
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    const customerSocket = await joinedSocket(conversation.id, customerToken);
+    const agentSocket = await joinedSocket(conversation.id, agentToken);
+
+    await new Promise((resolve) => {
+      agentSocket.on("conversation:claimed", resolve);
+      agentSocket.emit("conversation:claim", { conversationId: conversation.id });
+    });
+
+    const unclaimed = new Promise((resolve) => customerSocket.on("conversation:unclaimed", resolve));
+    agentSocket.disconnect();
+
+    await expect(unclaimed).resolves.toEqual({ conversationId: conversation.id });
+    const reloaded = await Conversation.findById(conversation.id);
+    expect(reloaded!.assignedAgent).toBeNull();
+    expect(reloaded!.status).toBe("escalated");
+
+    customerSocket.disconnect();
+  });
+
+  it("records a joined/left pair on a ticket opened from the conversation", async () => {
+    const { user: customer } = await seedUser("customer");
+    const { user: agent, token: agentToken } = await seedUser("agent");
+    await User.updateOne({ _id: agent._id }, { $set: { permissions: ["chats:manage"] } });
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    const ticket = await Ticket.create({
+      subject: "From chat",
+      description: "d",
+      customer: customer._id,
+      sourceConversation: conversation._id,
+    });
+    const socket = await joinedSocket(conversation.id, agentToken);
+
+    await new Promise((resolve) => {
+      socket.on("conversation:claimed", resolve);
+      socket.emit("conversation:claim", { conversationId: conversation.id });
+    });
+
+    let reloadedTicket = await Ticket.findById(ticket.id);
+    expect(reloadedTicket!.chatPresenceHistory).toHaveLength(1);
+    expect(reloadedTicket!.chatPresenceHistory[0]).toMatchObject({ event: "joined", user: agent._id });
+
+    const unclaimedPromise = new Promise((resolve) => socket.on("conversation:unclaimed", resolve));
+    socket.emit("conversation:unclaim", { conversationId: conversation.id });
+    await unclaimedPromise;
+
+    reloadedTicket = await Ticket.findById(ticket.id);
+    expect(reloadedTicket!.chatPresenceHistory).toHaveLength(2);
+    expect(reloadedTicket!.chatPresenceHistory[1]).toMatchObject({ event: "left", user: agent._id });
 
     socket.disconnect();
   });
@@ -681,7 +929,7 @@ describe("chat.socket.ts agent/admin reply (Story 18)", () => {
     socket.disconnect();
   });
 
-  it("admin can join and message any conversation even when not the assignedAgent", async () => {
+  it("admin can still VIEW (join) any conversation even when not the claimant — replying is covered by the claim describe block above", async () => {
     const { user: customer } = await seedUser("customer");
     const { user: agent } = await seedUser("agent");
     const { token: adminToken } = await seedUser("admin");
@@ -691,16 +939,9 @@ describe("chat.socket.ts agent/admin reply (Story 18)", () => {
       status: "with_agent",
     });
     const socket = await joinedSocket(conversation.id, adminToken);
-
-    const received = new Promise<Record<string, unknown>>((resolve) =>
-      socket.on("conversation:message", resolve)
-    );
-    socket.emit("conversation:message", { conversationId: conversation.id, text: "Admin stepping in" });
-
-    const message = await received;
-    expect(message.senderType).toBe("agent"); // Message has no separate "admin" sender type
-    expect(message.text).toBe("Admin stepping in");
-
+    // joinedSocket() already asserts the join succeeded (waits on
+    // conversation:joined) — nothing further to check here beyond that not
+    // hanging/erroring.
     socket.disconnect();
   });
 

@@ -15,6 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
 interface ConversationDetail {
   _id: string;
   status: "ai_handling" | "escalated" | "with_agent" | "resolved";
+  assignedAgent: { _id: string; name: string } | null;
 }
 
 export default async function ChatDetailPage({
@@ -65,6 +66,11 @@ export default async function ChatDetailPage({
           conversationId={data.conversation._id}
           initialStatus={data.conversation.status}
           initialMessages={data.messages}
+          initialClaimant={
+            data.conversation.assignedAgent
+              ? { id: data.conversation.assignedAgent._id, name: data.conversation.assignedAgent.name }
+              : null
+          }
           token={token}
           currentUserId={currentUserId}
         />

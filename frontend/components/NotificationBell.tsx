@@ -33,6 +33,7 @@ const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_needs_assignment: "notificationTicketNeedsAssignment",
   ticket_reopened: "notificationTicketReopened",
   ticket_reopened_oversight: "notificationTicketReopenedOversight",
+  chat_needs_agent: "notificationChatNeedsAgent",
 };
 
 // Story 54: was a static "coming soon" placeholder — now fetches on mount,
@@ -115,18 +116,29 @@ export function NotificationBell() {
             {t("notificationsEmpty")}
           </DropdownMenuLabel>
         ) : (
-          items.slice(0, DROPDOWN_ITEM_LIMIT).map((item) => (
-            <DropdownMenuItem key={item.id} asChild className="flex-col items-start gap-0.5">
-              <Link href={`/tickets/${item.ticket.id}`} onClick={() => handleItemClick(item)}>
-                <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
-                  {t(TYPE_KEY[item.type])}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {item.ticket.reference} — {item.ticket.subject}
-                </span>
-              </Link>
-            </DropdownMenuItem>
-          ))
+          // A notification whose type isn't in TYPE_KEY (a legacy/removed
+          // type on an old unread row still sitting in the DB) has no
+          // matching label to render — skip it rather than crash the whole
+          // dropdown, which next-intl's t() would otherwise do on an
+          // undefined key.
+          items
+            .filter((item) => item.type in TYPE_KEY)
+            .slice(0, DROPDOWN_ITEM_LIMIT)
+            .map((item) => (
+              <DropdownMenuItem key={item.id} asChild className="flex-col items-start gap-0.5">
+                <Link
+                  href={item.ticket ? `/tickets/${item.ticket.id}` : `/chats/${item.conversation!.id}`}
+                  onClick={() => handleItemClick(item)}
+                >
+                  <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
+                    {t(TYPE_KEY[item.type])}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {item.ticket ? `${item.ticket.reference} — ${item.ticket.subject}` : t("notificationChatLabel")}
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+            ))
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="justify-center text-sm font-medium text-primary">

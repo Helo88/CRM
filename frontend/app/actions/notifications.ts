@@ -17,14 +17,21 @@ export type NotificationType =
   | "ticket_auto_assigned"
   | "ticket_needs_assignment"
   | "ticket_reopened"
-  | "ticket_reopened_oversight";
+  | "ticket_reopened_oversight"
+  | "chat_needs_agent";
 
+// live-chat: a notification carries exactly one of ticket/conversation,
+// never both (see backend/src/routes/me.routes.ts's toNotificationItem) —
+// both are nullable here rather than a discriminated union so callers don't
+// need a type-narrowing helper for what's already a simple "pick whichever
+// is non-null" check.
 export interface NotificationItem {
   id: string;
   type: NotificationType;
   read: boolean;
   createdAt: string;
-  ticket: { id: string; reference: string; subject: string };
+  ticket: { id: string; reference: string; subject: string } | null;
+  conversation: { id: string } | null;
 }
 
 async function getBearerToken(): Promise<string | null> {

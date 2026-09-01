@@ -221,7 +221,9 @@ export interface TicketHistoryEvent {
     | "priority_changed"
     | "assignee_changed"
     | "reply_posted"
-    | "internal_note_added";
+    | "internal_note_added"
+    | "chat_participant_joined"
+    | "chat_participant_left";
   at: string;
   actor: { id: string; name: string | null; role: string } | null;
   data: Record<string, unknown>;

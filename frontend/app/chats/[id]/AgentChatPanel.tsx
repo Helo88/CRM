@@ -29,6 +29,11 @@ export interface AgentChatMessage {
   createdAt: string;
 }
 
+export interface ChatClaimant {
+  id: string;
+  name: string;
+}
+
 type ConversationStatus = "ai_handling" | "escalated" | "with_agent" | "resolved";
 type ConnectionStatus = "connecting" | "connected" | "error";
 
@@ -36,16 +41,26 @@ type ConnectionStatus = "connecting" | "connected" | "error";
 // LiveChatPanel.tsx (customer-scoped: different auth redirects, different
 // composer affordances). Story 20's unified dashboard is the right place to
 // consolidate shared chat-rendering code, not this story.
+//
+// Claiming: replying now requires actively holding the exclusive claim on
+// this conversation (conversation:claim / conversation:unclaim on the
+// backend) — every staff role, agent/subadmin/admin alike, must click
+// "Join chat" first, with no bypass. `initialClaimant` seeds this from the
+// server-populated conversation.assignedAgent so the page renders correctly
+// before any socket event arrives; conversation:claimed/conversation:unclaimed
+// keep it live afterward.
 export function AgentChatPanel({
   conversationId,
   initialStatus,
   initialMessages,
+  initialClaimant,
   token,
   currentUserId,
 }: {
   conversationId: string;
   initialStatus: ConversationStatus;
   initialMessages: AgentChatMessage[];
+  initialClaimant: ChatClaimant | null;
   token: string;
   currentUserId?: string;
 }) {
@@ -55,7 +70,13 @@ export function AgentChatPanel({
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [conversationStatus, setConversationStatus] = useState<ConversationStatus>(initialStatus);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [claimant, setClaimant] = useState<ChatClaimant | null>(initialClaimant);
+  // A claim/unclaim/reply-while-unclaimed rejection is a recoverable,
+  // in-panel message — never the connection-teardown "conversation:error"
+  // path below, which is reserved for the pre-join handshake failing.
+  const [claimError, setClaimError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const hasJoinedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +87,9 @@ export function AgentChatPanel({
       socket.emit("conversation:join", conversationId);
     });
     socket.on("conversation:joined", () => {
-      if (!cancelled) setStatus("connected");
+      if (cancelled) return;
+      hasJoinedRef.current = true;
+      setStatus("connected");
     });
     socket.on("conversation:message", (message: AgentChatMessage) => {
       if (cancelled) return;
@@ -78,10 +101,27 @@ export function AgentChatPanel({
     socket.on("conversation:closed", () => {
       if (!cancelled) setConversationStatus("resolved");
     });
+    socket.on("conversation:claimed", (payload: { conversationId: string; agent: ChatClaimant }) => {
+      if (cancelled || payload.conversationId !== conversationId) return;
+      setClaimant(payload.agent);
+      setClaimError(null);
+    });
+    socket.on("conversation:unclaimed", (payload: { conversationId: string }) => {
+      if (cancelled || payload.conversationId !== conversationId) return;
+      setClaimant(null);
+    });
     socket.on("conversation:error", (payload: { error: string }) => {
-      if (!cancelled) {
+      if (cancelled) return;
+      // Before the initial join succeeds, an error means the whole
+      // connection is unusable — surface it as such. Afterward (claim,
+      // unclaim, a reply rejected because the claim changed underneath us),
+      // it's a recoverable in-panel message, not a reason to tear the
+      // connection state down.
+      if (!hasJoinedRef.current) {
         setStatus("error");
         setErrorMessage(payload.error);
+      } else {
+        setClaimError(payload.error);
       }
     });
     socket.on("connect_error", () => {
@@ -112,8 +152,19 @@ export function AgentChatPanel({
     socketRef.current?.emit("conversation:close", { conversationId });
   }
 
+  function handleJoinChat() {
+    setClaimError(null);
+    socketRef.current?.emit("conversation:claim", { conversationId });
+  }
+
+  function handleLeaveChat() {
+    setClaimError(null);
+    socketRef.current?.emit("conversation:unclaim", { conversationId });
+  }
+
   const isClosed = conversationStatus === "resolved";
-  const isDisabled = status !== "connected" || isClosed;
+  const isClaimant = claimant?.id === currentUserId;
+  const isDisabled = status !== "connected" || isClosed || !isClaimant;
 
   return (
     <Card className="flex h-[70vh] w-full max-w-lg flex-col">
@@ -154,7 +205,48 @@ export function AgentChatPanel({
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         )}
+        {!isClosed && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+            <span className="min-w-0 truncate text-muted-foreground">
+              {!claimant
+                ? t("chatUnclaimed")
+                : isClaimant
+                  ? t("chatClaimedByYou")
+                  : t("chatClaimedBy", { name: claimant.name })}
+            </span>
+            {!claimant && (
+              <Button type="button" size="sm" disabled={status !== "connected"} onClick={handleJoinChat}>
+                {t("joinChat")}
+              </Button>
+            )}
+            {isClaimant && (
+              <Button type="button" size="sm" variant="outline" onClick={handleLeaveChat}>
+                {t("leaveChat")}
+              </Button>
+            )}
+          </div>
+        )}
+        {claimError && (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription>{claimError}</AlertDescription>
+          </Alert>
+        )}
         {messages.map((message) => {
+          // Story 16/17: a "system" message (currently just the escalation
+          // acknowledgment) isn't news to an agent/admin the way it is to
+          // the customer — they already know they were just assigned (or
+          // that the customer is still waiting for someone). Render it as a
+          // quiet centered note, not a bubble, and deliberately skip the
+          // sender-label logic below — labeling it "You"/"Agent" would be
+          // wrong, since senderId is null on a system message.
+          if (message.senderType === "system") {
+            return (
+              <p key={message._id} className="self-center px-4 py-1 text-center text-xs italic text-muted-foreground">
+                {message.text}
+              </p>
+            );
+          }
           const isOwnMessage = message.senderId === currentUserId;
           return (
             <div
@@ -193,7 +285,7 @@ export function AgentChatPanel({
                 handleSend();
               }
             }}
-            placeholder={isClosed ? t("closed") : t("composerPlaceholder")}
+            placeholder={isClosed ? t("closed") : !isClaimant ? t("joinToReplyPlaceholder") : t("composerPlaceholder")}
             rows={1}
             disabled={isDisabled}
             className="min-h-9"

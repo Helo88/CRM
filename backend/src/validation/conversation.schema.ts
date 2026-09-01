@@ -31,3 +31,10 @@ export const conversationClosePayloadSchema = z.object({
 export const conversationAiSuggestionDeclinedPayloadSchema = z.object({
   conversationId: objectIdSchema("Invalid conversation id"),
 });
+
+// Used server-side to validate inbound conversation:claim / conversation:unclaim
+// socket payloads (the "Join chat" / "Leave chat" buttons) — same shape, one
+// schema shared by both since neither carries anything beyond the id.
+export const conversationClaimPayloadSchema = z.object({
+  conversationId: objectIdSchema("Invalid conversation id"),
+});

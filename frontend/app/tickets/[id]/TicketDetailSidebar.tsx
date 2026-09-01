@@ -2,7 +2,19 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { CirclePlus, Download, Flag, History, MessageSquare, RefreshCw, StickyNote, Tag, UserCog } from "lucide-react";
+import {
+  CirclePlus,
+  Download,
+  Flag,
+  History,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  RefreshCw,
+  StickyNote,
+  Tag,
+  UserCog,
+} from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -90,6 +102,8 @@ const HISTORY_EVENT_ICON: Record<TicketHistoryEvent["kind"], typeof CirclePlus> 
   assignee_changed: UserCog,
   reply_posted: MessageSquare,
   internal_note_added: StickyNote,
+  chat_participant_joined: LogIn,
+  chat_participant_left: LogOut,
 };
 
 // Story 63: the "created" event's data.createdVia rides along so the label
@@ -365,6 +379,10 @@ export function TicketDetailSidebar({
         return t("history.event.replyPosted", { name });
       case "internal_note_added":
         return t("history.event.internalNoteAdded", { name });
+      case "chat_participant_joined":
+        return t("history.event.chatParticipantJoined", { name });
+      case "chat_participant_left":
+        return t("history.event.chatParticipantLeft", { name });
     }
   }
 

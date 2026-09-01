@@ -25,6 +25,20 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 // assigned. Unlike reassignment (Story 25), which only notifies the two
 // agents involved, reopening is oversight-worthy on its own — a ticket
 // coming back from "closed" is more consequential than a routine handoff.
+// "chat_needs_agent" (live-chat): the conversation-side counterpart of
+// ticket_needs_assignment above, added alongside the
+// notify-available-agents-when-a-chat-needs-a-human story so escalation
+// isn't silent. Unlike tickets, live chat has no auto-assign/"chat_assigned"
+// counterpart — a chat is claimed by an explicit staff action (the "Join
+// chat" button, chat.socket.ts's conversation:claim), and someone who just
+// clicked Join doesn't need to be told they did. "chat_needs_agent" fires on
+// EVERY escalation, to every agent/subadmin holding chats:manage plus every
+// admin (see notifyChatOversight in notification.service.ts) — not just
+// when nobody happens to be online, since the point is "someone, whenever
+// they're free, should come claim this," not "we tried once and gave up."
+// A notification carries exactly one of ticketId/conversationId, never both
+// — see notification.service.ts's creation helpers, which never set both
+// fields on the same write.
 export type NotificationType =
   | "ticket_assigned"
   | "ticket_escalated"
@@ -34,12 +48,14 @@ export type NotificationType =
   | "ticket_auto_assigned"
   | "ticket_needs_assignment"
   | "ticket_reopened"
-  | "ticket_reopened_oversight";
+  | "ticket_reopened_oversight"
+  | "chat_needs_agent";
 
 export interface INotification extends Document {
   recipient: Types.ObjectId;
   type: NotificationType;
-  ticketId: Types.ObjectId;
+  ticketId: Types.ObjectId | null;
+  conversationId: Types.ObjectId | null;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -60,10 +76,12 @@ const notificationSchema = new Schema<INotification>(
         "ticket_needs_assignment",
         "ticket_reopened",
         "ticket_reopened_oversight",
+        "chat_needs_agent",
       ],
       required: true,
     },
-    ticketId: { type: Schema.Types.ObjectId, ref: "Ticket", required: true },
+    ticketId: { type: Schema.Types.ObjectId, ref: "Ticket", default: null },
+    conversationId: { type: Schema.Types.ObjectId, ref: "Conversation", default: null },
     read: { type: Boolean, default: false },
   },
   { timestamps: true }

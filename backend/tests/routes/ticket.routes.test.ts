@@ -430,7 +430,7 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     const notifications = await Notification.find({ recipient: agent._id });
     expect(notifications).toHaveLength(1);
     expect(notifications[0].type).toBe("ticket_assigned");
-    expect(notifications[0].ticketId.toString()).toBe(res.body.id);
+    expect(notifications[0].ticketId!.toString()).toBe(res.body.id);
   });
 
   it("writes no notification when no agent is online", async () => {
