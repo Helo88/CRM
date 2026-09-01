@@ -6,11 +6,13 @@ import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
+import { Phone, Mail, MapPin, CircleEllipsis } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
 import { TicketMessageThread } from "./TicketMessageThread";
 import { TicketReplyComposer } from "./TicketReplyComposer";
+import { getTicketHistory } from "./actions";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("TicketDetail");
@@ -28,6 +30,9 @@ interface TicketDetailResponse {
   customer: { id: string; name: string; email: string };
   assignedAgent: { id: string; name: string } | null;
   escalatedTo: { id: string; name: string } | null;
+  // Story 63: both null on a ticket created before this story shipped.
+  createdBy: { id: string; name: string } | null;
+  createdVia: "customer_portal" | "phone" | "email" | "in_person" | "other" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +53,23 @@ export interface TicketMessage {
   attachments: TicketMessageAttachment[];
   createdAt: string;
 }
+
+// Story 63: shown as a badge on the subject line only for a staff-created
+// ticket — "customer_portal" and legacy (null) tickets render no badge at
+// all (see the render site below).
+const CREATED_VIA_ICON: Record<"phone" | "email" | "in_person" | "other", typeof Phone> = {
+  phone: Phone,
+  email: Mail,
+  in_person: MapPin,
+  other: CircleEllipsis,
+};
+
+const CREATED_VIA_KEY: Record<"phone" | "email" | "in_person" | "other", string> = {
+  phone: "createdViaPhone",
+  email: "createdViaEmail",
+  in_person: "createdViaInPerson",
+  other: "createdViaOther",
+};
 
 const STATUS_KEY: Record<TicketDetailResponse["status"], string> = {
   new: "statusNew",
@@ -92,7 +114,7 @@ export default async function TicketDetailPage({
     redirect("/dashboard");
   }
 
-  const [res, messagesRes] = await Promise.all([
+  const [res, messagesRes, historyEvents] = await Promise.all([
     fetch(`${API_URL}/api/v1/tickets/${id}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
@@ -101,6 +123,9 @@ export default async function TicketDetailPage({
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     }),
+    // ticket-management Story 13: getTicketHistory already degrades to []
+    // on any failure — never blocks the rest of this page's render.
+    getTicketHistory(id),
   ]);
 
   if (res.status === 401) {
@@ -143,6 +168,11 @@ export default async function TicketDetailPage({
   const canCloseReopen = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:close_reopen"));
   // Story 12: manual escalation to a senior agent or admin.
   const canEscalate = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:escalate"));
+  // Story 13: sub-admin-tier — the "Recent activity"/full-timeline section
+  // itself has no permission gate (every staff role sees it, same as GET
+  // /:id having no tickets:view_all-style restriction), only the export
+  // anchor is gated.
+  const canExportHistory = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:export_history"));
   // Story 11's read-only-when-closed rule: Category/Priority/Assigned Agent
   // lock regardless of the viewer's own permission for that field, and the
   // reply composer is hidden outright. The status control is exempt — it
@@ -169,7 +199,24 @@ export default async function TicketDetailPage({
             <Card>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
-                  <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                    {/* Story 63: only a staff-created ticket carries a
+                        meaningful channel — "customer_portal" and legacy
+                        (null) tickets render no badge at all. */}
+                    {isStaffViewer &&
+                      ticket.createdVia &&
+                      ticket.createdVia !== "customer_portal" &&
+                      (() => {
+                        const Icon = CREATED_VIA_ICON[ticket.createdVia];
+                        return (
+                          <Badge variant="secondary" className="shrink-0 gap-1">
+                            <Icon className="size-3" />
+                            {t(CREATED_VIA_KEY[ticket.createdVia])}
+                          </Badge>
+                        );
+                      })()}
+                  </div>
                   {/* Story 60: customer-facing read-only view shows status inline
                       here instead of in the staff-only sidebar Card below. */}
                   {!isStaffViewer && (
@@ -228,6 +275,8 @@ export default async function TicketDetailPage({
                     canEscalate={canEscalate}
                     isLocked={isLocked}
                     viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
+                    events={historyEvents}
+                    canExportHistory={canExportHistory}
                   />
                 </CardContent>
               </Card>

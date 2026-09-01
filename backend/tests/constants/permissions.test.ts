@@ -130,6 +130,23 @@ describe("tickets:escalate (Story 12)", () => {
   });
 });
 
+// Story 13 (view full ticket history): exporting the timeline is
+// sub-admin-tier, unlike viewing it (which has no permission gate at all —
+// same visibility rule as GET /:id).
+describe("tickets:export_history (Story 13)", () => {
+  it("is a recognized permission key", () => {
+    expect(PERMISSION_KEYS).toContain("tickets:export_history");
+  });
+
+  it("is sub-admin-only", () => {
+    expect(SUBADMIN_ONLY_PERMISSIONS.has("tickets:export_history")).toBe(true);
+  });
+
+  it("is not granted by default to a freshly-created agent", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).not.toContain("tickets:export_history");
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

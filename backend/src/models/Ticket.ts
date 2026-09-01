@@ -3,6 +3,10 @@ import { nextSequence } from "./Counter";
 
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
 export type TicketStatus = "new" | "in_progress" | "answered" | "escalated" | "closed";
+// ticket-management Story 63: how the ticket actually reached the system —
+// "customer_portal" for a self-submit, one of the other four for a
+// staff-logged ticket (the staff caller must pick one, see ticket.routes.ts).
+export type TicketCreationChannel = "customer_portal" | "phone" | "email" | "in_person" | "other";
 
 export interface ITicketSla {
   responseTargetAt?: Date;
@@ -40,6 +44,12 @@ export interface ITicket extends Document {
   // the AI's "open a ticket" suggestion from a live chat. Never consumed by
   // auto-assignment (Story 10) or any query filter, just a traceability link.
   sourceConversation: Types.ObjectId | null;
+  // ticket-management Story 63: provenance-only, same "never consumed by a
+  // query filter" shape as sourceConversation above — the actual creator
+  // (customer or staff-on-behalf-of) and the channel they used. Both `null`
+  // on tickets created before this story shipped; no backfill migration.
+  createdBy: Types.ObjectId | null;
+  createdVia: TicketCreationChannel | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +93,12 @@ const ticketSchema = new Schema<ITicket>(
 
     escalatedTo: { type: Schema.Types.ObjectId, ref: "User", default: null },
     sourceConversation: { type: Schema.Types.ObjectId, ref: "Conversation", default: null },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    createdVia: {
+      type: String,
+      enum: ["customer_portal", "phone", "email", "in_person", "other"],
+      default: null,
+    },
   },
   { timestamps: true }
 );

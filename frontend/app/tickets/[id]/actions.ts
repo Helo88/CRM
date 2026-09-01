@@ -213,6 +213,39 @@ export async function escalateTicket(ticketId: string, escalatedTo: string): Pro
   return { error: null };
 }
 
+export interface TicketHistoryEvent {
+  kind: "created" | "status_changed" | "reply_posted" | "internal_note_added";
+  at: string;
+  actor: { id: string; name: string | null; role: string } | null;
+  data: Record<string, unknown>;
+}
+
+// ticket-management Story 13: backs the sidebar's "Recent activity" teaser
+// and its full-timeline expansion. Returns [] on any failure — same
+// "degrade to empty" reasoning as listAssignableAgents/listEscalationTargets
+// above; the history section simply renders nothing rather than erroring
+// the whole page.
+export async function getTicketHistory(ticketId: string): Promise<TicketHistoryEvent[]> {
+  const token = await getBearerToken();
+  if (!token) return [];
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/tickets/${ticketId}/history`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    const refreshedToken = await refreshSession();
+    if (!refreshedToken) return [];
+    res = await doFetch(refreshedToken);
+  }
+  if (!res.ok) return [];
+  const body = (await res.json()) as { events: TicketHistoryEvent[] };
+  return body.events;
+}
+
 export interface SendTicketReplyState {
   error: string | null;
 }

@@ -235,17 +235,17 @@ Match the existing key hierarchy in both files; keep Arabic translations paralle
 
 ## Done Criteria
 
-- [ ] `tickets:export_history` added to `PERMISSION_KEYS` and `SUBADMIN_ONLY_PERMISSIONS` in `backend/src/constants/permissions.ts`, not in agent defaults.
-- [ ] `backend/src/services/ticketHistory.service.ts` created and exports `buildTicketHistory` with the documented `TicketHistoryEvent` shape.
-- [ ] `GET /api/v1/tickets/:id/history` returns the aggregated timeline honouring existing visibility rules and filtering internal notes for the customer persona.
-- [ ] `GET /api/v1/tickets/:id/history/export` returns the same payload as a JSON attachment, gated by `requirePermission("tickets:export_history")`.
-- [ ] `TicketDetailSidebar.tsx` renders the "Recent activity" teaser (5 rows) with an inline "View full history" expand.
-- [ ] "Export history" anchor renders **only** when the viewer has `tickets:export_history`; it downloads the JSON file.
-- [ ] i18n keys added in both `en.json` and `ar.json` under `tickets.history`.
-- [ ] Backend unit tests for the aggregator and integration tests for both routes pass.
-- [ ] Permission-enumeration test updated to include the new key.
-- [ ] Explicit `TODO(story-future)` comment in `ticketHistory.service.ts` captures the missing `category_changed` / `assignee_changed` event kinds with pointers to Story 8 and Story 15.
-- [ ] No new mutation route was added; this story is read-only.
+- [x] `tickets:export_history` added to `PERMISSION_KEYS` and `SUBADMIN_ONLY_PERMISSIONS` in `backend/src/constants/permissions.ts`, not in agent defaults.
+- [x] `backend/src/services/ticketHistory.service.ts` created and exports `buildTicketHistory` with the documented `TicketHistoryEvent` shape.
+- [x] `GET /api/v1/tickets/:id/history` returns the aggregated timeline honouring existing visibility rules and filtering internal notes for the customer persona.
+- [x] `GET /api/v1/tickets/:id/history/export` returns the same payload as a JSON attachment, gated by `requirePermission("tickets:export_history")`.
+- [x] `TicketDetailSidebar.tsx` renders the "Recent activity" teaser (5 rows) with an inline "View full history" expand.
+- [x] "Export history" anchor renders **only** when the viewer has `tickets:export_history`; it downloads the JSON file.
+- [x] i18n keys added in both `en.json` and `ar.json` under `tickets.history` (nested under `TicketDetail.history`, matching this story's actual namespace rather than a new top-level `tickets` key).
+- [x] Backend unit tests for the aggregator and integration tests for both routes pass.
+- [x] Permission-enumeration test updated to include the new key.
+- [x] Explicit `TODO(story-future)` comment in `ticketHistory.service.ts` captures the missing `category_changed` / `assignee_changed` event kinds with pointers to Story 8 and Story 15.
+- [x] No new mutation route was added; this story is read-only.
 
 ---
 

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { Types } from "mongoose";
 import { requireAuth, requirePermission, requireRole } from "../middleware/auth";
-import { Ticket, ITicket, TicketStatus } from "../models/Ticket";
+import { Ticket, ITicket, TicketStatus, TicketCreationChannel } from "../models/Ticket";
 import { Message, IMessage } from "../models/Message";
 import { User } from "../models/User";
 import { Conversation } from "../models/Conversation";
@@ -26,6 +26,7 @@ import { findByNameCaseInsensitive } from "./ticketCategory.routes";
 import { uploadTicketMessageAttachments, ticketFilePath } from "../middleware/upload";
 import { applyStatusTransition, InvalidStatusTransitionError } from "../services/ticketStatus.service";
 import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
+import { buildTicketHistory, TicketNotFoundError, TicketHistoryEvent } from "../services/ticketHistory.service";
 
 const router = express.Router();
 
@@ -39,7 +40,13 @@ interface CreateTicketBody extends z.infer<typeof createTicketBodySchema> {
   customerId?: string;
   priority?: (typeof ALLOWED_PRIORITIES)[number];
   notifyCustomer?: boolean;
+  // Story 63: required for the staff branch (one of the four non-portal
+  // values below); never client-supplied for the customer branch, which
+  // always hardcodes "customer_portal" server-side.
+  createdVia?: string;
 }
+
+const STAFF_CREATION_CHANNELS: readonly TicketCreationChannel[] = ["phone", "email", "in_person", "other"];
 
 // A customer needs no permission concept at all (self-service, Story 8);
 // every other role goes through the real requirePermission middleware,
@@ -82,6 +89,7 @@ router.post(
     let priority: (typeof ALLOWED_PRIORITIES)[number] = "medium";
     let notifyCustomer = false;
     let customer;
+    let createdVia: TicketCreationChannel;
 
     if (isStaffCreated) {
       const customerId = req.body?.customerId;
@@ -121,12 +129,25 @@ router.post(
       }
 
       notifyCustomer = req.body?.notifyCustomer === true;
+
+      // Story 63: required for every staff-created ticket — distinguishes
+      // it from a self-submit and records how staff learned about it.
+      // Client cannot claim "customer_portal" here; only the four
+      // staff-facing values are accepted.
+      if (!req.body?.createdVia || !STAFF_CREATION_CHANNELS.includes(req.body.createdVia as TicketCreationChannel)) {
+        res
+          .status(400)
+          .json({ error: `createdVia must be one of: ${STAFF_CREATION_CHANNELS.join(", ")}` });
+        return;
+      }
+      createdVia = req.body.createdVia as TicketCreationChannel;
     } else {
       customer = await User.findById(req.user!.id);
       if (!customer) {
         res.status(401).json({ error: "Invalid or expired token" });
         return;
       }
+      createdVia = "customer_portal";
     }
 
     // Story 62: accepting the AI's "open a ticket" suggestion from a live
@@ -154,6 +175,8 @@ router.post(
       category,
       priority,
       sourceConversation: sourceConversationId,
+      createdBy: creatorId,
+      createdVia,
       statusHistory: [{ status: "new", changedBy: creatorId, changedAt: new Date() }],
     });
 
@@ -275,7 +298,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid query" });
     return;
   }
-  const { page, limit, status, category, priority, sort, createdFrom, createdTo, updatedFrom, updatedTo, q } =
+  const { page, limit, status, category, priority, createdVia, sort, createdFrom, createdTo, updatedFrom, updatedTo, q } =
     parsed.data;
   const searchRegex = q ? new RegExp(escapeRegex(q), "i") : null;
 
@@ -302,6 +325,10 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     // trust a client-supplied "show all" flag.
     if (category) filter.category = category;
     if (priority) filter.priority = priority;
+    // Story 63: same tier as category/priority above — included in
+    // countFilter below so the status quick-filter-chip counts stay
+    // consistent with whatever source filter is currently applied.
+    if (createdVia) filter.createdVia = createdVia;
 
     // Two independent date-range pairs (not one "date field" toggle) — a
     // caller can filter by createdAt and updatedAt at once.
@@ -453,7 +480,15 @@ router.get(
 // no longer match after populate).
 type TicketDetailFields = Pick<
   ITicket,
-  "ticketNumber" | "subject" | "description" | "status" | "category" | "priority" | "createdAt" | "updatedAt"
+  | "ticketNumber"
+  | "subject"
+  | "description"
+  | "status"
+  | "category"
+  | "priority"
+  | "createdVia"
+  | "createdAt"
+  | "updatedAt"
 > & {
   _id: Types.ObjectId;
   assignedAgent: { _id: Types.ObjectId; name: string } | null;
@@ -461,6 +496,10 @@ type TicketDetailFields = Pick<
   // sidebar can render "Escalated to <name>" without a second round trip —
   // same reasoning as assignedAgent above.
   escalatedTo: { _id: Types.ObjectId; name: string } | null;
+  // ticket-management Story 63: populated so the UI can show "created by
+  // <name>" without a second round trip — same reasoning as escalatedTo.
+  // `null` for a ticket created before this story shipped (no backfill).
+  createdBy: { _id: Types.ObjectId; name: string } | null;
 };
 
 function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: string; name: string; email: string }) {
@@ -477,6 +516,8 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
       ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
       : null,
     escalatedTo: ticket.escalatedTo ? { id: ticket.escalatedTo._id.toString(), name: ticket.escalatedTo.name } : null,
+    createdBy: ticket.createdBy ? { id: ticket.createdBy._id.toString(), name: ticket.createdBy.name } : null,
+    createdVia: ticket.createdVia,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
   };
@@ -487,7 +528,7 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
 // already carried by the query above rather than a second lookup).
 type TicketListFields = Pick<
   ITicket,
-  "ticketNumber" | "subject" | "status" | "category" | "priority" | "createdAt" | "updatedAt"
+  "ticketNumber" | "subject" | "status" | "category" | "priority" | "createdVia" | "createdAt" | "updatedAt"
 > & {
   _id: Types.ObjectId;
   customer: { _id: Types.ObjectId; name: string; email: string };
@@ -502,6 +543,9 @@ function toTicketListItem(ticket: TicketListFields) {
     status: ticket.status,
     category: ticket.category,
     priority: ticket.priority,
+    // Story 63: plain enum value, no populate needed — the queue only
+    // renders a compact source indicator, not the creator's name.
+    createdVia: ticket.createdVia,
     customer: { id: ticket.customer._id.toString(), name: ticket.customer.name, email: ticket.customer.email },
     assignedAgent: ticket.assignedAgent
       ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
@@ -533,7 +577,10 @@ router.get(
       }>("assignedAgent", "name")
       .populate<{
         escalatedTo: { _id: Types.ObjectId; name: string } | null;
-      }>("escalatedTo", "name");
+      }>("escalatedTo", "name")
+      .populate<{
+        createdBy: { _id: Types.ObjectId; name: string } | null;
+      }>("createdBy", "name");
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
@@ -684,10 +731,12 @@ router.patch(
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;
       escalatedTo: { _id: Types.ObjectId; name: string } | null;
+      createdBy: { _id: Types.ObjectId; name: string } | null;
     }>([
       { path: "customer", select: "name email" },
       { path: "assignedAgent", select: "name" },
       { path: "escalatedTo", select: "name" },
+      { path: "createdBy", select: "name" },
     ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {
@@ -789,10 +838,12 @@ router.patch(
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;
       escalatedTo: { _id: Types.ObjectId; name: string } | null;
+      createdBy: { _id: Types.ObjectId; name: string } | null;
     }>([
       { path: "customer", select: "name email" },
       { path: "assignedAgent", select: "name" },
       { path: "escalatedTo", select: "name" },
+      { path: "createdBy", select: "name" },
     ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {
@@ -839,10 +890,12 @@ router.post(
           customer: { _id: Types.ObjectId; name: string; email: string };
           assignedAgent: { _id: Types.ObjectId; name: string } | null;
           escalatedTo: { _id: Types.ObjectId; name: string } | null;
+          createdBy: { _id: Types.ObjectId; name: string } | null;
         }>([
           { path: "customer", select: "name email" },
           { path: "assignedAgent", select: "name" },
           { path: "escalatedTo", select: "name" },
+          { path: "createdBy", select: "name" },
         ]);
         res.status(200).json(
           toTicketDetailResponse(populated, {
@@ -880,10 +933,12 @@ router.post(
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;
       escalatedTo: { _id: Types.ObjectId; name: string } | null;
+      createdBy: { _id: Types.ObjectId; name: string } | null;
     }>([
       { path: "customer", select: "name email" },
       { path: "assignedAgent", select: "name" },
       { path: "escalatedTo", select: "name" },
+      { path: "createdBy", select: "name" },
     ]);
     res.status(200).json(
       toTicketDetailResponse(populated, {
@@ -1105,6 +1160,87 @@ router.get(
         res.status(404).json({ error: "File not found" });
       }
     });
+  }
+);
+
+// ticket-management Story 13 (.squad/plans/ticket-management/32-story-view-full-ticket-history.md):
+// read-only aggregated timeline. Same visibility gate as GET /:id above —
+// copied verbatim (customer sees only their own, 404 not 403; every staff
+// role sees any ticket, no assignedAgent/tickets:view_all narrowing here).
+router.get(
+  "/:id/history",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin", "customer"),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const ticket = await Ticket.findById(req.params.id).select("customer");
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    if (req.user!.role === "customer" && ticket.customer.toString() !== req.user!.id) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const events = await buildTicketHistory(ticket._id, { viewerRole: req.user!.role });
+    res.status(200).json({ ticketId: ticket._id.toString(), events });
+  }
+);
+
+// ticket-management Story 13: same payload as GET /:id/history above, as a
+// downloadable JSON attachment — gated by tickets:export_history
+// (sub-admin-tier) on top of the same visibility check (defence in depth,
+// the permission alone is not a bypass of ticket ownership/scope).
+router.get(
+  "/:id/history/export",
+  requireAuth,
+  requirePermission("tickets:export_history"),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const ticket = await Ticket.findById(req.params.id).select(
+      "ticketNumber subject status category priority customer assignedAgent createdAt"
+    );
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    let events: TicketHistoryEvent[];
+    try {
+      events = await buildTicketHistory(ticket._id, { viewerRole: req.user!.role });
+    } catch (err) {
+      if (err instanceof TicketNotFoundError) {
+        res.status(404).json({ error: "Ticket not found" });
+        return;
+      }
+      throw err;
+    }
+
+    const payload = {
+      ticket: {
+        id: ticket._id.toString(),
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        status: ticket.status,
+        customer: ticket.customer.toString(),
+        assignedAgent: ticket.assignedAgent ? ticket.assignedAgent.toString() : null,
+        category: ticket.category,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt,
+      },
+      events,
+    };
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="ticket-${ticket.ticketNumber}-history.json"`);
+    res.status(200).send(JSON.stringify(payload, null, 2));
   }
 );
 

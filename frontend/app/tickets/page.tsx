@@ -18,6 +18,7 @@ interface TicketListSearchParams {
   status?: string;
   category?: string;
   priority?: string;
+  createdVia?: string;
   sort?: string;
   q?: string;
   createdFrom?: string;
@@ -43,6 +44,7 @@ export default async function TicketsPage({
     status,
     category,
     priority,
+    createdVia,
     sort,
     q,
     createdFrom,
@@ -61,6 +63,7 @@ export default async function TicketsPage({
   if (status) currentQuery.set("status", status);
   if (category) currentQuery.set("category", category);
   if (priority) currentQuery.set("priority", priority);
+  if (createdVia) currentQuery.set("createdVia", createdVia);
   if (sort) currentQuery.set("sort", sort);
   if (q) currentQuery.set("q", q);
   if (createdFrom) currentQuery.set("createdFrom", createdFrom);

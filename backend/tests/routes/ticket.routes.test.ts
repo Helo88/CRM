@@ -137,6 +137,21 @@ describe("POST /api/v1/tickets (Story 8)", () => {
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.category).toBe("Billing");
   });
+
+  it("sets createdBy to the customer and createdVia to customer_portal, ignoring any client-supplied createdVia (Story 63)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user, token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Login broken", description: "Cannot sign in", createdVia: "phone" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.createdBy?.toString()).toBe(user.id);
+    expect(ticket!.createdVia).toBe("customer_portal");
+  });
 });
 
 describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
@@ -157,6 +172,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         customerId: pickedCustomer.id,
         category: "billing",
         priority: "high",
+        createdVia: "phone",
       });
 
     expect(res.status).toBe(201);
@@ -188,6 +204,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         subject: "No category or priority set",
         description: "Should still work with defaults.",
         customerId: pickedCustomer.id,
+        createdVia: "email",
       });
     expect(withDefaults.status).toBe(201);
     const defaultTicket = await Ticket.findById(withDefaults.body.id);
@@ -232,6 +249,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         subject: "Opened by admin",
         description: "Reported in person at the front desk.",
         customerId: pickedCustomer.id,
+        createdVia: "in_person",
       });
 
     expect(res.status).toBe(201);
@@ -274,7 +292,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: false });
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: false, createdVia: "other" });
 
     expect(res.status).toBe(201);
     expect(sendEmailMock).not.toHaveBeenCalled();
@@ -288,11 +306,72 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: true });
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: true, createdVia: "phone" });
 
     expect(res.status).toBe(201);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: "notify-me@example.com" }));
+  });
+
+  it("returns 400 when createdVia is missing (Story 63)", async () => {
+    const { user: pickedCustomer } = await seedUser();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when a staff caller sends createdVia: customer_portal (Story 63)", async () => {
+    const { user: pickedCustomer } = await seedUser();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, createdVia: "customer_portal" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("sets createdBy to the staff user and round-trips createdVia through GET /:id (Story 63)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: pickedCustomer } = await seedUser();
+    const { user: staffUser, token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:create_for_customer"],
+    });
+
+    const createRes = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, createdVia: "phone" });
+    expect(createRes.status).toBe(201);
+
+    const stored = await Ticket.findById(createRes.body.id);
+    expect(stored!.createdBy?.toString()).toBe(staffUser.id);
+    expect(stored!.createdVia).toBe("phone");
+
+    const getRes = await request(app)
+      .get(`/api/v1/tickets/${createRes.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.createdVia).toBe("phone");
+    expect(getRes.body.createdBy).toMatchObject({ id: staffUser.id, name: staffUser.name });
+  });
+
+  it("returns 200 from GET /:id with createdBy/createdVia null for a ticket seeded without them (no migration required, Story 63)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.createdBy).toBeNull();
+    expect(res.body.createdVia).toBeNull();
   });
 });
 
@@ -409,7 +488,7 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "Help", description: "It's broken", customerId: pickedCustomer.id });
+      .send({ subject: "Help", description: "It's broken", customerId: pickedCustomer.id, createdVia: "email" });
 
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
@@ -2177,6 +2256,31 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.body.tickets[0].status).toBe("closed");
   });
 
+  it("filters the staff queue by createdVia (Story 63)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await Ticket.create({
+      subject: "Self-submitted",
+      description: "D",
+      customer: customer._id,
+      createdBy: customer._id,
+      createdVia: "customer_portal",
+    });
+    await Ticket.create({
+      subject: "Reported by phone",
+      description: "D",
+      customer: customer._id,
+      createdBy: customer._id,
+      createdVia: "phone",
+    });
+
+    const res = await request(app).get("/api/v1/tickets?createdVia=phone").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].subject).toBe("Reported by phone");
+  });
+
   it("reports statusCounts scoped by category/priority but not narrowed by the selected status (Plan 29 chips)", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
     const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
@@ -2267,5 +2371,111 @@ describe("GET /api/v1/tickets/:id/messages — customer ownership + internal fil
       .set("Authorization", `Bearer ${agentToken}`);
     expect(agentRes.status).toBe(200);
     expect(agentRes.body).toHaveLength(2);
+  });
+});
+
+describe("GET /api/v1/tickets/:id/history (Story 13)", () => {
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .get("/api/v1/tickets/not-an-object-id/history")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 for the assigned agent, with events in the response body", async () => {
+    const { user: agent, token } = await seedUser({ role: "agent" });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ticketId).toBe(ticket.id);
+    expect(res.body.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "created" })])
+    );
+  });
+
+  it("returns 200 for a sub-admin viewing an unassigned ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 (not 403) for a different customer's ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("does not include internal_note_added events when the customer views their own ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const { user: agent } = await seedUser({ role: "agent" });
+    const ticket = await seedTicketFor(customer.id);
+    await Message.create({
+      parentType: "ticket",
+      parentId: ticket._id,
+      senderType: "agent",
+      senderId: agent._id,
+      text: "internal note",
+      internal: true,
+    });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.events.some((e: { kind: string }) => e.kind === "internal_note_added")).toBe(false);
+  });
+});
+
+describe("GET /api/v1/tickets/:id/history/export (Story 13)", () => {
+  it("returns 200 with a JSON attachment for a sub-admin holding tickets:export_history", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:export_history"] });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("attachment");
+    expect(res.headers["content-disposition"]).toContain(`ticket-${ticket.ticketNumber}-history.json`);
+    const body = JSON.parse(res.text);
+    expect(body.ticket.id).toBe(ticket.id);
+    expect(Array.isArray(body.events)).toBe(true);
+  });
+
+  it("returns 403 for an agent without tickets:export_history, even the assigned agent", async () => {
+    const { user: agent, token } = await seedUser({ role: "agent" });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
   });
 });

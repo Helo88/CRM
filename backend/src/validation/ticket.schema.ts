@@ -11,6 +11,8 @@ const REQUIRED_MESSAGE = "subject and description are required";
 export const ALLOWED_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const ALLOWED_STATUSES = ["new", "in_progress", "answered", "escalated", "closed"] as const;
 export const ALLOWED_SORT_KEYS = ["updatedAt", "status", "category", "priority"] as const;
+// ticket-management Story 63: mirrors TicketCreationChannel in Ticket.ts.
+export const ALLOWED_CREATION_CHANNELS = ["customer_portal", "phone", "email", "in_person", "other"] as const;
 
 const categoryFieldSchema = z
   .string()
@@ -77,6 +79,8 @@ export const listTicketsQuerySchema = z.object({
   status: z.enum(ALLOWED_STATUSES).optional(),
   category: z.string().trim().min(1).optional(),
   priority: z.enum(ALLOWED_PRIORITIES).optional(),
+  // Story 63: filter the staff queue by how the ticket was created.
+  createdVia: z.enum(ALLOWED_CREATION_CHANNELS).optional(),
   // Story 60 follow-up: free-text search across subject, customer name, and
   // assigned-agent name (see ticket.routes.ts's GET / — customer/agent names
   // live on the referenced User documents, not on Ticket itself, so the

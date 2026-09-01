@@ -41,6 +41,10 @@ export const PERMISSION_KEYS = [
   // account can be granted this without also getting close/reopen or vice
   // versa).
   "tickets:escalate",
+  // ticket-management Story 13 (view full ticket history): exporting a
+  // ticket's full audit timeline as a file is a sub-admin-tier action,
+  // distinct from just viewing the (already-unrestricted) timeline itself.
+  "tickets:export_history",
   "chats:manage",
   "sla:configure",
   "kb:publish",
@@ -73,6 +77,7 @@ export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
   "tickets:categories_create",
   "tickets:categories_edit",
   "tickets:categories_toggle_status",
+  "tickets:export_history",
 ]);
 
 export function permissionKeysAllowedForRole(role: CreatableStaffRole): readonly PermissionKey[] {

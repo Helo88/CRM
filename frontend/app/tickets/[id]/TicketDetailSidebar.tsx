@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
+import { CirclePlus, Download, MessageSquare, RefreshCw, StickyNote } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   escalateTicket,
   listEscalationTargets,
   type EscalationTarget,
+  type TicketHistoryEvent,
 } from "./actions";
 
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -73,6 +75,35 @@ function isStatusOptionDisabled(
 
 const UNASSIGNED_VALUE = "__unassigned__";
 
+// ticket-management Story 13: "Recent activity" teaser shows the last 5
+// events, reverse-chronological; "View full history" expands to every event
+// in the same styling.
+const RECENT_ACTIVITY_TEASER_COUNT = 5;
+
+const HISTORY_EVENT_ICON: Record<TicketHistoryEvent["kind"], typeof CirclePlus> = {
+  created: CirclePlus,
+  status_changed: RefreshCw,
+  reply_posted: MessageSquare,
+  internal_note_added: StickyNote,
+};
+
+// Unlike STATUS_KEY above (pickable manual options only), a status_changed
+// event's `data.to` can legitimately be "escalated" (Story 12's dedicated
+// endpoint writes it), so this history-only map covers all five values.
+const FULL_STATUS_KEY: Record<Status, string> = { ...STATUS_KEY, escalated: "statusEscalated" };
+
+// The export button is a plain downloadable link, not a fetch — the
+// response is a `Content-Disposition: attachment`, so a same-tab navigation
+// is enough (same reasoning as the message-attachment links in
+// TicketMessageThread.tsx). Routed through the frontend's own proxy route
+// (app/api/tickets/[id]/history/export/route.ts) since the bearer token
+// lives only in an httpOnly cookie a plain <a href> can't attach. A plain
+// sync helper, not a server action — "use server" files (actions.ts) may
+// only export async functions, so this stays here instead.
+function getTicketHistoryExportUrl(ticketId: string): string {
+  return `/api/tickets/${ticketId}/history/export`;
+}
+
 // Story 9's sidebar: Category/Priority selects that save immediately on
 // change (no submit button), same "edit one field inline" shape as
 // RenameCategoryDialog.tsx. Each select is disabled when the viewer lacks
@@ -94,6 +125,8 @@ export function TicketDetailSidebar({
   canEscalate,
   isLocked,
   viewerIsUnrestrictedReassigner,
+  events,
+  canExportHistory,
 }: {
   ticketId: string;
   status: Status;
@@ -124,8 +157,16 @@ export function TicketDetailSidebar({
   // options are disabled in the dropdown below — the backend re-validates
   // regardless (see ticket.routes.ts's PATCH /:id).
   viewerIsUnrestrictedReassigner: boolean;
+  // ticket-management Story 13: pre-fetched server-side (page.tsx) alongside
+  // the ticket/messages fetches — [] on any failure, never blocks the page.
+  events: TicketHistoryEvent[];
+  // Story 13: sub-admin-tier (tickets:export_history) — every staff role
+  // sees the "Recent activity"/"View full history" section, only this
+  // subset also sees the export anchor.
+  canExportHistory: boolean;
 }) {
   const t = useTranslations("TicketDetail");
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   const [categories, setCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -267,6 +308,25 @@ export function TicketDetailSidebar({
       }
     });
   }
+
+  function historyEventLabel(event: TicketHistoryEvent): string {
+    const name = event.actor?.name ?? t("history.unknownUser");
+    switch (event.kind) {
+      case "created":
+        return t("history.event.created", { name });
+      case "status_changed": {
+        const to = event.data.to as Status;
+        return t("history.event.statusChanged", { name, status: t(FULL_STATUS_KEY[to] ?? "statusNew") });
+      }
+      case "reply_posted":
+        return t("history.event.replyPosted", { name });
+      case "internal_note_added":
+        return t("history.event.internalNoteAdded", { name });
+    }
+  }
+
+  const reverseChronologicalEvents = [...events].reverse();
+  const visibleEvents = historyExpanded ? reverseChronologicalEvents : reverseChronologicalEvents.slice(0, RECENT_ACTIVITY_TEASER_COUNT);
 
   return (
     <>
@@ -456,6 +516,57 @@ export function TicketDetailSidebar({
           </Dialog>
         )
       )}
+
+      <div className="flex flex-col gap-2 border-t border-border pt-4">
+        <div className="flex items-center justify-between">
+          <Label>{t("history.sectionTitle")}</Label>
+          {historyExpanded && canExportHistory && (
+            <a
+              href={getTicketHistoryExportUrl(ticketId)}
+              download
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              <Download className="size-3" />
+              {t("history.exportButton")}
+            </a>
+          )}
+        </div>
+        {events.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("history.empty")}</p>
+        ) : (
+          <>
+            <ul className="flex flex-col gap-2">
+              {visibleEvents.map((event, index) => {
+                const Icon = HISTORY_EVENT_ICON[event.kind];
+                return (
+                  <li key={`${event.kind}-${event.at}-${index}`} className="flex items-start gap-2 text-xs">
+                    <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <div className="flex min-w-0 flex-col">
+                      <span className="text-foreground">{historyEventLabel(event)}</span>
+                      <span dir="ltr" className="text-muted-foreground">
+                        {new Date(event.at).toLocaleString()}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {/* Always rendered once there's at least one event (even just
+                "created") — Story 13's edge case explicitly keeps this
+                visible on a short timeline too, since it's also what
+                reveals the export anchor above for a sub-admin. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="self-start px-0 text-xs"
+              onClick={() => setHistoryExpanded((prev) => !prev)}
+            >
+              {historyExpanded ? t("history.collapse") : t("history.viewFull")}
+            </Button>
+          </>
+        )}
+      </div>
     </>
   );
 }

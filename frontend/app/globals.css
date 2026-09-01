@@ -9,6 +9,22 @@ html {
      set dir="rtl" on <html> when the active locale is Arabic. */
 }
 
+/* Arabic script needs materially more leading than Latin to keep descenders
+   (e.g. ي، ج، ق) clear of the next line, so the tight line-heights tuned for
+   the Latin glyphs of IBM Plex Sans Arabic / Cairo clip Arabic text. These
+   rules only fire when the document is RTL — the EN layout is untouched. */
+html[dir="rtl"] {
+  line-height: 1.55;
+}
+
+html[dir="rtl"] h1,
+html[dir="rtl"] h2,
+html[dir="rtl"] h3,
+html[dir="rtl"] h4,
+html[dir="rtl"] h5 {
+  line-height: 1.35;
+}
+
 @theme inline {
 
   --font-heading: var(--font-sans);
@@ -128,6 +144,7 @@ html {
   --color-icon-category: var(--icon-category);
   --color-icon-priority: var(--icon-priority);
   --color-icon-date: var(--icon-date);
+  --color-icon-source: var(--icon-source);
 }
 
 @keyframes fade-in {
@@ -235,6 +252,8 @@ html {
   --icon-priority: #7C3AED;
 
   --icon-date: #C42B78;
+
+  --icon-source: #6B9E1E;
 }
 
 .dark {
@@ -318,6 +337,8 @@ html {
   --icon-priority: #B39DFC;
 
   --icon-date: #F2679E;
+
+  --icon-source: #A8E063;
 }
 
 @keyframes chip-pop {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { format } from "date-fns";
-import { SlidersHorizontal, CircleDot, Tag, Flag, CalendarRange, ArrowDownUp, X } from "lucide-react";
+import { SlidersHorizontal, CircleDot, Tag, Flag, Inbox, CalendarRange, ArrowDownUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { FilterField } from "@/components/FilterField";
@@ -27,6 +27,14 @@ const PRIORITY_KEY: Record<string, string> = {
   medium: "priorityMedium",
   high: "priorityHigh",
   urgent: "priorityUrgent",
+};
+
+const SOURCE_KEY: Record<string, string> = {
+  customer_portal: "sourceCustomer",
+  phone: "sourceStaffPhone",
+  email: "sourceStaffEmail",
+  in_person: "sourceStaffInPerson",
+  other: "sourceStaffOther",
 };
 
 interface TicketFilterBarProps {
@@ -57,6 +65,7 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
   const status = searchParams.get("status") ?? ALL;
   const category = searchParams.get("category") ?? ALL;
   const priority = searchParams.get("priority") ?? ALL;
+  const createdVia = searchParams.get("createdVia") ?? ALL;
   const sort = searchParams.get("sort") ?? "-updatedAt";
   const q = searchParams.get("q");
 
@@ -116,6 +125,7 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
     status !== ALL,
     category !== ALL,
     priority !== ALL,
+    createdVia !== ALL,
     Boolean(createdFrom || createdTo),
     Boolean(updatedFrom || updatedTo),
   ].filter(Boolean).length;
@@ -138,6 +148,13 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
       key: "priority",
       label: `${t("filterPriority")}: ${t(PRIORITY_KEY[priority])}`,
       onRemove: () => updateParam("priority", ALL),
+    });
+  }
+  if (createdVia !== ALL) {
+    chips.push({
+      key: "createdVia",
+      label: `${t("filterSource")}: ${t(SOURCE_KEY[createdVia])}`,
+      onRemove: () => updateParam("createdVia", ALL),
     });
   }
   if (createdFrom || createdTo) {
@@ -269,6 +286,26 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
                         <SelectItem value="medium">{t("priorityMedium")}</SelectItem>
                         <SelectItem value="high">{t("priorityHigh")}</SelectItem>
                         <SelectItem value="urgent">{t("priorityUrgent")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Inbox className="size-3.5 text-icon-source" />
+                      {t("filterSource")}
+                    </label>
+                    <Select value={createdVia} onValueChange={(v) => updateParam("createdVia", v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL}>{t("filterAll")}</SelectItem>
+                        <SelectItem value="customer_portal">{t("sourceCustomer")}</SelectItem>
+                        <SelectItem value="phone">{t("sourceStaffPhone")}</SelectItem>
+                        <SelectItem value="email">{t("sourceStaffEmail")}</SelectItem>
+                        <SelectItem value="in_person">{t("sourceStaffInPerson")}</SelectItem>
+                        <SelectItem value="other">{t("sourceStaffOther")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
