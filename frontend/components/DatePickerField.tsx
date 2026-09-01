@@ -43,7 +43,7 @@ export function DatePickerField({
   className?: string;
 }) {
   return (
-    <div className={cn("flex w-full flex-col gap-1 sm:w-auto", className)}>
+    <div className={cn("flex w-full min-w-0 flex-col gap-1 sm:w-36", className)}>
       {label && (
         <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
           {label}
@@ -56,10 +56,10 @@ export function DatePickerField({
             type="button"
             variant="outline"
             size="sm"
-            className={cn("w-full justify-start gap-2 sm:w-36", !value && "text-muted-foreground")}
+            className={cn("w-full min-w-0 justify-start gap-2", !value && "text-muted-foreground")}
           >
             <CalendarIcon className="size-3.5 shrink-0" />
-            {value ? format(value, "MMM d, yyyy") : placeholder}
+            <span className="truncate">{value ? format(value, "MMM d, yyyy") : placeholder}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">

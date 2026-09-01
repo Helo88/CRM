@@ -117,6 +117,17 @@ html {
   --animate-scale-in: scale-in 0.18s ease-out;
   --animate-pop: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Decorative per-category icon accents (filter-type icons, source-channel
+     icons, etc.) — deliberately distinct from --success/--warning/
+     --destructive/--primary (which --chart-3/4/5/1 already alias) so a
+     purely decorative icon never visually implies a semantic status. See
+     memory: icons should carry their own vibrant color, not inherit the
+     surrounding text color. */
+  --color-icon-status: var(--icon-status);
+  --color-icon-category: var(--icon-category);
+  --color-icon-priority: var(--icon-priority);
+  --color-icon-date: var(--icon-date);
 }
 
 @keyframes fade-in {
@@ -216,6 +227,14 @@ html {
   --sidebar-border: #DDD4C0;
 
   --sidebar-ring: #C17F1F;
+
+  --icon-status: #3E8FD0;
+
+  --icon-category: #0D8A82;
+
+  --icon-priority: #7C3AED;
+
+  --icon-date: #C42B78;
 }
 
 .dark {
@@ -291,6 +310,14 @@ html {
   --sidebar-border: #3B332C;
 
   --sidebar-ring: #C8862E;
+
+  --icon-status: #6FB3EE;
+
+  --icon-category: #3DD6C9;
+
+  --icon-priority: #B39DFC;
+
+  --icon-date: #F2679E;
 }
 
 @keyframes chip-pop {
