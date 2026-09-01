@@ -221,26 +221,26 @@ export interface TicketHistoryEvent {
 }
 
 // ticket-management Story 13: backs the sidebar's "Recent activity" teaser
-// and its full-timeline expansion. Returns [] on any failure — same
+// and its full-timeline drawer. Returns [] on any failure — same
 // "degrade to empty" reasoning as listAssignableAgents/listEscalationTargets
 // above; the history section simply renders nothing rather than erroring
 // the whole page.
-export async function getTicketHistory(ticketId: string): Promise<TicketHistoryEvent[]> {
-  const token = await getBearerToken();
-  if (!token) return [];
-
-  const doFetch = (bearer: string) =>
-    fetch(`${API_URL}/api/v1/tickets/${ticketId}/history`, {
-      headers: { Authorization: `Bearer ${bearer}` },
-      cache: "no-store",
-    });
-
-  let res = await doFetch(token);
-  if (res.status === 401) {
-    const refreshedToken = await refreshSession();
-    if (!refreshedToken) return [];
-    res = await doFetch(refreshedToken);
-  }
+//
+// Takes the access token as a parameter rather than reading/refreshing it
+// itself (unlike every other action in this file): this is called directly
+// from tickets/[id]/page.tsx's Promise.all during that Server Component's
+// render, not dispatched as a real Server Action invocation — cookies()
+// mutations (what refreshSession()/getBearerToken() would attempt on a
+// missing/expired token) are only legal inside an actual Server Action
+// call or Route Handler, and throw ("Cookies can only be modified in a
+// Server Action or Route Handler") when attempted mid-render. The page
+// already resolves and validates accessToken itself (and redirects through
+// /api/session/refresh on its own 401), so this just reuses that token.
+export async function getTicketHistory(ticketId: string, accessToken: string): Promise<TicketHistoryEvent[]> {
+  const res = await fetch(`${API_URL}/api/v1/tickets/${ticketId}/history`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
   if (!res.ok) return [];
   const body = (await res.json()) as { events: TicketHistoryEvent[] };
   return body.events;

@@ -162,6 +162,13 @@ router.post(
         return;
       }
       sourceConversationId = conversation._id;
+      // A ticket opened by accepting the AI's in-chat suggestion is still a
+      // self-submit (isStaffCreated stays false), but distinct enough from
+      // a plain portal submission to warrant its own channel — overrides
+      // the "customer_portal" default set above, staff branch untouched.
+      if (!isStaffCreated) {
+        createdVia = "ai";
+      }
     }
 
     // ticket-management Story 11: seed the audit trail with the creation

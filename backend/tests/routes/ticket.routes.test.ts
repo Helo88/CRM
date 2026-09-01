@@ -615,6 +615,9 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.sourceConversation?.toString()).toBe(conversation.id);
+    // Story 63: accepting the AI's in-chat suggestion is a distinct channel
+    // from a plain portal submission, even though both are self-submits.
+    expect(ticket!.createdVia).toBe("ai");
   });
 
   it("returns 403 when sourceConversation belongs to a different customer", async () => {
@@ -654,6 +657,7 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.sourceConversation).toBeNull();
+    expect(ticket!.createdVia).toBe("customer_portal");
   });
 });
 

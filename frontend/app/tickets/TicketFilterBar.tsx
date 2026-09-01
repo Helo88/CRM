@@ -31,6 +31,7 @@ const PRIORITY_KEY: Record<string, string> = {
 
 const SOURCE_KEY: Record<string, string> = {
   customer_portal: "sourceCustomer",
+  ai: "sourceAi",
   phone: "sourceStaffPhone",
   email: "sourceStaffEmail",
   in_person: "sourceStaffInPerson",
@@ -302,6 +303,7 @@ export function TicketFilterBar({ categories }: TicketFilterBarProps) {
                       <SelectContent>
                         <SelectItem value={ALL}>{t("filterAll")}</SelectItem>
                         <SelectItem value="customer_portal">{t("sourceCustomer")}</SelectItem>
+                        <SelectItem value="ai">{t("sourceAi")}</SelectItem>
                         <SelectItem value="phone">{t("sourceStaffPhone")}</SelectItem>
                         <SelectItem value="email">{t("sourceStaffEmail")}</SelectItem>
                         <SelectItem value="in_person">{t("sourceStaffInPerson")}</SelectItem>

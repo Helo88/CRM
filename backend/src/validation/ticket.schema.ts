@@ -12,7 +12,7 @@ export const ALLOWED_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const ALLOWED_STATUSES = ["new", "in_progress", "answered", "escalated", "closed"] as const;
 export const ALLOWED_SORT_KEYS = ["updatedAt", "status", "category", "priority"] as const;
 // ticket-management Story 63: mirrors TicketCreationChannel in Ticket.ts.
-export const ALLOWED_CREATION_CHANNELS = ["customer_portal", "phone", "email", "in_person", "other"] as const;
+export const ALLOWED_CREATION_CHANNELS = ["customer_portal", "ai", "phone", "email", "in_person", "other"] as const;
 
 const categoryFieldSchema = z
   .string()

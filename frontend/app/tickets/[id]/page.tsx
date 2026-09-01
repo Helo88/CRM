@@ -6,7 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
-import { Phone, Mail, MapPin, CircleEllipsis } from "lucide-react";
+import { Phone, Mail, MapPin, CircleEllipsis, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
@@ -32,7 +32,7 @@ interface TicketDetailResponse {
   escalatedTo: { id: string; name: string } | null;
   // Story 63: both null on a ticket created before this story shipped.
   createdBy: { id: string; name: string } | null;
-  createdVia: "customer_portal" | "phone" | "email" | "in_person" | "other" | null;
+  createdVia: "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,14 +57,16 @@ export interface TicketMessage {
 // Story 63: shown as a badge on the subject line only for a staff-created
 // ticket — "customer_portal" and legacy (null) tickets render no badge at
 // all (see the render site below).
-const CREATED_VIA_ICON: Record<"phone" | "email" | "in_person" | "other", typeof Phone> = {
+const CREATED_VIA_ICON: Record<"ai" | "phone" | "email" | "in_person" | "other", typeof Phone> = {
+  ai: Bot,
   phone: Phone,
   email: Mail,
   in_person: MapPin,
   other: CircleEllipsis,
 };
 
-const CREATED_VIA_KEY: Record<"phone" | "email" | "in_person" | "other", string> = {
+const CREATED_VIA_KEY: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "createdViaAi",
   phone: "createdViaPhone",
   email: "createdViaEmail",
   in_person: "createdViaInPerson",
@@ -124,8 +126,10 @@ export default async function TicketDetailPage({
       cache: "no-store",
     }),
     // ticket-management Story 13: getTicketHistory already degrades to []
-    // on any failure — never blocks the rest of this page's render.
-    getTicketHistory(id),
+    // on any failure — never blocks the rest of this page's render. Takes
+    // accessToken directly (see actions.ts's comment on why) rather than
+    // resolving its own.
+    getTicketHistory(id, accessToken),
   ]);
 
   if (res.status === 401) {

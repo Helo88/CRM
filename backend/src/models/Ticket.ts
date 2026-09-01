@@ -4,9 +4,13 @@ import { nextSequence } from "./Counter";
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
 export type TicketStatus = "new" | "in_progress" | "answered" | "escalated" | "closed";
 // ticket-management Story 63: how the ticket actually reached the system —
-// "customer_portal" for a self-submit, one of the other four for a
-// staff-logged ticket (the staff caller must pick one, see ticket.routes.ts).
-export type TicketCreationChannel = "customer_portal" | "phone" | "email" | "in_person" | "other";
+// "customer_portal" for a plain self-submit, "ai" for a self-submit that
+// originated from accepting the live-chat AI agent's "open a ticket"
+// suggestion (sourceConversation is set — see ticket.routes.ts), or one of
+// the other four for a staff-logged ticket (the staff caller must pick one).
+// Neither "customer_portal" nor "ai" is ever client-suppliable — both are
+// derived server-side from which branch/inputs the request actually took.
+export type TicketCreationChannel = "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other";
 
 export interface ITicketSla {
   responseTargetAt?: Date;
@@ -96,7 +100,7 @@ const ticketSchema = new Schema<ITicket>(
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
     createdVia: {
       type: String,
-      enum: ["customer_portal", "phone", "email", "in_person", "other"],
+      enum: ["customer_portal", "ai", "phone", "email", "in_person", "other"],
       default: null,
     },
   },

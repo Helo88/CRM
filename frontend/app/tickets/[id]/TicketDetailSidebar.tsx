@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { CirclePlus, Download, MessageSquare, RefreshCw, StickyNote } from "lucide-react";
+import { CirclePlus, Download, History, MessageSquare, RefreshCw, StickyNote } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { listActiveTicketCategories } from "../new/actions";
 import { UNSPECIFIED_CATEGORY } from "../new/constants";
 import {
@@ -166,7 +168,14 @@ export function TicketDetailSidebar({
   canExportHistory: boolean;
 }) {
   const t = useTranslations("TicketDetail");
-  const [historyExpanded, setHistoryExpanded] = useState(false);
+  // ticket-management Story 13 (redesigned 2026-09-01 per user direction):
+  // the full timeline opens in a side drawer instead of expanding inline —
+  // an inline expand could grow the sidebar to an unbounded length for a
+  // ticket with a long history. The drawer opens from the Sheet component's
+  // default "right" side, which — per its own doc comment — maps to the
+  // logical END edge (not literal right), i.e. the side OPPOSITE
+  // StaffSidebar's start-0 rail, correctly flipping with RTL.
+  const [historySheetOpen, setHistorySheetOpen] = useState(false);
 
   const [categories, setCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -326,7 +335,22 @@ export function TicketDetailSidebar({
   }
 
   const reverseChronologicalEvents = [...events].reverse();
-  const visibleEvents = historyExpanded ? reverseChronologicalEvents : reverseChronologicalEvents.slice(0, RECENT_ACTIVITY_TEASER_COUNT);
+  const teaserEvents = reverseChronologicalEvents.slice(0, RECENT_ACTIVITY_TEASER_COUNT);
+
+  function renderHistoryEventRow(event: TicketHistoryEvent, index: number) {
+    const Icon = HISTORY_EVENT_ICON[event.kind];
+    return (
+      <li key={`${event.kind}-${event.at}-${index}`} className="flex items-start gap-2 text-xs">
+        <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-col">
+          <span className="text-foreground">{historyEventLabel(event)}</span>
+          <span dir="ltr" className="text-muted-foreground">
+            {new Date(event.at).toLocaleString()}
+          </span>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <>
@@ -518,55 +542,55 @@ export function TicketDetailSidebar({
       )}
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
-        <div className="flex items-center justify-between">
-          <Label>{t("history.sectionTitle")}</Label>
-          {historyExpanded && canExportHistory && (
-            <a
-              href={getTicketHistoryExportUrl(ticketId)}
-              download
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-            >
-              <Download className="size-3" />
-              {t("history.exportButton")}
-            </a>
-          )}
-        </div>
+        <Label>{t("history.sectionTitle")}</Label>
         {events.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t("history.empty")}</p>
         ) : (
           <>
-            <ul className="flex flex-col gap-2">
-              {visibleEvents.map((event, index) => {
-                const Icon = HISTORY_EVENT_ICON[event.kind];
-                return (
-                  <li key={`${event.kind}-${event.at}-${index}`} className="flex items-start gap-2 text-xs">
-                    <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-foreground">{historyEventLabel(event)}</span>
-                      <span dir="ltr" className="text-muted-foreground">
-                        {new Date(event.at).toLocaleString()}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <ul className="flex flex-col gap-2">{teaserEvents.map(renderHistoryEventRow)}</ul>
             {/* Always rendered once there's at least one event (even just
                 "created") — Story 13's edge case explicitly keeps this
                 visible on a short timeline too, since it's also what
-                reveals the export anchor above for a sub-admin. */}
+                reaches the export action for a sub-admin. Opens the full
+                timeline in a side drawer (below) rather than expanding
+                inline, so a long-running ticket's history can never stretch
+                this sidebar. */}
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="self-start px-0 text-xs"
-              onClick={() => setHistoryExpanded((prev) => !prev)}
+              className="inline-flex w-fit items-center gap-1.5 self-start px-0 text-xs"
+              onClick={() => setHistorySheetOpen(true)}
             >
-              {historyExpanded ? t("history.collapse") : t("history.viewFull")}
+              <History className="size-3.5" />
+              {t("history.viewFull")}
             </Button>
           </>
         )}
       </div>
+
+      <Sheet open={historySheetOpen} onOpenChange={setHistorySheetOpen}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader className="flex-row items-center justify-between gap-3 border-b border-border pe-12">
+            <SheetTitle>{t("history.sectionTitle")}</SheetTitle>
+            {canExportHistory && (
+              <a
+                href={getTicketHistoryExportUrl(ticketId)}
+                download
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <Download className="size-3" />
+                {t("history.exportButton")}
+              </a>
+            )}
+          </SheetHeader>
+          <div className="min-h-0 flex-1 px-4 pb-4">
+            <ScrollArea className="h-full pe-3">
+              <ul className="flex flex-col gap-3">{reverseChronologicalEvents.map(renderHistoryEventRow)}</ul>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

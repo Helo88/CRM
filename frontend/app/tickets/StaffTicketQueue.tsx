@@ -10,7 +10,7 @@ import { TicketFilterBar } from "./TicketFilterBar";
 import { StatusQuickFilterChips } from "./StatusQuickFilterChips";
 import { ReassignAgentMenu } from "./ReassignAgentMenu";
 
-export type TicketCreationChannel = "customer_portal" | "phone" | "email" | "in_person" | "other";
+export type TicketCreationChannel = "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other";
 
 export interface StaffTicketRow {
   id: string;
@@ -91,6 +91,7 @@ const PRIORITY_BADGE_CLASS: Record<StaffTicketRow["priority"], string> = {
 // than competing visually with status/priority's semantic colors.
 const SOURCE_LABEL_KEY: Record<TicketCreationChannel, string> = {
   customer_portal: "sourceCustomer",
+  ai: "sourceAi",
   phone: "sourceStaffPhone",
   email: "sourceStaffEmail",
   in_person: "sourceStaffInPerson",
