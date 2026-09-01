@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
@@ -13,6 +13,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggleButton } from "@/components/ThemeToggleButton";
 import { LocaleToggleButton } from "@/components/LocaleToggleButton";
 import { MobileStaffNav } from "@/components/MobileStaffNav";
+import { SmoothAnchor } from "@/app/_landing/SmoothAnchor";
 
 // Present on every page (rendered from RootLayout) so there's always a way
 // back home and, for a signed-in user, a way to reach their profile,
@@ -42,6 +43,14 @@ export async function SiteHeader() {
     : {};
   const isStaff = role === "agent" || role === "admin" || role === "subadmin";
   const t = await getTranslations("Nav");
+  // Merged in rather than a second nav bar stacked below this one — the
+  // landing page's own section-anchor links (How it works / Product /
+  // Workflow / Who it's for), shown only when this header is rendering on
+  // "/" itself. x-pathname is set by proxy.ts; Server Components/layouts
+  // have no built-in way to read the current route otherwise.
+  const pathname = (await headers()).get("x-pathname");
+  const isHome = pathname === "/";
+  const tHome = await getTranslations("Home.Nav");
 
   const theme: Theme = cookieStore.get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
   const cookieLocale = cookieStore.get(LOCALE_COOKIE)?.value;
@@ -63,6 +72,34 @@ export async function SiteHeader() {
         >
           {t("brand")}
         </Link>
+        {isHome && !isSignedIn && (
+          <div className="mx-auto hidden items-center gap-6 lg:flex">
+            <SmoothAnchor
+              href="#solution"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {tHome("howItWorks")}
+            </SmoothAnchor>
+            <SmoothAnchor
+              href="#product"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {tHome("product")}
+            </SmoothAnchor>
+            <SmoothAnchor
+              href="#workflow"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {tHome("workflow")}
+            </SmoothAnchor>
+            <SmoothAnchor
+              href="#value"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {tHome("whoItsFor")}
+            </SmoothAnchor>
+          </div>
+        )}
         <nav className="ms-auto flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
           {isSignedIn ? (
             isStaff ? (
