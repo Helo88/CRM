@@ -18,7 +18,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: { default: "AzmSquad Customer Service", template: "%s · AzmSquad" },
+  title: { default: "SquadCrm Customer Service", template: "%s · SquadCrm" },
   description: "Customer service platform — live chat and ticket support.",
 };
 
