@@ -28,7 +28,7 @@ import { applyStatusTransition, InvalidStatusTransitionError } from "../services
 import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
 import { buildTicketHistory, TicketNotFoundError, TicketHistoryEvent } from "../services/ticketHistory.service";
 import { resolveTicketSlaTargets, recomputeTicketSla, computeSlaStatus } from "../services/sla.service";
-import { summarizeTicket } from "../services/summary.service";
+import { summarizeTicket, summaryOutcomeStatus } from "../services/summary.service";
 
 const router = express.Router();
 
@@ -1338,7 +1338,7 @@ router.post(
 
     const outcome = await summarizeTicket(req.params.id);
     if (!outcome.ok) {
-      res.status(outcome.reason === "not_enough_messages" ? 409 : 503).json({ error: outcome.reason });
+      res.status(summaryOutcomeStatus(outcome)).json({ error: outcome.reason });
       return;
     }
     res.status(200).json({ summary: outcome.summary });

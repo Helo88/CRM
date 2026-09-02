@@ -28,6 +28,31 @@ const SYSTEM_PREAMBLE =
   "account; you already have it. Only ask for details specific to the problem " +
   "itself (e.g. an order number, a screenshot, steps to reproduce).";
 
+// Grounding facts about what this specific platform actually contains --
+// added after live testing surfaced Gemini inventing a "Help section ->
+// Contact Us" navigation flow and an account "membership switching" feature,
+// neither of which exist. Without this, the model has zero information about
+// this app's real pages/features and falls back to generic SaaS-support
+// boilerplate that happens to sound plausible but is simply wrong for this
+// product. Keep this in sync with the actual customer-facing surface
+// (frontend/app/support/page.tsx and its three cards) -- if a real feature
+// changes shape, this text goes stale and starts producing the same kind of
+// hallucination it was written to prevent.
+const PLATFORM_FACTS =
+  "Facts about this specific platform -- get these right, and do not invent a " +
+  "different navigation path, button, page, or feature that isn't listed here: " +
+  "To open a NEW support ticket, the customer goes to the 'Get support' page " +
+  "(linked from the main navigation) and clicks 'Submit a ticket', which opens a " +
+  "ticket form -- or you (the AI Agent) can offer to open one for them directly in " +
+  "this chat if that fits the conversation. There is no 'Contact Us' page and no " +
+  "'Help section' inside a dashboard for opening tickets -- do not describe one. " +
+  "The 'Help' page/link is a SEPARATE self-service knowledge base of FAQs and help " +
+  "articles for browsing, not for submitting a ticket. There is no account " +
+  "'membership switching', multi-account, or account-linking feature of any kind " +
+  "-- never claim one exists. If you are not confident a specific button, page, or " +
+  "feature exists, describe the goal in general terms instead of naming a UI " +
+  "element you are not certain about.";
+
 async function fetchTranscript(conversationId: string): Promise<string> {
   const history = await Message.find({ parentType: "conversation", parentId: conversationId })
     .sort({ createdAt: -1 })
@@ -66,7 +91,7 @@ export async function getAiReply(conversationId: string): Promise<string | null>
       fetchCustomerContext(conversationId),
       fetchTranscript(conversationId),
     ]);
-    const prompt = `${SYSTEM_PREAMBLE}\n\n${customerContext}${transcript}\nAI Agent:`;
+    const prompt = `${SYSTEM_PREAMBLE}\n\n${PLATFORM_FACTS}\n\n${customerContext}${transcript}\nAI Agent:`;
 
     const reply = await generateText(prompt);
     if (!reply || reply.trim().length === 0) {

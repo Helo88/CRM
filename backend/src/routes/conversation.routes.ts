@@ -7,7 +7,7 @@ import { validateBody } from "../middleware/validate";
 import { createConversationSchema } from "../validation/conversation.schema";
 import { hasPermission } from "../services/permissions";
 import { resolveConversationSlaTargets, computeSlaStatus } from "../services/sla.service";
-import { summarizeConversation } from "../services/summary.service";
+import { summarizeConversation, summaryOutcomeStatus } from "../services/summary.service";
 
 const router = express.Router();
 
@@ -199,7 +199,7 @@ router.post(
 
     const outcome = await summarizeConversation(req.params.id);
     if (!outcome.ok) {
-      res.status(outcome.reason === "not_enough_messages" ? 409 : 503).json({ error: outcome.reason });
+      res.status(summaryOutcomeStatus(outcome)).json({ error: outcome.reason });
       return;
     }
     res.status(200).json({ summary: outcome.summary });

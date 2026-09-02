@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { useTranslations } from "next-intl";
 import { Send, CircleAlert, Sparkles } from "lucide-react";
@@ -20,9 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { summarizeConversationAction } from "./summarizeAction";
-
-type SummarizeErrorReason = "not_enough_messages" | "ai_unavailable" | "forbidden";
+import { useSummarize, SummaryResultPanel } from "@/components/SummaryPanel";
 
 export interface AgentChatMessage {
   _id: string;
@@ -80,12 +78,6 @@ export function AgentChatPanel({
   // in-panel message — never the connection-teardown "conversation:error"
   // path below, which is reserved for the pre-join handshake failing.
   const [claimError, setClaimError] = useState<string | null>(null);
-  // ai-features Story 32: independent of connection/claim state — summarizing
-  // reads the persisted thread over REST, not the live socket, so it works
-  // even mid-"connecting" or before anyone has claimed the chat.
-  const [summary, setSummary] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState<SummarizeErrorReason | undefined>();
-  const [summaryPending, startSummaryTransition] = useTransition();
   const socketRef = useRef<Socket | null>(null);
   const hasJoinedRef = useRef(false);
 
@@ -173,27 +165,27 @@ export function AgentChatPanel({
     socketRef.current?.emit("conversation:unclaim", { conversationId });
   }
 
-  function handleSummarize() {
-    setSummaryError(undefined);
-    startSummaryTransition(async () => {
-      const result = await summarizeConversationAction(conversationId);
-      if (result.ok) {
-        setSummary(result.summary);
-      } else {
-        setSummary(null);
-        setSummaryError(result.reason);
-      }
-    });
-  }
-
   const isClosed = conversationStatus === "resolved";
   const isClaimant = claimant?.id === currentUserId;
   const isDisabled = status !== "connected" || isClosed || !isClaimant;
-  const realMessageCount = messages.filter((m) => m.senderType !== "system").length;
-  const summaryDisabled = !canSummarize || realMessageCount < 2;
+  // Counts every message, including "system" ones (e.g. the escalation
+  // ack) — matching summary.service.ts's own MIN_MESSAGES check exactly, so
+  // this button is never disabled for a thread the backend would actually
+  // summarize. An earlier version filtered system messages out here only,
+  // which disagreed with both the backend and the ticket-side equivalent
+  // (TicketSummaryPanel.tsx) and could leave the button wrongly disabled
+  // right after an escalation.
+  const {
+    summary,
+    error: summaryError,
+    pending: summaryPending,
+    disabled: summaryDisabled,
+    tooFewMessages: summaryTooFewMessages,
+    handleSummarize,
+  } = useSummarize("conversations", conversationId, canSummarize, messages.length);
   const summaryDisabledTitle = !canSummarize
     ? t("summary.noPermission")
-    : realMessageCount < 2
+    : summaryTooFewMessages
       ? t("summary.notEnoughMessages")
       : undefined;
 
@@ -243,26 +235,13 @@ export function AgentChatPanel({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2 overflow-y-auto">
-        {(summary || summaryError) && (
-          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t("summary.panelTitle")}
-            </p>
-            {summaryError === "not_enough_messages" && (
-              <p className="text-muted-foreground">{t("summary.notEnoughMessages")}</p>
-            )}
-            {summaryError === "forbidden" && <p className="text-muted-foreground">{t("summary.noPermission")}</p>}
-            {summaryError === "ai_unavailable" && (
-              <div className="flex flex-col items-start gap-2">
-                <p className="text-muted-foreground">{t("summary.aiUnavailable")}</p>
-                <Button type="button" size="sm" variant="outline" disabled={summaryPending} onClick={handleSummarize}>
-                  {t("summary.retry")}
-                </Button>
-              </div>
-            )}
-            {summary && <pre className="whitespace-pre-wrap font-sans text-sm">{summary}</pre>}
-          </div>
-        )}
+        <SummaryResultPanel
+          namespace="AgentChats"
+          summary={summary}
+          error={summaryError}
+          pending={summaryPending}
+          onRetry={handleSummarize}
+        />
         {errorMessage && (
           <Alert variant="destructive">
             <CircleAlert />

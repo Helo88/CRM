@@ -2807,6 +2807,19 @@ describe("POST /api/v1/tickets/:id/summarize (ai-features Story 32)", () => {
     expect(res.body.error).toBe("not_enough_messages");
   });
 
+  it("returns 404 when the service reports not_found", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: false, reason: "not_found" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("not_found");
+  });
+
   it("returns 503 when the service reports ai_unavailable", async () => {
     const ticket = await seedTicket();
     const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });

@@ -268,7 +268,8 @@
     "accountDeactivated": "This account has been deactivated. Contact an administrator for access.",
     "invalidEmail": "Enter a valid email address.",
     "passwordRequired": "Password is required.",
-    "fillDemo": "Fill demo credentials"
+    "fillDemo": "Fill demo credentials",
+    "fillAdmin": "Fill admin credentials"
   },
   "AuthHero": {
     "heading": "Get help your way",
@@ -814,7 +815,8 @@
       "kb:article_delete": "Delete help articles",
       "reports:view": "View reports",
       "reports:export": "Export reports",
-      "ai:override_category": "Override AI category suggestions"
+      "ai:override_category": "Override AI category suggestions",
+      "ai:summarize": "Summarize a ticket or chat with AI"
     }
   },
   "CustomerProfile": {
@@ -1023,6 +1025,7 @@
       "loading": "Summarizing…",
       "panelTitle": "AI summary",
       "notEnoughMessages": "Not enough messages to summarize yet.",
+      "notFound": "This thread no longer exists.",
       "aiUnavailable": "AI summary is currently unavailable. Please try again.",
       "noPermission": "You don't have permission to summarize.",
       "retry": "Retry"
@@ -1112,6 +1115,7 @@
       "loading": "Summarizing…",
       "panelTitle": "AI summary",
       "notEnoughMessages": "Not enough messages to summarize yet.",
+      "notFound": "This thread no longer exists.",
       "aiUnavailable": "AI summary is currently unavailable. Please try again.",
       "noPermission": "You don't have permission to summarize.",
       "retry": "Retry"

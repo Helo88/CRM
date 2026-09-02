@@ -19,6 +19,12 @@ const INITIAL_STATE: AuthActionState = { error: null };
 const DEMO_EMAIL = "demo@azmsquad.com";
 const DEMO_PASSWORD = "Demo@12345";
 
+// Seeded by `npm run seed:admin` in backend/ (backend/scripts/seed-admin.ts)
+// — same one-click-exploration rationale as the demo customer above, for
+// staff-side (admin) screens.
+const ADMIN_EMAIL = "admin@azmsquad.com";
+const ADMIN_PASSWORD = "Admin@12345";
+
 export function LoginForm() {
   const t = useTranslations("Login");
   const tAuth = useTranslations("Auth");
@@ -80,16 +86,28 @@ export function LoginForm() {
         <Button type="submit" disabled={pending} className="transition-transform active:scale-[0.98]">
           {pending ? t("submitPending") : t("submit")}
         </Button>
-        <button
-          type="button"
-          onClick={() => {
-            setEmail(DEMO_EMAIL);
-            setPassword(DEMO_PASSWORD);
-          }}
-          className="rounded-xl border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-        >
-          {t("fillDemo")}
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEmail(DEMO_EMAIL);
+              setPassword(DEMO_PASSWORD);
+            }}
+            className="rounded-xl border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            {t("fillDemo")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail(ADMIN_EMAIL);
+              setPassword(ADMIN_PASSWORD);
+            }}
+            className="rounded-xl border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            {t("fillAdmin")}
+          </button>
+        </div>
         <p className="text-center text-sm text-muted-foreground">
           {t("noAccount")}{" "}
           <Link href="/register" className="text-primary underline-offset-4 hover:underline">

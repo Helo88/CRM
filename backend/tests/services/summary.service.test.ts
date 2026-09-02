@@ -78,10 +78,10 @@ describe("summarizeTicket (ai-features Story 32)", () => {
     expect(outcome).toEqual({ ok: false, reason: "not_enough_messages" });
   });
 
-  it("returns not_enough_messages when the ticket doesn't exist", async () => {
+  it("returns not_found when the ticket doesn't exist", async () => {
     const outcome = await summarizeTicket(new mongoose.Types.ObjectId().toHexString());
 
-    expect(outcome).toEqual({ ok: false, reason: "not_enough_messages" });
+    expect(outcome).toEqual({ ok: false, reason: "not_found" });
   });
 
   it("returns ai_unavailable when generateText resolves to null", async () => {
@@ -171,10 +171,10 @@ describe("summarizeConversation (ai-features Story 32)", () => {
     expect(outcome).toEqual({ ok: false, reason: "not_enough_messages" });
   });
 
-  it("returns not_enough_messages when the conversation doesn't exist", async () => {
+  it("returns not_found when the conversation doesn't exist", async () => {
     const outcome = await summarizeConversation(new mongoose.Types.ObjectId().toHexString());
 
-    expect(outcome).toEqual({ ok: false, reason: "not_enough_messages" });
+    expect(outcome).toEqual({ ok: false, reason: "not_found" });
   });
 
   it("returns ai_unavailable when generateText resolves to null", async () => {

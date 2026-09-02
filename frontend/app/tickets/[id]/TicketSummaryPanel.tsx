@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { summarizeTicketAction } from "./summarizeAction";
-
-type SummarizeErrorReason = "not_enough_messages" | "ai_unavailable" | "forbidden";
+import { useSummarize, SummaryResultPanel } from "@/components/SummaryPanel";
 
 // ai-features Story 32: one-click, never-persisted AI summary of this
 // ticket's thread. The plan's i18n task listed issueLabel/triedLabel/
@@ -27,30 +24,17 @@ export function TicketSummaryPanel({
   messageCount: number;
 }) {
   const t = useTranslations("TicketDetail");
-  const [summary, setSummary] = useState<string | null>(null);
-  const [error, setError] = useState<SummarizeErrorReason | undefined>();
-  const [pending, startTransition] = useTransition();
-
-  const tooFewMessages = messageCount < 2;
-  const disabled = !canSummarize || tooFewMessages;
+  const { summary, error, pending, disabled, tooFewMessages, handleSummarize } = useSummarize(
+    "tickets",
+    ticketId,
+    canSummarize,
+    messageCount
+  );
   const disabledTitle = !canSummarize
     ? t("summary.noPermission")
     : tooFewMessages
       ? t("summary.notEnoughMessages")
       : undefined;
-
-  function handleSummarize() {
-    setError(undefined);
-    startTransition(async () => {
-      const result = await summarizeTicketAction(ticketId);
-      if (result.ok) {
-        setSummary(result.summary);
-      } else {
-        setSummary(null);
-        setError(result.reason);
-      }
-    });
-  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -68,24 +52,7 @@ export function TicketSummaryPanel({
           {pending ? t("summary.loading") : summary ? t("summary.regenerate") : t("summary.button")}
         </Button>
       </div>
-      {(summary || error) && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t("summary.panelTitle")}
-          </p>
-          {error === "not_enough_messages" && <p className="text-muted-foreground">{t("summary.notEnoughMessages")}</p>}
-          {error === "forbidden" && <p className="text-muted-foreground">{t("summary.noPermission")}</p>}
-          {error === "ai_unavailable" && (
-            <div className="flex flex-col items-start gap-2">
-              <p className="text-muted-foreground">{t("summary.aiUnavailable")}</p>
-              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={handleSummarize}>
-                {t("summary.retry")}
-              </Button>
-            </div>
-          )}
-          {summary && <pre className="whitespace-pre-wrap font-sans text-sm">{summary}</pre>}
-        </div>
-      )}
+      <SummaryResultPanel namespace="TicketDetail" summary={summary} error={error} pending={pending} onRetry={handleSummarize} />
     </div>
   );
 }

@@ -43,7 +43,7 @@ export const PERMISSION_CATEGORIES: Record<string, string[]> = {
     "kb:article_delete",
   ],
   reports: ["reports:view", "reports:export"],
-  ai: ["ai:override_category"],
+  ai: ["ai:override_category", "ai:summarize"],
 };
 
 // Staff/system-administration keys — sub-admin only, never assignable to an

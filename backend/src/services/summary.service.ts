@@ -19,10 +19,19 @@ export interface SummaryResult {
 
 export interface SummaryError {
   ok: false;
-  reason: "not_enough_messages" | "ai_unavailable";
+  reason: "not_found" | "not_enough_messages" | "ai_unavailable";
 }
 
 export type SummaryOutcome = SummaryResult | SummaryError;
+
+// Shared by both routes so the reason->status mapping lives in one place
+// instead of being copy-pasted (and drifting) across ticket.routes.ts and
+// conversation.routes.ts.
+export function summaryOutcomeStatus(outcome: SummaryError): number {
+  if (outcome.reason === "not_found") return 404;
+  if (outcome.reason === "not_enough_messages") return 409;
+  return 503;
+}
 
 const MIN_MESSAGES = 2;
 const TRANSCRIPT_LIMIT = 50;
@@ -46,10 +55,8 @@ interface TranscriptMessage {
   text: string;
 }
 
-function buildTranscript(messages: TranscriptMessage[]): string {
-  const truncated = messages.length > TRANSCRIPT_LIMIT;
-  const slice = truncated ? messages.slice(messages.length - TRANSCRIPT_LIMIT) : messages;
-  const lines = slice.map(
+function buildTranscript(messages: TranscriptMessage[], truncated: boolean): string {
+  const lines = messages.map(
     (m) => `[${m.createdAt.toISOString()}] ${roleLabel(m.senderType, m.internal)}: ${m.text}`
   );
   if (truncated) lines.unshift("[transcript truncated to last 50 messages]");
@@ -82,18 +89,44 @@ async function callSummaryModel(contextLine: string, transcript: string): Promis
   return { ok: true, summary: result.trim() };
 }
 
+// Shared tail of summarizeTicket/summarizeConversation below — both do
+// "count -> min-messages guard -> fetch the last TRANSCRIPT_LIMIT messages ->
+// build transcript -> call the model" identically, differing only in which
+// parentType they query and the one-line context they hand the prompt.
+//
+// The count is a separate query run BEFORE the message fetch (not
+// Promise.all'd with it) so a thread below MIN_MESSAGES skips fetching any
+// message bodies at all, and so the fetch below can skip/limit to exactly
+// the tail it needs instead of pulling the whole history into memory just to
+// slice it in application code. `.skip(total - TRANSCRIPT_LIMIT)` keeps the
+// same ascending sort direction (and therefore the same tie-break behavior
+// for same-millisecond timestamps) as a plain ascending query would have —
+// sorting descending-then-reversing here would risk a different tie order.
+async function summarizeThread(
+  parentType: "ticket" | "conversation",
+  parentId: string,
+  contextLine: string
+): Promise<SummaryOutcome> {
+  const totalCount = await Message.countDocuments({ parentType, parentId });
+  if (totalCount < MIN_MESSAGES) return { ok: false, reason: "not_enough_messages" };
+
+  const truncated = totalCount > TRANSCRIPT_LIMIT;
+  const messages = await Message.find({ parentType, parentId })
+    .sort({ createdAt: 1 })
+    .skip(Math.max(0, totalCount - TRANSCRIPT_LIMIT))
+    .limit(TRANSCRIPT_LIMIT)
+    .lean();
+
+  return await callSummaryModel(contextLine, buildTranscript(messages, truncated));
+}
+
 export async function summarizeTicket(ticketId: string): Promise<SummaryOutcome> {
   try {
     const ticket = await Ticket.findById(ticketId).select("ticketNumber subject status priority");
-    if (!ticket) return { ok: false, reason: "not_enough_messages" };
-
-    const messages = await Message.find({ parentType: "ticket", parentId: ticketId })
-      .sort({ createdAt: 1 })
-      .lean();
-    if (messages.length < MIN_MESSAGES) return { ok: false, reason: "not_enough_messages" };
+    if (!ticket) return { ok: false, reason: "not_found" };
 
     const contextLine = `Ticket #${ticket.ticketNumber} — "${ticket.subject}" (status: ${ticket.status}, priority: ${ticket.priority}).`;
-    return await callSummaryModel(contextLine, buildTranscript(messages));
+    return await summarizeThread("ticket", ticketId, contextLine);
   } catch (err) {
     console.error("[summary] summarizeTicket failed:", (err as Error).message);
     return { ok: false, reason: "ai_unavailable" };
@@ -103,15 +136,10 @@ export async function summarizeTicket(ticketId: string): Promise<SummaryOutcome>
 export async function summarizeConversation(conversationId: string): Promise<SummaryOutcome> {
   try {
     const conversation = await Conversation.findById(conversationId).select("status");
-    if (!conversation) return { ok: false, reason: "not_enough_messages" };
-
-    const messages = await Message.find({ parentType: "conversation", parentId: conversationId })
-      .sort({ createdAt: 1 })
-      .lean();
-    if (messages.length < MIN_MESSAGES) return { ok: false, reason: "not_enough_messages" };
+    if (!conversation) return { ok: false, reason: "not_found" };
 
     const contextLine = `Live chat conversation (status: ${conversation.status}).`;
-    return await callSummaryModel(contextLine, buildTranscript(messages));
+    return await summarizeThread("conversation", conversationId, contextLine);
   } catch (err) {
     console.error("[summary] summarizeConversation failed:", (err as Error).message);
     return { ok: false, reason: "ai_unavailable" };
