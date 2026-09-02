@@ -19,6 +19,7 @@ import {
   updateTicketStatusSchema,
   escalateTicketBodySchema,
   replyToTicketBodySchema,
+  postInternalNoteBodySchema,
   listTicketsQuerySchema,
   ALLOWED_PRIORITIES,
 } from "../validation/ticket.schema";
@@ -488,6 +489,32 @@ router.get(
   "/escalation-targets",
   requireAuth,
   requirePermission("tickets:escalate"),
+  async (req: Request, res: Response) => {
+    const targets = await User.find({
+      _id: { $ne: req.user!.id },
+      role: { $in: ["agent", "admin", "subadmin"] },
+      isActive: true,
+      isDeleted: false,
+    })
+      .select("_id name role")
+      .sort({ name: 1 })
+      .lean();
+    res.status(200).json(targets.map((u) => ({ id: u._id.toString(), name: u.name, role: u.role })));
+  }
+);
+
+// agent-workspace Story 24: backs the internal-note composer's "Tag
+// colleagues" picker. Same recipient set as /escalation-targets above
+// (agent/admin/subadmin, active, excluding the caller) but its own endpoint
+// gated on tickets:post_internal_note rather than tickets:escalate — the two
+// permissions are independently grantable, so reusing the escalation
+// endpoint would silently return an empty picker to an agent who can post
+// notes but not escalate. Registered before GET /:id for the same
+// "don't get swallowed as an :id" reason /assignable-agents documents.
+router.get(
+  "/internal-note-taggables",
+  requireAuth,
+  requirePermission("tickets:post_internal_note"),
   async (req: Request, res: Response) => {
     const targets = await User.find({
       _id: { $ne: req.user!.id },
@@ -1037,13 +1064,33 @@ type MessageFields = Pick<IMessage, "text" | "senderType" | "internal" | "attach
   _id: Types.ObjectId;
 };
 
-function toMessageResponse(message: MessageFields, sender: MessageSenderFields | null) {
+// agent-workspace Story 24: resolved on the way out so the thread can render
+// mention chips without a second round-trip.
+interface TaggedUserFields {
+  id: string;
+  name: string;
+  role: string;
+}
+
+// agent-workspace Story 24 — internal notes must NEVER be returned to the
+// customer. The query filter below is the real boundary; `omitInternalField`
+// is the DTO half of it: a customer-facing response doesn't even acknowledge
+// the concept of an internal message, so the flag itself is dropped rather
+// than serialized as a constant `false`.
+function toMessageResponse(
+  message: MessageFields,
+  sender: MessageSenderFields | null,
+  opts: { omitInternalField?: boolean; taggedUsers?: TaggedUserFields[] } = {}
+) {
   return {
     id: message._id.toString(),
     text: message.text,
     senderType: message.senderType,
     sender,
-    internal: message.internal,
+    ...(opts.omitInternalField ? {} : { internal: message.internal }),
+    // Only ever present on an internal note, and never on a customer-facing
+    // response (a customer never receives an internal message at all).
+    ...(opts.taggedUsers ? { taggedUsers: opts.taggedUsers } : {}),
     attachments: message.attachments.map((a) => ({
       id: a._id.toString(),
       fileName: a.fileName,
@@ -1083,17 +1130,37 @@ router.get(
 
     const filter: Record<string, unknown> = { parentType: "ticket", parentId: ticket._id };
     if (isCustomerCaller) {
+      // agent-workspace Story 24 — internal notes must NEVER be returned to
+      // the customer. Excluded in the DB query (not a post-fetch .filter)
+      // so the rows never leave Mongo in the first place.
       filter.internal = { $ne: true };
     }
 
-    const messages = await Message.find(filter)
+    const query = Message.find(filter)
       .sort({ createdAt: 1 })
       .populate<{ senderId: { _id: Types.ObjectId; name: string } | null }>("senderId", "name");
+    // agent-workspace Story 24: only a staff caller can ever receive an
+    // internal note, so the tagged-colleague join is skipped entirely for a
+    // customer rather than populated and then discarded.
+    if (!isCustomerCaller) {
+      query.populate<{ taggedUserIds: { _id: Types.ObjectId; name: string; role: string }[] }>(
+        "taggedUserIds",
+        "name role"
+      );
+    }
+    const messages = await query;
 
     res.status(200).json(
-      messages.map((m) =>
-        toMessageResponse(m, m.senderId ? { id: m.senderId._id.toString(), name: m.senderId.name } : null)
-      )
+      messages.map((m) => {
+        const tagged = m.taggedUserIds as unknown as { _id: Types.ObjectId; name: string; role: string }[];
+        return toMessageResponse(m, m.senderId ? { id: m.senderId._id.toString(), name: m.senderId.name } : null, {
+          omitInternalField: isCustomerCaller,
+          taggedUsers:
+            !isCustomerCaller && m.internal
+              ? (tagged ?? []).map((u) => ({ id: u._id.toString(), name: u.name, role: u.role }))
+              : undefined,
+        });
+      })
     );
   }
 );
@@ -1200,6 +1267,119 @@ router.post(
 
     const sender = await User.findById(req.user!.id, { name: 1 });
     res.status(201).json(toMessageResponse(message, sender ? { id: sender.id, name: sender.name } : null));
+  }
+);
+
+// agent-workspace Story 24: post an agent-only internal note on a ticket,
+// optionally tagging colleagues who each get a
+// "ticket_internal_note_mention" notification. Mounted next to POST
+// /:id/messages above because it writes the same Message document — the only
+// differences are `internal: true`, no customer email, and no status flip
+// (an internal note is a team-side annotation, not an answer to the
+// customer, so it must not move the ticket to "answered").
+//
+// Ticket-level authorization is exactly POST /:id/messages' —
+// requirePermission plus "the ticket exists". That endpoint deliberately has
+// no assignedAgent/ownership narrowing (any staff account that can see a
+// ticket can reply to it, see GET /:id), so there is no per-ticket primitive
+// to reuse or extract here; adding one only for internal notes would make
+// them *stricter* than customer-visible replies, which is backwards.
+//
+// No Socket.io emit: the ticket detail page has no ticket-scoped socket
+// channel today (sockets/chat.socket.ts is conversation-only), so there is
+// nothing to emit into — the page revalidates on the server action instead.
+// Left for the future story that gives tickets a live thread.
+router.post(
+  "/:id/internal-notes",
+  requireAuth,
+  requirePermission("tickets:post_internal_note"),
+  validateBody(postInternalNoteBodySchema),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const ticket = await Ticket.findById(req.params.id).select("_id");
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const { text, taggedUserIds } = req.body as { text: string; taggedUserIds: string[] };
+
+    // Dedupe first (the same colleague picked twice must never produce two
+    // notifications), then drop the author's own id — mentioning yourself is
+    // a no-op, not an error, so it's silently removed rather than rejected.
+    const requestedIds = [...new Set(taggedUserIds)].filter((id) => id !== req.user!.id);
+
+    let taggedUsers: { _id: Types.ObjectId; name: string; role: string }[] = [];
+    if (requestedIds.length > 0) {
+      // Fetched WITHOUT the role/isActive filter so each rejected id can be
+      // reported with the reason it failed, rather than a single opaque
+      // "one of these is invalid".
+      const found = await User.find({ _id: { $in: requestedIds } })
+        .select("_id name role isActive isDeleted")
+        .lean();
+      const foundById = new Map(found.map((u) => [u._id.toString(), u]));
+
+      const errors: Record<string, string> = {};
+      for (const id of requestedIds) {
+        const user = foundById.get(id);
+        if (!user || user.isDeleted) {
+          errors[id] = "No such user";
+        } else if (!["agent", "admin", "subadmin"].includes(user.role)) {
+          // Customers can never be tagged — an internal note is invisible to
+          // them by definition, so notifying one would be a privacy leak in
+          // the other direction (telling a customer the note exists).
+          errors[id] = "Only agents, sub-admins and admins can be tagged";
+        } else if (!user.isActive) {
+          errors[id] = "This account is deactivated";
+        }
+      }
+      if (Object.keys(errors).length > 0) {
+        res.status(400).json({ error: "One or more tagged colleagues can't be tagged", taggedUserIdErrors: errors });
+        return;
+      }
+
+      taggedUsers = requestedIds.map((id) => {
+        const user = foundById.get(id)!;
+        return { _id: user._id, name: user.name, role: user.role };
+      });
+    }
+
+    const message = await Message.create({
+      parentType: "ticket",
+      parentId: ticket._id,
+      senderType: "agent",
+      senderId: req.user!.id,
+      text,
+      internal: true,
+      taggedUserIds: taggedUsers.map((u) => u._id),
+      attachments: [],
+    });
+
+    // Best-effort, in parallel, never rolling back the note: allSettled (not
+    // Promise.all) so one failed insert can't reject the batch — same
+    // "a notification is a side effect of the real action" contract
+    // notification.service.ts already documents.
+    await Promise.allSettled(
+      taggedUsers.map((user) =>
+        createTicketNotification({
+          recipient: user._id,
+          type: "ticket_internal_note_mention",
+          ticketId: ticket._id,
+        })
+      )
+    );
+
+    const sender = await User.findById(req.user!.id, { name: 1 });
+    res.status(201).json(
+      toMessageResponse(message, sender ? { id: sender.id, name: sender.name } : null, {
+        // Already resolved above, so returned inline rather than re-fetched
+        // — the composer renders mention chips with no second round-trip.
+        taggedUsers: taggedUsers.map((u) => ({ id: u._id.toString(), name: u.name, role: u.role })),
+      })
+    );
   }
 );
 

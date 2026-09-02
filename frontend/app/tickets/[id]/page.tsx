@@ -49,7 +49,12 @@ export interface TicketMessage {
   text: string;
   senderType: "customer" | "agent" | "ai" | "system";
   sender: { id: string; name: string } | null;
-  internal: boolean;
+  // agent-workspace Story 24: optional because a customer-facing response
+  // omits the field entirely — the customer surface doesn't acknowledge the
+  // concept of an internal message, it doesn't just report `false`.
+  internal?: boolean;
+  // Only present on an internal note read by a staff viewer.
+  taggedUsers?: { id: string; name: string; role: string }[];
   attachments: TicketMessageAttachment[];
   createdAt: string;
 }
@@ -175,6 +180,11 @@ export default async function TicketDetailPage({
   const canCategorize = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:categorize"));
   const canChangePriority = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:change_priority"));
   const canReply = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reply"));
+  // agent-workspace Story 24: independently grantable from tickets:reply —
+  // an internal note is never emailed to the customer and never flips the
+  // ticket to "answered", so an account can hold one key without the other.
+  const canPostInternalNote =
+    isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:post_internal_note"));
   const canReassign = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:reassign"));
   // Story 11: two independent keys, same "check separately" shape as the
   // other per-field booleans above — an account can hold either without
@@ -257,7 +267,7 @@ export default async function TicketDetailPage({
                   ) : (
                     <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
                   )}
-                  <TicketMessageThread messages={messages} ticketId={ticket.id} />
+                  <TicketMessageThread messages={messages} ticketId={ticket.id} staffViewer={isStaffViewer} />
                   {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
                   {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
                   {/* Story 11: a closed ticket is read-only — the composer never
@@ -265,7 +275,18 @@ export default async function TicketDetailPage({
                   {isLocked && isStaffViewer && (
                     <p className="text-xs italic text-muted-foreground">{t("ticketClosedReadOnly")}</p>
                   )}
-                  {canReply && !isLocked && <TicketReplyComposer ticketId={ticket.id} />}
+                  {/* agent-workspace Story 24: the composer renders whenever
+                      the viewer can do EITHER thing — an account holding only
+                      tickets:post_internal_note still needs a way in, and one
+                      holding only tickets:reply sees exactly what it saw
+                      before this story. */}
+                  {(canReply || canPostInternalNote) && !isLocked && (
+                    <TicketReplyComposer
+                      ticketId={ticket.id}
+                      canReply={canReply}
+                      canPostInternalNote={canPostInternalNote}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>

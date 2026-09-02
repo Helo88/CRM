@@ -20,7 +20,9 @@ export type NotificationType =
   | "ticket_reopened_oversight"
   | "chat_needs_agent"
   | "sla_at_risk"
-  | "sla_breached";
+  | "sla_breached"
+  // agent-workspace Story 24: a colleague tagged you in an internal note.
+  | "ticket_internal_note_mention";
 
 // live-chat: a notification carries exactly one of ticket/conversation,
 // never both (see backend/src/routes/me.routes.ts's toNotificationItem) —

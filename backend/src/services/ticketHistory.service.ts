@@ -169,6 +169,11 @@ export async function buildTicketHistory(
 
   const messageFilter: Record<string, unknown> = { parentType: "ticket", parentId: ticket._id };
   if (options.viewerRole === "customer") {
+    // agent-workspace Story 24 — internal notes must NEVER be returned to
+    // the customer. Landed with Story 13; re-verified by Story 24, which is
+    // the feature that actually starts creating internal notes. Excluded in
+    // the DB query rather than by dropping "internal_note_added" events
+    // afterwards, so the rows never load at all.
     messageFilter.internal = { $ne: true };
   }
   const messages = await Message.find(messageFilter)
