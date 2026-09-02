@@ -11,6 +11,7 @@ import { Message } from "../../src/models/Message";
 import { Conversation } from "../../src/models/Conversation";
 import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
+import * as summaryService from "../../src/services/summary.service";
 
 const app = createApp();
 let mongod: MongoMemoryServer;
@@ -2726,5 +2727,133 @@ describe("GET /api/v1/tickets/:id/history/export (Story 13)", () => {
       .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ai-features Story 32: one-click AI summary. summary.service.ts's own unit
+// tests (summary.service.test.ts) cover the prompt/transcript logic — these
+// only cover the route's auth/permission/status-mapping contract, so
+// summarizeTicket is stubbed at the module level throughout.
+describe("POST /api/v1/tickets/:id/summarize (ai-features Story 32)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const res = await request(app).post(`/api/v1/tickets/${ticket.id}/summarize`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for an agent without ai:summarize", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer, even the ticket's own customer", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await Ticket.create({
+      subject: "Something is broken",
+      description: "Details here",
+      customer: customer._id,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a missing ticket", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${new mongoose.Types.ObjectId()}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets/not-an-object-id/summarize")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when the service reports not_enough_messages", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({
+      ok: false,
+      reason: "not_enough_messages",
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_enough_messages");
+  });
+
+  it("returns 503 when the service reports ai_unavailable", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: false, reason: "ai_unavailable" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe("ai_unavailable");
+  });
+
+  it("returns 200 with the summary on success", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ summary: "Issue: ..." });
+  });
+
+  it("succeeds for a sub-admin holding ai:summarize", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("succeeds for an admin without an explicit permission grant", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
   });
 });

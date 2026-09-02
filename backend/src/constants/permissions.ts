@@ -73,6 +73,8 @@ export const PERMISSION_KEYS = [
   "reports:view",
   "reports:export",
   "ai:override_category",
+  // ai-features Story 32: AI summary of a ticket/chat thread.
+  "ai:summarize",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -137,6 +139,14 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionK
     // customer.routes.ts) — pre-existing agent accounts won't have it and
     // need a manual grant; no backfill migration exists for this.
     "customers:manage",
+    "ai:summarize",
   ],
+  // Deliberately empty — sub-admin accounts start with no default
+  // permissions, granted individually post-creation, unlike agents above.
+  // ai-features Story 32's plan called for adding "ai:summarize" here too,
+  // but that would make it the first-ever entry in this list and break that
+  // invariant for no story-specific reason — a sub-admin who needs it can
+  // still be granted it manually like
+  // every other sub-admin permission.
   subadmin: [],
 };

@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
 import { TicketMessageThread } from "./TicketMessageThread";
 import { TicketReplyComposer } from "./TicketReplyComposer";
+import { TicketSummaryPanel } from "./TicketSummaryPanel";
 import { getTicketHistory } from "./actions";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -187,6 +188,9 @@ export default async function TicketDetailPage({
   // /:id having no tickets:view_all-style restriction), only the export
   // anchor is gated.
   const canExportHistory = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:export_history"));
+  // ai-features Story 32: agent-only, same "no bare role check" shape as
+  // every other canX flag above.
+  const canSummarize = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("ai:summarize"));
   // Story 11's read-only-when-closed rule: Category/Priority/Assigned Agent
   // lock regardless of the viewer's own permission for that field, and the
   // reply composer is hidden outright. The status control is exempt — it
@@ -248,7 +252,11 @@ export default async function TicketDetailPage({
                   </div>
                 )}
                 <div className="flex flex-col gap-3 border-t border-border pt-4">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
+                  {isStaffViewer ? (
+                    <TicketSummaryPanel ticketId={ticket.id} canSummarize={canSummarize} messageCount={messages.length} />
+                  ) : (
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
+                  )}
                   <TicketMessageThread messages={messages} ticketId={ticket.id} />
                   {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
                   {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}

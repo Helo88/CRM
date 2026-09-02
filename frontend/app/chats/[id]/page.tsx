@@ -38,7 +38,9 @@ export default async function ChatDetailPage({
     redirect("/");
   }
 
-  const { id: currentUserId } = peekJwtPayload(token);
+  const { id: currentUserId, role, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  // ai-features Story 32: agent-only, same shape as tickets/[id]/page.tsx's canSummarize.
+  const canSummarize = role === "admin" || viewerPermissions.includes("ai:summarize");
 
   const res = await fetch(`${API_URL}/api/v1/conversations/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -73,6 +75,7 @@ export default async function ChatDetailPage({
           }
           token={token}
           currentUserId={currentUserId}
+          canSummarize={canSummarize}
         />
       </main>
     </div>

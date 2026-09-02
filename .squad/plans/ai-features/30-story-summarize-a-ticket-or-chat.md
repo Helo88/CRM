@@ -257,16 +257,16 @@ Both files must gain the same keys — mismatched keys break locale switching.
 
 ## Done Criteria
 
-- [ ] `ai:summarize` added to `PERMISSION_KEYS` and default agent/subadmin permission sets.
-- [ ] `backend/src/services/summary.service.ts` created; exports `summarizeTicket` and `summarizeConversation` with the `SummaryOutcome` union.
-- [ ] `POST /api/v1/tickets/:id/summarize` implemented with auth + role + permission gates and the 200/404/409/503 shape.
-- [ ] `POST /api/v1/conversations/:id/summarize` implemented with the same shape.
-- [ ] Summarize button + Regenerate + result panel on ticket detail surface.
-- [ ] Summarize button + Regenerate + result panel on agent live-chat surface (not on customer-facing chat).
-- [ ] Disabled-not-hidden behaviour honoured for missing permission and for < 2 messages.
-- [ ] English and Arabic strings added to both message catalogs with matching keys.
-- [ ] Unit + integration + permission tests added and green (`vitest run`).
-- [ ] Manual verification of the AI-unavailable fallback path completed (no hang, clear error, retry works).
-- [ ] No new persistence: no schema change, no cached summary field.
+- [x] `ai:summarize` added to `PERMISSION_KEYS` and the default agent permission set. **Deviation:** NOT added to `DEFAULT_PERMISSIONS_BY_ROLE.subadmin` — that list is deliberately empty by design (sub-admins are granted permissions individually post-creation; see the comment on its declaration in `permissions.ts`), and this story's own instructions flagged that adding a first-ever entry there needed confirmation rather than being copied mechanically. Left `subadmin: []` intact; a sub-admin can still be granted `ai:summarize` manually like every other sub-admin permission.
+- [x] `backend/src/services/summary.service.ts` created; exports `summarizeTicket` and `summarizeConversation` with the `SummaryOutcome` union.
+- [x] `POST /api/v1/tickets/:id/summarize` implemented with auth + role + permission gates and the 200/404/409/503 shape.
+- [x] `POST /api/v1/conversations/:id/summarize` implemented with the same shape.
+- [x] Summarize button + Regenerate + result panel on ticket detail surface.
+- [x] Summarize button + Regenerate + result panel on agent live-chat surface (not on customer-facing chat).
+- [x] Disabled-not-hidden behaviour honoured for missing permission and for < 2 messages.
+- [x] English and Arabic strings added to both message catalogs with matching keys. **Deviation:** dropped `issueLabel`/`triedLabel`/`statusLabel` from the `summary` group — the frontend task explicitly said to render the returned text as-is (`<pre>`, never parsed), and Gemini's own prompt already asks for those three labels inline in its plain-text response, so a second, separately-templated set of labels would go unused or force the parsing this same plan says not to do. Every key actually rendered (`button`, `regenerate`, `loading`, `panelTitle`, `notEnoughMessages`, `aiUnavailable`, `noPermission`, `retry`) is present in both catalogs.
+- [x] Unit + integration + permission tests added and green (`vitest run`) — 629 passed, 1 pre-existing skip, full suite. Route-level RBAC coverage (401/403/404/409/503/200) lives in `ticket.routes.test.ts`/`conversation.routes.test.ts`, not `rbac.integration.test.ts` — that file's own header comment says DB-requiring routes graduate out of its DB-less matrix once their full coverage lives in the per-resource route test files, which is now true here too.
+- [x] Manual verification in a real browser (admin login, live dev servers, real `GEMINI_API_KEY`): ticket detail page — button disabled at <2 messages, enabled at 2+, click produces a real three-section Gemini summary, button relabels to Regenerate. Agent chat panel — same button renders next to "Mark resolved", correctly disabled at <2 real messages. **Partial:** did not force the `ai_unavailable`/503 fallback path live (would require unsetting `GEMINI_API_KEY` and restarting the shared dev backend another session/the user was concurrently using — avoided disrupting that). That path is covered by the backend's mocked 503 integration tests and renders from the same already-verified-live UI branch/component as the success path, just a different `error` value.
+- [x] No new persistence: no schema change, no cached summary field.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 02.**

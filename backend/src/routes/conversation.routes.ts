@@ -7,6 +7,7 @@ import { validateBody } from "../middleware/validate";
 import { createConversationSchema } from "../validation/conversation.schema";
 import { hasPermission } from "../services/permissions";
 import { resolveConversationSlaTargets, computeSlaStatus } from "../services/sla.service";
+import { summarizeConversation } from "../services/summary.service";
 
 const router = express.Router();
 
@@ -174,6 +175,34 @@ router.get(
       },
       messages,
     });
+  }
+);
+
+// ai-features Story 32: one-click, never-persisted AI summary of the
+// conversation's message thread. Same 404/409/503/200 shape as the ticket
+// route in ticket.routes.ts — see summary.service.ts.
+router.post(
+  "/:id/summarize",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin"),
+  requirePermission("ai:summarize"),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    const conversation = await Conversation.findById(req.params.id).select("_id");
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    const outcome = await summarizeConversation(req.params.id);
+    if (!outcome.ok) {
+      res.status(outcome.reason === "not_enough_messages" ? 409 : 503).json({ error: outcome.reason });
+      return;
+    }
+    res.status(200).json({ summary: outcome.summary });
   }
 );
 

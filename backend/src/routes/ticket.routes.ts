@@ -28,6 +28,7 @@ import { applyStatusTransition, InvalidStatusTransitionError } from "../services
 import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
 import { buildTicketHistory, TicketNotFoundError, TicketHistoryEvent } from "../services/ticketHistory.service";
 import { resolveTicketSlaTargets, recomputeTicketSla, computeSlaStatus } from "../services/sla.service";
+import { summarizeTicket } from "../services/summary.service";
 
 const router = express.Router();
 
@@ -1313,6 +1314,34 @@ router.get(
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="ticket-${ticket.ticketNumber}-history.json"`);
     res.status(200).send(JSON.stringify(payload, null, 2));
+  }
+);
+
+// ai-features Story 32: one-click, never-persisted AI summary of the
+// ticket's message thread. See summary.service.ts for the Gemini prompt and
+// the not-enough-messages/ai-unavailable fallback contract.
+router.post(
+  "/:id/summarize",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin"),
+  requirePermission("ai:summarize"),
+  async (req: Request<{ id: string }>, res: Response) => {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const ticket = await Ticket.findById(req.params.id).select("_id");
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const outcome = await summarizeTicket(req.params.id);
+    if (!outcome.ok) {
+      res.status(outcome.reason === "not_enough_messages" ? 409 : 503).json({ error: outcome.reason });
+      return;
+    }
+    res.status(200).json({ summary: outcome.summary });
   }
 );
 

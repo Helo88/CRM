@@ -995,6 +995,16 @@
         "slaAtRisk": "اتفاقية مستوى الخدمة في خطر",
         "slaBreached": "تم خرق اتفاقية مستوى الخدمة"
       }
+    },
+    "summary": {
+      "button": "تلخيص",
+      "regenerate": "إعادة التوليد",
+      "loading": "جارٍ التلخيص…",
+      "panelTitle": "ملخص الذكاء الاصطناعي",
+      "notEnoughMessages": "لا توجد رسائل كافية للتلخيص بعد.",
+      "aiUnavailable": "ملخص الذكاء الاصطناعي غير متاح حاليًا. يرجى المحاولة مرة أخرى.",
+      "noPermission": "ليس لديك صلاحية إجراء تلخيص.",
+      "retry": "إعادة المحاولة"
     }
   },
   "Chat": {
@@ -1074,7 +1084,17 @@
     "markResolvedConfirmTitle": "إغلاق هذه المحادثة؟",
     "markResolvedConfirmBody": "لن يتمكن العميل بعد الآن من إرسال رسائل. لا يمكن التراجع عن هذا الإجراء.",
     "markResolvedCancel": "إلغاء",
-    "markResolvedConfirm": "وضع علامة كمُنجَزة"
+    "markResolvedConfirm": "وضع علامة كمُنجَزة",
+    "summary": {
+      "button": "تلخيص",
+      "regenerate": "إعادة التوليد",
+      "loading": "جارٍ التلخيص…",
+      "panelTitle": "ملخص الذكاء الاصطناعي",
+      "notEnoughMessages": "لا توجد رسائل كافية للتلخيص بعد.",
+      "aiUnavailable": "ملخص الذكاء الاصطناعي غير متاح حاليًا. يرجى المحاولة مرة أخرى.",
+      "noPermission": "ليس لديك صلاحية إجراء تلخيص.",
+      "retry": "إعادة المحاولة"
+    }
   },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",

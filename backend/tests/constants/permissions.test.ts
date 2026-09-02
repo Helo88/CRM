@@ -173,6 +173,30 @@ describe("sla:targets_view / sla:targets_edit (Story 25)", () => {
   });
 });
 
+// ai-features Story 32: AI summary of a ticket/chat thread — a day-to-day
+// agent action, same tier as tickets:reply/categorize above, never
+// sub-admin-only. Unlike those, it's NOT in DEFAULT_PERMISSIONS_BY_ROLE.subadmin
+// either (that list is deliberately empty by design — see the comment on
+// its declaration in permissions.ts) so a fresh sub-admin needs it granted
+// manually like every other sub-admin permission.
+describe("ai:summarize (Story 32)", () => {
+  it("is a recognized permission key", () => {
+    expect(PERMISSION_KEYS).toContain("ai:summarize");
+  });
+
+  it("is not sub-admin-only", () => {
+    expect(SUBADMIN_ONLY_PERMISSIONS.has("ai:summarize")).toBe(false);
+  });
+
+  it("is granted by default to a freshly-created agent", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).toContain("ai:summarize");
+  });
+
+  it("is not granted by default to a freshly-created sub-admin (that default list is deliberately empty)", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.subadmin).not.toContain("ai:summarize");
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

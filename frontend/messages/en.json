@@ -995,6 +995,16 @@
         "slaAtRisk": "SLA at risk",
         "slaBreached": "SLA breached"
       }
+    },
+    "summary": {
+      "button": "Summarize",
+      "regenerate": "Regenerate",
+      "loading": "Summarizing…",
+      "panelTitle": "AI summary",
+      "notEnoughMessages": "Not enough messages to summarize yet.",
+      "aiUnavailable": "AI summary is currently unavailable. Please try again.",
+      "noPermission": "You don't have permission to summarize.",
+      "retry": "Retry"
     }
   },
   "Chat": {
@@ -1074,7 +1084,17 @@
     "markResolvedConfirmTitle": "Close this conversation?",
     "markResolvedConfirmBody": "The customer will no longer be able to send messages. This can't be undone.",
     "markResolvedCancel": "Cancel",
-    "markResolvedConfirm": "Mark resolved"
+    "markResolvedConfirm": "Mark resolved",
+    "summary": {
+      "button": "Summarize",
+      "regenerate": "Regenerate",
+      "loading": "Summarizing…",
+      "panelTitle": "AI summary",
+      "notEnoughMessages": "Not enough messages to summarize yet.",
+      "aiUnavailable": "AI summary is currently unavailable. Please try again.",
+      "noPermission": "You don't have permission to summarize.",
+      "retry": "Retry"
+    }
   },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",
