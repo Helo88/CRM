@@ -69,7 +69,7 @@ export async function createTicketCategoryAction(
     return { error: t("genericError") };
   }
 
-  revalidatePath("/admin/ticket-categories");
+  revalidatePath("/admin/system-configuration/categories");
   return { error: null };
 }
 
@@ -108,7 +108,7 @@ export async function renameTicketCategoryAction(id: string, name: string): Prom
     return { error: await mapBackendError(res.status, data) };
   }
 
-  revalidatePath("/admin/ticket-categories");
+  revalidatePath("/admin/system-configuration/categories");
   return { error: null };
 }
 
@@ -140,7 +140,7 @@ async function setTicketCategoryActive(id: string, active: boolean): Promise<Tic
     return { error: active ? t("reactivateFailed") : t("deactivateFailed") };
   }
 
-  revalidatePath("/admin/ticket-categories");
+  revalidatePath("/admin/system-configuration/categories");
   return { error: null };
 }
 

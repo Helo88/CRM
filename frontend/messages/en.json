@@ -33,6 +33,7 @@
     "newStaffAccount": "New staff account",
     "startLiveChat": "Start live chat",
     "manageTicketCategories": "Manage ticket categories",
+    "systemConfiguration": "System configuration",
     "tickets": "Tickets",
     "myTickets": "My tickets",
     "chats": "Chats",
@@ -459,6 +460,76 @@
     "genericError": "Something went wrong. Please try again.",
     "notSignedIn": "You're not signed in."
   },
+  "SystemConfiguration": {
+    "heading": "System configuration",
+    "subheading": "Operational settings, in one place — categories, SLA targets, quick replies, and whatever comes next.",
+    "tabs": {
+      "categories": "Categories",
+      "slaTargets": "SLA Targets",
+      "quickReplies": "Quick Replies",
+      "branding": "Branding",
+      "brandingSoon": "Coming soon",
+      "soon": "Soon"
+    }
+  },
+  "AdminSlaTargets": {
+    "title": "SLA targets",
+    "newButton": "New SLA target",
+    "newSubheading": "Response and resolution windows for a priority and/or category.",
+    "editTitle": "Edit SLA target",
+    "editDefaultSubheading": "This is the system default — it applies whenever no more specific target matches.",
+    "columns": {
+      "priority": "Priority",
+      "category": "Category",
+      "response": "Response",
+      "resolution": "Resolution",
+      "default": "Default",
+      "actions": "Actions"
+    },
+    "anyLabel": "— Any —",
+    "anyDefaultLabel": "Any (default)",
+    "defaultBadge": "Default",
+    "actionEdit": "Edit",
+    "actionDelete": "Delete",
+    "deleteConfirmTitle": "Delete this SLA target?",
+    "deleteConfirmBody": "Tickets and chats that would have matched it fall back to the next-best target.",
+    "deleteCancel": "Cancel",
+    "cannotDeleteDefault": "The default SLA target cannot be deleted.",
+    "empty": "No SLA targets yet.",
+    "noAccess": "You don't have access to do this.",
+    "notSignedIn": "You're not signed in.",
+    "genericError": "Something went wrong. Please try again.",
+    "errorDuplicate": "An SLA target with that priority and category already exists.",
+    "errorResolutionLessThanResponse": "Resolution time must be at least as long as response time.",
+    "errorCannotEditDefaultKeys": "The default SLA target must remain (priority = Any, category = Any).",
+    "errorCannotDeleteDefault": "The default SLA target cannot be deleted.",
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "form": {
+      "responseMinutesLabel": "Response (minutes)",
+      "resolutionMinutesLabel": "Resolution (minutes)",
+      "resolutionLessThanResponse": "Resolution time must be at least as long as response time.",
+      "submit": "Create target",
+      "submitPending": "Creating…",
+      "saveChanges": "Save changes",
+      "cancel": "Cancel"
+    },
+    "settings": {
+      "title": "Monitor settings",
+      "atRiskPercentLabel": "At-risk threshold",
+      "scanIntervalLabel": "Scan interval",
+      "percentElapsed": "% elapsed",
+      "minutes": "minute(s)",
+      "saveButton": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveFailed": "Could not save monitor settings."
+    }
+  },
   "NewTicketCategory": {
     "heading": "Add category",
     "subheading": "Create a new ticket category.",
@@ -555,7 +626,9 @@
       "tickets:close_reopen": "Close and reopen tickets",
       "tickets:escalate": "Escalate tickets",
       "chats:manage": "Access live chat",
-      "sla:configure": "Configure SLA targets",
+      "sla:configure": "Configure the SLA monitor's alert threshold and scan interval",
+      "sla:targets_view": "View SLA targets",
+      "sla:targets_edit": "Add, edit, and delete SLA targets",
       "kb:publish": "Publish knowledge base articles",
       "reports:view": "View reports",
       "reports:export": "Export reports",

@@ -6,6 +6,7 @@ import healthRoutes from "./routes/health.routes";
 import authRoutes from "./routes/auth.routes";
 import ticketRoutes from "./routes/ticket.routes";
 import ticketCategoryRoutes from "./routes/ticketCategory.routes";
+import slaTargetRoutes from "./routes/slaTarget.routes";
 import conversationRoutes from "./routes/conversation.routes";
 import customerRoutes from "./routes/customer.routes";
 import meRoutes from "./routes/me.routes";
@@ -23,13 +24,14 @@ export function createApp(): Application {
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/tickets", ticketRoutes);
   app.use("/api/v1/ticket-categories", ticketCategoryRoutes);
+  app.use("/api/v1/sla-targets", slaTargetRoutes);
   app.use("/api/v1/conversations", conversationRoutes);
   app.use("/api/v1/customers", customerRoutes);
   app.use("/api/v1/me", meRoutes);
   app.use("/api/v1/admin/users", adminRoutes);
   // TODO: mount remaining feature routers as they're implemented —
-  // agent-workspace, sla-automation, knowledge-base, ai-features,
-  // reports-management (see USER_STORIES.md for the full feature list).
+  // agent-workspace, knowledge-base, ai-features, reports-management (see
+  // USER_STORIES.md for the full feature list).
 
   app.use((req: Request, res: Response) => {
     res.status(404).json({ error: "Not found" });

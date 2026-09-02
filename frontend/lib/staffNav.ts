@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, UserPlus, ShieldPlus, Tags } from "lucide-react";
+import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, UserPlus, ShieldPlus, Settings2 } from "lucide-react";
 
 // Shared between the desktop hover-expand rail and the mobile drawer
 // (components/StaffSidebar.tsx, components/MobileStaffNav.tsx) so both stay
@@ -18,11 +18,20 @@ import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, 
 // this must gate on it as well, or an agent who's had it revoked gets a nav
 // entry/search result that just bounces them to /dashboard.
 export const STAFF_NAV_ITEMS = [
-  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
-  { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: "customers:manage" },
-  { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined },
-  { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage" },
-  { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list" },
+  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, staffOnly: false, agentOrAdminOnly: false, permission: undefined, pinned: false },
+  { key: "customers", href: "/customers", icon: Users, staffOnly: false, agentOrAdminOnly: false, permission: "customers:manage", pinned: false },
+  { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined, pinned: false },
+  { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage", pinned: false },
+  { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list", pinned: false },
+  // sla-automation Story 25: the /admin/system-configuration shell
+  // (categories/SLA targets/quick replies/branding tabs). `pinned: true`
+  // means StaffSidebar/MobileStaffNav render this separately, anchored to
+  // the bottom of the nav rather than in the scrollable main list — a
+  // "settings" item reads as app-level chrome, not a workspace section.
+  // href is the shell's bare root (redirects to its first tab, see
+  // app/admin/system-configuration/page.tsx) rather than a specific tab, so
+  // activeStaffNavKey's prefix match highlights this item on every tab.
+  { key: "systemConfiguration", href: "/admin/system-configuration", icon: Settings2, staffOnly: true, agentOrAdminOnly: false, permission: "tickets:categories_view", pinned: true },
 ] as const;
 
 export type StaffNavKey = (typeof STAFF_NAV_ITEMS)[number]["key"];
@@ -79,9 +88,11 @@ export const STAFF_ACTION_ITEMS = [
   // admin/users/new/page.tsx requires role "admin" or permission staff:edit
   // (a sub-admin delegated staff:edit, same key the POST itself requires).
   { key: "newStaffAccount", href: "/admin/users/new", icon: ShieldPlus, agentOrAdminOnly: false, staffOnly: true, permission: "staff:edit" },
-  // Story 58: admin/ticket-categories/page.tsx's GET requires
-  // tickets:categories_view — a sub-admin without it gets a real 403 there.
-  { key: "manageTicketCategories", href: "/admin/ticket-categories", icon: Tags, agentOrAdminOnly: false, staffOnly: true, permission: "tickets:categories_view" },
+  // systemConfiguration used to live here (replacing the older
+  // manageTicketCategories entry) before it got a real pinned-bottom slot
+  // in STAFF_NAV_ITEMS above — HeaderSearch already concatenates
+  // visibleStaffNavItems + visibleStaffActionItems, so it's still
+  // ⌘K-searchable without being duplicated in both lists.
 ] as const;
 
 export function visibleStaffActionItems(role: string | undefined, permissions: string[] = []) {

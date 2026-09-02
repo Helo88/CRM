@@ -147,6 +147,32 @@ describe("tickets:export_history (Story 13)", () => {
   });
 });
 
+// sla-automation Story 25: admin-configurable per-priority/category SLA
+// duration rows — sub-admin-tier, same reasoning as tickets:categories_*
+// above, never a default agent action.
+describe("sla:targets_view / sla:targets_edit (Story 25)", () => {
+  const SLA_TARGET_KEYS = ["sla:targets_view", "sla:targets_edit"] as const;
+
+  it("are all recognized permission keys", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(PERMISSION_KEYS).toContain(key);
+    }
+  });
+
+  it("are all sub-admin-tier (never assignable to an agent)", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(SUBADMIN_ONLY_PERMISSIONS.has(key)).toBe(true);
+    }
+  });
+
+  it("are not granted by default to a freshly-created agent or sub-admin", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).not.toContain(key);
+      expect(DEFAULT_PERMISSIONS_BY_ROLE.subadmin).not.toContain(key);
+    }
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

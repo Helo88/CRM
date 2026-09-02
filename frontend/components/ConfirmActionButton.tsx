@@ -28,11 +28,12 @@ interface ConfirmActionButtonProps {
   onConfirm: () => Promise<{ error: string | null }>;
 }
 
-// Route-local copy of frontend/app/admin/users/ConfirmActionButton.tsx —
-// same colocation convention this project already uses (row-action helpers
-// live next to the page that uses them, not in a shared components/
-// folder), kept independent so either can evolve without coupling the two
-// feature areas.
+// Hoisted from frontend/app/admin/ticket-categories/ConfirmActionButton.tsx
+// (sla-automation Story 25) — that file and the SLA-targets tab's copy were
+// byte-identical, so this is the shared version both import instead of
+// maintaining two copies. Route-local dialogs (RenameCategoryDialog-style)
+// stay colocated since those carry domain-specific text; this component
+// takes every string as a prop, so hoisting it duplicates nothing.
 export function ConfirmActionButton({
   icon,
   label,

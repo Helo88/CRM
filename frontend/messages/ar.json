@@ -33,6 +33,7 @@
     "newStaffAccount": "حساب موظف جديد",
     "startLiveChat": "بدء محادثة مباشرة",
     "manageTicketCategories": "إدارة فئات التذاكر",
+    "systemConfiguration": "إعدادات النظام",
     "tickets": "التذاكر",
     "myTickets": "تذاكري",
     "chats": "المحادثات",
@@ -459,6 +460,76 @@
     "genericError": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
     "notSignedIn": "لست مسجلاً الدخول."
   },
+  "SystemConfiguration": {
+    "heading": "إعدادات النظام",
+    "subheading": "كل الإعدادات التشغيلية في مكان واحد — الفئات، أهداف اتفاقية مستوى الخدمة، الردود الجاهزة، وما يُضاف لاحقًا.",
+    "tabs": {
+      "categories": "الفئات",
+      "slaTargets": "أهداف اتفاقية مستوى الخدمة",
+      "quickReplies": "الردود الجاهزة",
+      "branding": "الهوية البصرية",
+      "brandingSoon": "قريبًا",
+      "soon": "قريبًا"
+    }
+  },
+  "AdminSlaTargets": {
+    "title": "أهداف اتفاقية مستوى الخدمة",
+    "newButton": "هدف جديد",
+    "newSubheading": "مدة الاستجابة والحل لأولوية و/أو فئة معينة.",
+    "editTitle": "تعديل هدف اتفاقية مستوى الخدمة",
+    "editDefaultSubheading": "هذا هو الهدف الافتراضي للنظام — يُطبَّق عند عدم وجود هدف أدق مطابقًا.",
+    "columns": {
+      "priority": "الأولوية",
+      "category": "الفئة",
+      "response": "الاستجابة",
+      "resolution": "الحل",
+      "default": "افتراضي",
+      "actions": "الإجراءات"
+    },
+    "anyLabel": "— أي —",
+    "anyDefaultLabel": "أي (افتراضي)",
+    "defaultBadge": "افتراضي",
+    "actionEdit": "تعديل",
+    "actionDelete": "حذف",
+    "deleteConfirmTitle": "حذف هذا الهدف؟",
+    "deleteConfirmBody": "التذاكر والمحادثات التي كانت ستطابقه ستستخدم أفضل هدف بديل متاح.",
+    "deleteCancel": "إلغاء",
+    "cannotDeleteDefault": "لا يمكن حذف الهدف الافتراضي.",
+    "empty": "لا توجد أهداف اتفاقية مستوى الخدمة بعد.",
+    "noAccess": "ليس لديك صلاحية لتنفيذ هذا الإجراء.",
+    "notSignedIn": "لم تسجّل الدخول.",
+    "genericError": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    "errorDuplicate": "يوجد بالفعل هدف بنفس الأولوية والفئة.",
+    "errorResolutionLessThanResponse": "يجب أن تكون مدة الحل مساوية لمدة الاستجابة أو أطول منها.",
+    "errorCannotEditDefaultKeys": "يجب أن يبقى الهدف الافتراضي بلا أولوية أو فئة محددة (أي/أي).",
+    "errorCannotDeleteDefault": "لا يمكن حذف الهدف الافتراضي.",
+    "priority": {
+      "low": "منخفضة",
+      "medium": "متوسطة",
+      "high": "عالية",
+      "urgent": "عاجلة"
+    },
+    "form": {
+      "responseMinutesLabel": "الاستجابة (بالدقائق)",
+      "resolutionMinutesLabel": "الحل (بالدقائق)",
+      "resolutionLessThanResponse": "يجب أن تكون مدة الحل مساوية لمدة الاستجابة أو أطول منها.",
+      "submit": "إنشاء الهدف",
+      "submitPending": "جارٍ الإنشاء…",
+      "saveChanges": "حفظ التغييرات",
+      "cancel": "إلغاء"
+    },
+    "settings": {
+      "title": "إعدادات المراقب",
+      "atRiskPercentLabel": "عتبة الخطر",
+      "scanIntervalLabel": "الفاصل الزمني للفحص",
+      "percentElapsed": "% من الوقت",
+      "minutes": "دقيقة",
+      "saveButton": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "saved": "تم الحفظ",
+      "saveFailed": "تعذّر حفظ إعدادات المراقب."
+    }
+  },
   "NewTicketCategory": {
     "heading": "إضافة فئة",
     "subheading": "إنشاء فئة تذاكر جديدة.",
@@ -555,7 +626,9 @@
       "tickets:close_reopen": "إغلاق التذاكر وإعادة فتحها",
       "tickets:escalate": "تصعيد التذاكر",
       "chats:manage": "الوصول إلى الدردشة المباشرة",
-      "sla:configure": "تكوين أهداف اتفاقية مستوى الخدمة",
+      "sla:configure": "تكوين عتبة التنبيه والفاصل الزمني لمراقب اتفاقية مستوى الخدمة",
+      "sla:targets_view": "عرض أهداف اتفاقية مستوى الخدمة",
+      "sla:targets_edit": "إضافة وتعديل وحذف أهداف اتفاقية مستوى الخدمة",
       "kb:publish": "نشر مقالات قاعدة المعرفة",
       "reports:view": "عرض التقارير",
       "reports:export": "تصدير التقارير",

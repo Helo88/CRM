@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { visibleStaffNavItems, activeStaffNavKey } from "@/lib/staffNav";
 
@@ -19,7 +19,28 @@ export function MobileStaffNav({ role, permissions = [] }: { role?: string; perm
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const visibleItems = visibleStaffNavItems(role, permissions);
+  const mainItems = visibleItems.filter((item) => !item.pinned);
+  const pinnedItems = visibleItems.filter((item) => item.pinned);
   const active = activeStaffNavKey(pathname);
+
+  function renderItem(item: (typeof visibleItems)[number]) {
+    const Icon = item.icon;
+    const isActive = item.key === active;
+    return (
+      <Link
+        key={item.key}
+        href={item.href}
+        onClick={() => setOpen(false)}
+        className={cn(
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+          isActive ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted"
+        )}
+      >
+        <Icon className="size-[18px]" strokeWidth={1.8} />
+        {t(item.key)}
+      </Link>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -36,26 +57,10 @@ export function MobileStaffNav({ role, permissions = [] }: { role?: string; perm
         <SheetHeader className="border-b border-border">
           <SheetTitle className="text-lg font-bold tracking-tight">{t("brand")}</SheetTitle>
         </SheetHeader>
-        <nav className="flex flex-col gap-1 p-3">
-          {visibleItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.key === active;
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
-                  isActive ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted"
-                )}
-              >
-                <Icon className="size-[18px]" strokeWidth={1.8} />
-                {t(item.key)}
-              </Link>
-            );
-          })}
-        </nav>
+        <nav className="flex flex-col gap-1 p-3">{mainItems.map(renderItem)}</nav>
+        {pinnedItems.length > 0 && (
+          <SheetFooter className="gap-1 border-t border-border pt-3">{pinnedItems.map(renderItem)}</SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );

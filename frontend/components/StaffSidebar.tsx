@@ -23,44 +23,55 @@ export async function StaffSidebar({ active }: { active?: StaffNavKey }) {
   const accessToken = cookieStore.get(SESSION_COOKIE)?.value;
   const { role, permissions = [] } = accessToken ? peekJwtPayload(accessToken) : {};
   const visibleItems = visibleStaffNavItems(role, permissions);
+  // Pinned items (currently just systemConfiguration) render in their own
+  // nav block anchored to the bottom via mt-auto, separate from the
+  // scrollable workspace-section list above — app-level chrome (Settings)
+  // reads differently from a workspace section (Tickets, Customers, ...).
+  const mainItems = visibleItems.filter((item) => !item.pinned);
+  const pinnedItems = visibleItems.filter((item) => item.pinned);
+
+  function renderItem(item: (typeof visibleItems)[number]) {
+    const Icon = item.icon;
+    const isActive = item.key === active;
+    return (
+      <Link
+        key={item.key}
+        href={item.href}
+        title={t(item.key)}
+        className="mx-3 flex h-11 items-center gap-3 rounded-xl px-2 transition-colors hover:bg-sidebar-accent"
+      >
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-lg transition-colors",
+            isActive
+              ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground"
+          )}
+        >
+          <Icon className="size-4.5" strokeWidth={1.8} />
+        </span>
+        <span
+          className={cn(
+            "animate-fade-in whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-200 group-hover/rail:opacity-100",
+            isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/80"
+          )}
+        >
+          {t(item.key)}
+        </span>
+      </Link>
+    );
+  }
 
   return (
     <>
       <div className="hidden w-20 shrink-0 md:block" aria-hidden />
       <aside className="group/rail fixed inset-y-0 start-0 z-50 hidden w-20 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar py-4 transition-[width] duration-200 ease-out hover:w-56 hover:shadow-pop md:flex">
-        <nav className="flex flex-col gap-1">
-          {visibleItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.key === active;
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                title={t(item.key)}
-                className="mx-3 flex h-11 items-center gap-3 rounded-xl px-2 transition-colors hover:bg-sidebar-accent"
-              >
-                <span
-                  className={cn(
-                    "grid size-9 shrink-0 place-items-center rounded-lg transition-colors",
-                    isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground"
-                  )}
-                >
-                  <Icon className="size-4.5" strokeWidth={1.8} />
-                </span>
-                <span
-                  className={cn(
-                    "animate-fade-in whitespace-nowrap text-sm font-medium opacity-0 transition-opacity duration-200 group-hover/rail:opacity-100",
-                    isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/80"
-                  )}
-                >
-                  {t(item.key)}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
+        <nav className="flex flex-col gap-1">{mainItems.map(renderItem)}</nav>
+        {pinnedItems.length > 0 && (
+          <nav className="mt-auto flex flex-col gap-1 border-t border-sidebar-border pt-3">
+            {pinnedItems.map(renderItem)}
+          </nav>
+        )}
       </aside>
     </>
   );

@@ -47,6 +47,12 @@ export const PERMISSION_KEYS = [
   "tickets:export_history",
   "chats:manage",
   "sla:configure",
+  // sla-automation Story 25: view/edit the admin-configurable
+  // (priority, category) -> duration lookup rows. Distinct from
+  // sla:configure, which gates the monitor's own tuning (at-risk threshold,
+  // scan interval), not the target rows themselves.
+  "sla:targets_view",
+  "sla:targets_edit",
   "kb:publish",
   "reports:view",
   "reports:export",
@@ -71,6 +77,8 @@ export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
   "audit:view",
   "config:edit",
   "sla:configure",
+  "sla:targets_view",
+  "sla:targets_edit",
   "kb:publish",
   "reports:export",
   "tickets:categories_view",
