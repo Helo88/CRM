@@ -27,6 +27,7 @@ import { uploadTicketMessageAttachments, ticketFilePath } from "../middleware/up
 import { applyStatusTransition, InvalidStatusTransitionError } from "../services/ticketStatus.service";
 import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
 import { buildTicketHistory, TicketNotFoundError, TicketHistoryEvent } from "../services/ticketHistory.service";
+import { resolveTicketSlaTargets, computeSlaStatus } from "../services/sla.service";
 
 const router = express.Router();
 
@@ -175,6 +176,12 @@ router.post(
     // itself — the staff creator on behalf of a customer (Story 57), or the
     // customer themself for a self-submitted ticket.
     const creatorId = isStaffCreated ? new Types.ObjectId(req.user!.id) : customer._id;
+    // sla-automation Story 26: stamp deadlines at creation time from Story
+    // 25's admin-configured targets. Not caught locally — a missing default
+    // SlaTarget row (SlaTargetNotConfiguredError) is an ops misconfiguration
+    // that should surface as a 500 via the route's catch below, not be
+    // silently swallowed into a made-up fallback.
+    const slaTargets = await resolveTicketSlaTargets({ category: category ?? null, priority });
     const ticket = await Ticket.create({
       subject,
       description,
@@ -185,6 +192,11 @@ router.post(
       createdBy: creatorId,
       createdVia,
       statusHistory: [{ status: "new", changedBy: creatorId, changedAt: new Date() }],
+      sla: {
+        responseTargetAt: slaTargets.responseTargetAt,
+        resolutionTargetAt: slaTargets.resolutionTargetAt,
+        breached: false,
+      },
     });
 
     // Story 60: a human-friendly "TCK-<n>" reference for anything shown to a
@@ -288,6 +300,14 @@ router.post(
       subject: ticket.subject,
       status: ticket.status,
       createdAt: ticket.createdAt,
+      // sla-automation Story 26: derived on read, not stored — see sla.service.ts.
+      slaStatus: computeSlaStatus({
+        responseTargetAt: ticket.sla?.responseTargetAt,
+        resolutionTargetAt: ticket.sla?.resolutionTargetAt,
+        currentStatus: ticket.status,
+      }),
+      responseTargetAt: ticket.sla?.responseTargetAt ?? null,
+      resolutionTargetAt: ticket.sla?.resolutionTargetAt ?? null,
     });
   }
 );
@@ -496,6 +516,7 @@ type TicketDetailFields = Pick<
   | "createdVia"
   | "createdAt"
   | "updatedAt"
+  | "sla"
 > & {
   _id: Types.ObjectId;
   assignedAgent: { _id: Types.ObjectId; name: string } | null;
@@ -527,6 +548,14 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
     createdVia: ticket.createdVia,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    // sla-automation Story 26: derived on read, not stored — see sla.service.ts.
+    slaStatus: computeSlaStatus({
+      responseTargetAt: ticket.sla?.responseTargetAt,
+      resolutionTargetAt: ticket.sla?.resolutionTargetAt,
+      currentStatus: ticket.status,
+    }),
+    responseTargetAt: ticket.sla?.responseTargetAt ?? null,
+    resolutionTargetAt: ticket.sla?.resolutionTargetAt ?? null,
   };
 }
 
@@ -535,7 +564,7 @@ function toTicketDetailResponse(ticket: TicketDetailFields, customer: { id: stri
 // already carried by the query above rather than a second lookup).
 type TicketListFields = Pick<
   ITicket,
-  "ticketNumber" | "subject" | "status" | "category" | "priority" | "createdVia" | "createdAt" | "updatedAt"
+  "ticketNumber" | "subject" | "status" | "category" | "priority" | "createdVia" | "createdAt" | "updatedAt" | "sla"
 > & {
   _id: Types.ObjectId;
   customer: { _id: Types.ObjectId; name: string; email: string };
@@ -559,6 +588,15 @@ function toTicketListItem(ticket: TicketListFields) {
       : null,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    // sla-automation Story 26: same derivation as toTicketDetailResponse —
+    // O(1), no I/O, safe to compute per row.
+    slaStatus: computeSlaStatus({
+      responseTargetAt: ticket.sla?.responseTargetAt,
+      resolutionTargetAt: ticket.sla?.resolutionTargetAt,
+      currentStatus: ticket.status,
+    }),
+    responseTargetAt: ticket.sla?.responseTargetAt ?? null,
+    resolutionTargetAt: ticket.sla?.resolutionTargetAt ?? null,
   };
 }
 

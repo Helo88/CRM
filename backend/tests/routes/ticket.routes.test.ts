@@ -5,6 +5,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
 import { Ticket } from "../../src/models/Ticket";
+import { SlaTarget } from "../../src/models/SlaTarget";
 import { TicketCategory } from "../../src/models/TicketCategory";
 import { Message } from "../../src/models/Message";
 import { Conversation } from "../../src/models/Conversation";
@@ -17,6 +18,11 @@ let mongod: MongoMemoryServer;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri("ticket-routes-test"));
+  // sla-automation Story 26: Ticket.create now resolves SLA targets on every
+  // creation, which requires the mandatory default SlaTarget row to exist.
+  // Seeded once here (not cleared by beforeEach below) so every existing
+  // ticket-creation test keeps working unmodified.
+  await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
 });
 
 afterAll(async () => {
@@ -108,6 +114,25 @@ describe("POST /api/v1/tickets (Story 8)", () => {
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: "customer@example.com" }));
+  });
+
+  it("populates sla.responseTargetAt/resolutionTargetAt and returns slaStatus 'on_track' (Story 26)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Login broken", description: "Cannot sign in since this morning" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.slaStatus).toBe("on_track");
+    expect(new Date(res.body.responseTargetAt).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBeGreaterThan(Date.now());
+
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.sla.responseTargetAt).toBeInstanceOf(Date);
+    expect(ticket!.sla.resolutionTargetAt).toBeInstanceOf(Date);
   });
 
   it("still creates the ticket and returns 201 when the acknowledgment email fails to send", async () => {
@@ -722,6 +747,19 @@ describe("GET /api/v1/tickets/:id (Story 9)", () => {
       subject: ticket.subject,
       customer: { name: populatedCustomer!.name, email: populatedCustomer!.email },
     });
+  });
+
+  it("a legacy ticket with no sla.responseTargetAt reads back as slaStatus 'on_track' (Story 26)", async () => {
+    const ticket = await seedTicket();
+    expect(ticket.sla?.responseTargetAt).toBeUndefined();
+    const { token } = await seedUser({ role: "agent" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.slaStatus).toBe("on_track");
+    expect(res.body.responseTargetAt).toBeNull();
+    expect(res.body.resolutionTargetAt).toBeNull();
   });
 });
 
@@ -2046,6 +2084,19 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     for (const row of res.body.tickets) {
       expect(row.customer.id).toBe(customerA.id);
     }
+  });
+
+  it("exposes slaStatus/responseTargetAt/resolutionTargetAt per row, 'on_track' for a legacy ticket with no sla (Story 26)", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    await seedTicketFor(customer.id);
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tickets).toHaveLength(1);
+    expect(res.body.tickets[0].slaStatus).toBe("on_track");
+    expect(res.body.tickets[0].responseTargetAt).toBeNull();
+    expect(res.body.tickets[0].resolutionTargetAt).toBeNull();
   });
 
   it("scopes an agent without tickets:view_all to only their assigned tickets", async () => {

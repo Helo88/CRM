@@ -263,15 +263,15 @@ Import `resolveConversationSlaTargets` from `../services/sla.service`.
 
 ## Done Criteria
 
-- [ ] `backend/src/services/sla.service.ts` created with `resolveTicketSlaTargets`, `resolveConversationSlaTargets`, `computeSlaStatus`, `SlaStatus` type.
-- [ ] `Ticket.create` at `backend/src/routes/ticket.routes.ts` line ~178 sets `sla: { responseTargetAt, resolutionTargetAt, breached: false }` from the resolver.
-- [ ] `Conversation.create` at `backend/src/routes/conversation.routes.ts` line 41 sets `sla: { responseTargetAt, breached: false }` from the resolver.
-- [ ] Ticket detail + list responses expose `slaStatus`, `responseTargetAt`, `resolutionTargetAt`.
-- [ ] Conversation detail + staff list responses expose `slaStatus`, `responseTargetAt`.
-- [ ] Legacy tickets and conversations (with no `sla.responseTargetAt`) read back as `slaStatus === "on_track"`, confirmed by test.
-- [ ] `SLA_PAUSE_ON_ANSWERED` constant present in `sla.service.ts`, defaulted to `false`, with an explanatory comment referencing this plan.
-- [ ] `sla.breached` is **not** mutated by any code path introduced in this story (Story 27's turf).
-- [ ] `backend` builds and all backend tests pass.
-- [ ] No frontend files modified.
+- [x] `backend/src/services/sla.service.ts` created with `resolveTicketSlaTargets`, `resolveConversationSlaTargets`, `computeSlaStatus`, `SlaStatus` type.
+- [x] `Ticket.create` at `backend/src/routes/ticket.routes.ts` line ~178 sets `sla: { responseTargetAt, resolutionTargetAt, breached: false }` from the resolver.
+- [x] `Conversation.create` at `backend/src/routes/conversation.routes.ts` line 41 sets `sla: { responseTargetAt, breached: false }` from the resolver.
+- [x] Ticket detail + list responses expose `slaStatus`, `responseTargetAt`, `resolutionTargetAt`. (The POST /tickets create response also exposes them, per this plan's own Test Plan step 2.)
+- [x] Conversation detail + staff list responses expose `slaStatus`, `responseTargetAt`.
+- [x] Legacy tickets and conversations (with no `sla.responseTargetAt`) read back as `slaStatus === "on_track"`, confirmed by test.
+- [x] `SLA_PAUSE_ON_ANSWERED` constant present in `sla.service.ts`, defaulted to `false`, with an explanatory comment referencing this plan.
+- [x] `sla.breached` is **not** mutated by any code path introduced in this story (Story 27's turf).
+- [x] `backend` builds and all backend tests pass.
+- [x] No frontend files modified.
 
 **STOP HERE. Report to the user and wait for confirmation before proceeding to Story 02 (SLA breach alerts and auto-escalation).**

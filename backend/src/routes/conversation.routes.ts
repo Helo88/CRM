@@ -6,6 +6,7 @@ import { Message } from "../models/Message";
 import { validateBody } from "../middleware/validate";
 import { createConversationSchema } from "../validation/conversation.schema";
 import { hasPermission } from "../services/permissions";
+import { resolveConversationSlaTargets, computeSlaStatus } from "../services/sla.service";
 
 const router = express.Router();
 
@@ -38,11 +39,16 @@ router.post(
   validateBody(createConversationSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // sla-automation Story 26: stamp the first-response deadline at
+      // creation time. No resolutionTargetAt — chats have no "resolution"
+      // SLA concept (see IConversationSla).
+      const slaTargets = await resolveConversationSlaTargets({});
       const conversation = await Conversation.create({
         customer: req.user!.id,
         // status defaults to "ai_handling" per the model; explicit here for readability.
         status: "ai_handling",
         assignedAgent: null,
+        sla: { responseTargetAt: slaTargets.responseTargetAt, breached: false },
       });
       res.status(201).json({ conversation });
     } catch (err) {
@@ -99,7 +105,13 @@ router.get("/", requireAuth, requirePermission("chats:manage"), async (req: Requ
     .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name")
     .sort({ updatedAt: -1 })
     .lean();
-  res.status(200).json({ conversations });
+  // sla-automation Story 26: derived on read, not stored — see sla.service.ts.
+  const withSla = conversations.map((conversation) => ({
+    ...conversation,
+    slaStatus: computeSlaStatus({ responseTargetAt: conversation.sla?.responseTargetAt }),
+    responseTargetAt: conversation.sla?.responseTargetAt ?? null,
+  }));
+  res.status(200).json({ conversations: withSla });
 });
 
 // Story 18: the agent-facing transcript read — full history including prior
@@ -142,7 +154,16 @@ router.get(
       .sort({ createdAt: 1 })
       .limit(500)
       .lean();
-    res.status(200).json({ conversation, messages });
+    // sla-automation Story 26: derived on read, not stored — see sla.service.ts.
+    // Built as a plain object rather than mutating the Mongoose document.
+    res.status(200).json({
+      conversation: {
+        ...conversation.toObject(),
+        slaStatus: computeSlaStatus({ responseTargetAt: conversation.sla?.responseTargetAt }),
+        responseTargetAt: conversation.sla?.responseTargetAt ?? null,
+      },
+      messages,
+    });
   }
 );
 

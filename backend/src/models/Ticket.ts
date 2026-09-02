@@ -12,6 +12,12 @@ export type TicketStatus = "new" | "in_progress" | "answered" | "escalated" | "c
 // derived server-side from which branch/inputs the request actually took.
 export type TicketCreationChannel = "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other";
 
+// sla-automation Story 26: `breached` is stored but intentionally never
+// flipped by this story — there's no scheduled job scanning for breaches
+// yet, so a ticket that breaches while unqueried stays `breached: false`
+// here. That's fine because slaStatus is derived on read (see
+// sla.service.ts's computeSlaStatus). A future story owns the scheduler
+// that would actually flip this field for proactive alerting.
 export interface ITicketSla {
   responseTargetAt?: Date;
   resolutionTargetAt?: Date;

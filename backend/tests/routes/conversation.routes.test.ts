@@ -6,6 +6,7 @@ import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
 import { Conversation } from "../../src/models/Conversation";
 import { Message } from "../../src/models/Message";
+import { SlaTarget } from "../../src/models/SlaTarget";
 
 const app = createApp();
 let mongod: MongoMemoryServer;
@@ -13,6 +14,11 @@ let mongod: MongoMemoryServer;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri("conversation-routes-test"));
+  // sla-automation Story 26: Conversation.create now resolves SLA targets on
+  // every creation, which requires the mandatory default SlaTarget row to
+  // exist. Seeded once here (not cleared by beforeEach below) so every
+  // existing conversation-creation test keeps working unmodified.
+  await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
 });
 
 afterAll(async () => {
@@ -69,6 +75,16 @@ describe("POST /api/v1/conversations (Story 14)", () => {
     expect(res.body.conversation.assignedAgent).toBeNull();
 
     expect(await Conversation.countDocuments()).toBe(1);
+  });
+
+  it("populates sla.responseTargetAt on creation (Story 26)", async () => {
+    const { token } = await seedUser();
+    const res = await request(app).post("/api/v1/conversations").set("Authorization", `Bearer ${token}`).send({});
+
+    expect(res.status).toBe(201);
+    const stored = await Conversation.findById(res.body.conversation._id);
+    expect(stored!.sla.responseTargetAt).toBeInstanceOf(Date);
+    expect(stored!.sla.responseTargetAt!.getTime()).toBeGreaterThan(Date.now());
   });
 
   it("returns 404 for POST /:id/escalate — escalation is socket-only (Story 16)", async () => {
@@ -128,6 +144,20 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.status).toBe(200);
     expect(res.body.conversations).toHaveLength(2);
   });
+
+  it("exposes slaStatus/responseTargetAt per row, 'on_track' for a legacy conversation with no sla (Story 26)", async () => {
+    const { user: customer } = await seedUser();
+    const { token: adminToken } = await seedUser({ role: "admin" });
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    expect(conversation.sla?.responseTargetAt).toBeUndefined();
+
+    const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversations).toHaveLength(1);
+    expect(res.body.conversations[0].slaStatus).toBe("on_track");
+    expect(res.body.conversations[0].responseTargetAt).toBeNull();
+  });
 });
 
 describe("GET /api/v1/conversations/:id (Story 18)", () => {
@@ -178,6 +208,20 @@ describe("GET /api/v1/conversations/:id (Story 18)", () => {
       .get(`/api/v1/conversations/${conversation.id}`)
       .set("Authorization", `Bearer ${customerToken}`);
     expect(res.status).toBe(200);
+  });
+
+  it("exposes slaStatus/responseTargetAt, 'on_track' for a legacy conversation with no sla (Story 26)", async () => {
+    const { user: customer, token: customerToken } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    expect(conversation.sla?.responseTargetAt).toBeUndefined();
+
+    const res = await request(app)
+      .get(`/api/v1/conversations/${conversation.id}`)
+      .set("Authorization", `Bearer ${customerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversation.slaStatus).toBe("on_track");
+    expect(res.body.conversation.responseTargetAt).toBeNull();
   });
 
   it("lets an admin view any conversation regardless of assignment", async () => {
