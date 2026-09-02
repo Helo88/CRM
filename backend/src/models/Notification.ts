@@ -39,6 +39,13 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 // A notification carries exactly one of ticketId/conversationId, never both
 // — see notification.service.ts's creation helpers, which never set both
 // fields on the same write.
+// "sla_at_risk" / "sla_breached" (sla-automation Story 28): fired by the
+// periodic SLA monitor (slaMonitor.service.ts). sla_at_risk is single-shot
+// (75% elapsed by default, admin-configurable); sla_breached fires exactly
+// once when the target time is passed and is paired with automatic
+// escalation via escalateTicket / escalateConversation. Both go to the
+// assignee (or oversight, for a ticket with none); sla_breached also fans
+// out to oversight via notifyTicketOversight regardless of assignee.
 export type NotificationType =
   | "ticket_assigned"
   | "ticket_escalated"
@@ -49,7 +56,9 @@ export type NotificationType =
   | "ticket_needs_assignment"
   | "ticket_reopened"
   | "ticket_reopened_oversight"
-  | "chat_needs_agent";
+  | "chat_needs_agent"
+  | "sla_at_risk"
+  | "sla_breached";
 
 export interface INotification extends Document {
   recipient: Types.ObjectId;
@@ -77,6 +86,8 @@ const notificationSchema = new Schema<INotification>(
         "ticket_reopened",
         "ticket_reopened_oversight",
         "chat_needs_agent",
+        "sla_at_risk",
+        "sla_breached",
       ],
       required: true,
     },

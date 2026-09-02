@@ -5,6 +5,9 @@ export type ConversationStatus = "ai_handling" | "escalated" | "with_agent" | "r
 export interface IConversationSla {
   responseTargetAt?: Date;
   breached: boolean;
+  // sla-automation Story 28: same single-fire bookkeeping as Ticket.sla —
+  // see ITicketSla's atRiskAlerted for the full reasoning.
+  atRiskAlerted: boolean;
 }
 
 /**
@@ -44,6 +47,7 @@ const conversationSchema = new Schema<IConversation>(
     sla: {
       responseTargetAt: Date,
       breached: { type: Boolean, default: false },
+      atRiskAlerted: { type: Boolean, default: false },
     },
 
     aiTicketSuggestionDeclined: { type: Boolean, default: false },

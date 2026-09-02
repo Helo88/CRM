@@ -21,6 +21,8 @@
     "notificationTicketReopened": "تمت إعادة فتح تذكرة مسندة إليك",
     "notificationTicketReopenedOversight": "تمت إعادة فتح تذكرة مغلقة",
     "notificationChatNeedsAgent": "هناك محادثة مباشرة بحاجة إلى من يستلمها",
+    "notificationSlaAtRisk": "موعد اتفاقية مستوى الخدمة (SLA) يقترب",
+    "notificationSlaBreached": "تم تجاوز موعد اتفاقية مستوى الخدمة (SLA)",
     "notificationChatLabel": "محادثة مباشرة",
     "comingSoon": "قريبًا",
     "toggleTheme": "تبديل المظهر",

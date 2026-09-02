@@ -16,7 +16,9 @@ export type TicketHistoryEventKind =
   | "reply_posted"
   | "internal_note_added"
   | "chat_participant_joined"
-  | "chat_participant_left";
+  | "chat_participant_left"
+  | "sla_at_risk"
+  | "sla_breached";
 
 export interface TicketHistoryEvent {
   kind: TicketHistoryEventKind;
@@ -150,6 +152,17 @@ export async function buildTicketHistory(
       kind: entry.event === "joined" ? "chat_participant_joined" : "chat_participant_left",
       at: entry.at,
       actor: actorFor(entry.user),
+      data: {},
+    });
+  }
+
+  // sla-automation Story 28: written by the periodic SLA monitor, not a
+  // person — no changedBy to resolve, so actor is always null.
+  for (const entry of ticket.slaHistory) {
+    events.push({
+      kind: entry.event === "at_risk" ? "sla_at_risk" : "sla_breached",
+      at: entry.at,
+      actor: null,
       data: {},
     });
   }

@@ -5,6 +5,7 @@ import { Ticket } from "../../src/models/Ticket";
 import { Notification } from "../../src/models/Notification";
 import { escalateTicket, InvalidEscalationTargetError } from "../../src/services/ticketEscalation.service";
 import { InvalidStatusTransitionError } from "../../src/services/ticketStatus.service";
+import * as ticketStatusService from "../../src/services/ticketStatus.service";
 
 let mongod: MongoMemoryServer;
 
@@ -179,5 +180,18 @@ describe("escalateTicket (ticket-management Story 12)", () => {
     });
 
     expect(ticket.status).toBe("escalated");
+  });
+
+  it("threads reason 'sla_breach' into applyStatusTransition as 'auto_escalation' (sla-automation Story 28's caller)", async () => {
+    const applySpy = vi.spyOn(ticketStatusService, "applyStatusTransition");
+    const ticket = await seedTicket();
+    const target = await seedUser({ role: "admin" });
+    const changedBy = new mongoose.Types.ObjectId();
+
+    await escalateTicket({ ticket, escalatedToUserId: target._id, changedBy, reason: "sla_breach" });
+
+    expect(applySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ nextStatus: "escalated", changedBy, reason: "auto_escalation" })
+    );
   });
 });

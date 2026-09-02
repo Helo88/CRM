@@ -14,27 +14,16 @@ import {
 } from "../validation/conversation.schema";
 import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
 import { hasPermission } from "../services/permissions";
-import { notifyChatOversight } from "../services/notification.service";
+import { escalateConversation } from "../services/conversationEscalation.service";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
 
-// Story 16: sent as a real persisted "system" message (not "ai" — this isn't
-// the AI persona talking, it's a status update about what just happened)
-// right after a successful escalation, so the customer has a durable,
-// meaningful acknowledgment in the message history itself — not just the
-// transient "escalated" banner (local component state, lost on reconnect/
-// refresh). "system" also lets each side's UI style this distinctly from a
-// normal chat bubble (customer: an eye-catching banner, since this is the
-// "help is coming" moment; agent/admin: a quiet inline note, since it's not
-// new information to them) — see LiveChatPanel.tsx/AgentChatPanel.tsx's
-// senderType === "system" branches. Deliberately does NOT claim an agent has
-// "joined" — chat is no longer auto-assigned (see conversation:escalate
-// below), so nobody has actually joined yet; the real "joined" signal is
-// conversation:claimed, fired from conversation:claim once a staff member
-// clicks "Join chat".
-const ESCALATION_ACK_TEXT =
-  "Thanks for waiting — I've flagged this conversation for our support team and someone will join shortly.";
+// The escalation ack message text/reasoning (why it's "system" not "ai", why
+// it doesn't claim an agent has "joined") now lives in
+// conversationEscalation.service.ts alongside ESCALATION_ACK_TEXT itself —
+// see that file (sla-automation Story 28 extracted the escalation body out
+// of this handler so the SLA monitor can call it without a socket).
 
 /**
  * Socket.io wiring for the live-chat feature (Stories 14, 18: real-time messaging).
@@ -345,45 +334,28 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      // Idempotent: already-escalated / already-with-agent is a no-op
-      // success — re-emit directly to the caller so a reconnecting client
-      // can re-sync its UI state without erroring.
-      if (conversation.status === "escalated" || conversation.status === "with_agent") {
-        socket.emit("conversation:escalated", { conversationId, status: conversation.status });
+      // Determined before calling the service (which has its own, separate
+      // idempotency guard) purely to pick which socket event to emit below —
+      // a no-op re-emits directly to the caller only, so a reconnecting
+      // client can re-sync its UI state without erroring the whole room.
+      const wasAlreadyEscalated = conversation.status === "escalated" || conversation.status === "with_agent";
+
+      const { conversation: updated, ackMessage } = await escalateConversation({ conversation, reason: "manual" });
+
+      if (wasAlreadyEscalated) {
+        socket.emit("conversation:escalated", { conversationId, status: updated.status });
         return;
       }
-
-      conversation.status = "escalated";
-      await conversation.save();
 
       io.to(`conversation:${conversationId}`).emit("conversation:escalated", {
         conversationId,
         status: "escalated",
       });
 
-      // Never lets a failure here undo the escalation the customer already
-      // saw succeed above — only logged, never rethrown.
-      try {
-        const ackMessage = await Message.create({
-          parentType: "conversation",
-          parentId: conversation._id,
-          senderType: "system",
-          senderId: null,
-          text: ESCALATION_ACK_TEXT,
-        });
-
-        // Every escalation notifies every eligible staff member — there's no
-        // "only if nobody happened to be online" condition anymore, since
-        // nothing is auto-assigned; someone has to actively come claim it.
-        // Written BEFORE the broadcast below (not after) so the write is
-        // guaranteed to have landed by the time any listener reacts to the
-        // socket event — this ordering matters for tests (and any future
-        // consumer) asserting on the Notification collection right after
-        // awaiting that event.
-        await notifyChatOversight({ type: "chat_needs_agent", conversationId });
+      // ackMessage is null when the post-escalation ack/notify best-effort
+      // step failed (logged inside the service) — nothing to broadcast then.
+      if (ackMessage) {
         io.to(`conversation:${conversationId}`).emit("conversation:message", ackMessage);
-      } catch (err) {
-        console.error("[chat.socket] post-escalation ack/notify failed:", (err as Error).message);
       }
     });
 

@@ -18,6 +18,22 @@ export async function createTicketNotification(params: {
   }
 }
 
+// sla-automation Story 28: single, specific-recipient notification about a
+// conversation — the gap createTicketNotification (ticket-keyed) and
+// notifyChatOversight (broadcast, conversation-keyed) don't cover. Used by
+// the SLA monitor to alert a conversation's assignedAgent directly.
+export async function createConversationNotification(params: {
+  recipient: Types.ObjectId | string;
+  type: NotificationType;
+  conversationId: Types.ObjectId | string;
+}): Promise<void> {
+  try {
+    await Notification.create(params);
+  } catch (err) {
+    console.error("[notifications] failed to create", err);
+  }
+}
+
 // Oversight notifications ("a new ticket came in", "a ticket was
 // auto-assigned") go to admins unconditionally plus subadmins holding
 // tickets:view_all — not every subadmin, matching the project's

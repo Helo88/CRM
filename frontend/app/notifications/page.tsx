@@ -39,6 +39,8 @@ const TYPE_KEY: Record<NotificationType, string> = {
   ticket_reopened: "notificationTicketReopened",
   ticket_reopened_oversight: "notificationTicketReopenedOversight",
   chat_needs_agent: "notificationChatNeedsAgent",
+  sla_at_risk: "notificationSlaAtRisk",
+  sla_breached: "notificationSlaBreached",
 };
 
 // Icon + semantic color per notification type — reused meanings, not new
@@ -59,6 +61,11 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   ticket_reopened: RotateCcw,
   ticket_reopened_oversight: RotateCcw,
   chat_needs_agent: AlertTriangle,
+  // sla-automation Story 28: at-risk reuses the same "needs attention" icon
+  // as ticket_needs_assignment/chat_needs_agent; breached reuses the
+  // escalation icon since a breach always triggers an auto-escalation.
+  sla_at_risk: AlertTriangle,
+  sla_breached: ArrowUpCircle,
 };
 
 const TYPE_COLOR_CLASS: Record<NotificationType, string> = {
@@ -72,6 +79,8 @@ const TYPE_COLOR_CLASS: Record<NotificationType, string> = {
   ticket_reopened: "bg-warning/10 text-warning",
   ticket_reopened_oversight: "bg-warning/10 text-warning",
   chat_needs_agent: "bg-warning/10 text-warning",
+  sla_at_risk: "bg-warning/10 text-warning",
+  sla_breached: "bg-destructive/10 text-destructive",
 };
 
 // The dedicated "view all" surface the notification bell's dropdown links

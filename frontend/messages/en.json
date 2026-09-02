@@ -21,6 +21,8 @@
     "notificationTicketReopened": "A ticket assigned to you was reopened",
     "notificationTicketReopenedOversight": "A closed ticket was reopened",
     "notificationChatNeedsAgent": "A live chat needs someone to claim it",
+    "notificationSlaAtRisk": "An SLA deadline is approaching",
+    "notificationSlaBreached": "An SLA deadline was breached",
     "notificationChatLabel": "Live chat",
     "comingSoon": "coming soon",
     "toggleTheme": "Toggle theme",

@@ -18,7 +18,9 @@ export type NotificationType =
   | "ticket_needs_assignment"
   | "ticket_reopened"
   | "ticket_reopened_oversight"
-  | "chat_needs_agent";
+  | "chat_needs_agent"
+  | "sla_at_risk"
+  | "sla_breached";
 
 // live-chat: a notification carries exactly one of ticket/conversation,
 // never both (see backend/src/routes/me.routes.ts's toNotificationItem) —

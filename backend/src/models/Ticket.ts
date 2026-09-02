@@ -12,16 +12,33 @@ export type TicketStatus = "new" | "in_progress" | "answered" | "escalated" | "c
 // derived server-side from which branch/inputs the request actually took.
 export type TicketCreationChannel = "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other";
 
-// sla-automation Story 26: `breached` is stored but intentionally never
-// flipped by this story — there's no scheduled job scanning for breaches
-// yet, so a ticket that breaches while unqueried stays `breached: false`
-// here. That's fine because slaStatus is derived on read (see
-// sla.service.ts's computeSlaStatus). A future story owns the scheduler
-// that would actually flip this field for proactive alerting.
+// sla-automation Story 26: `breached` was stored but intentionally left
+// unflipped by that story — there was no scheduled job scanning for breaches
+// yet, so a ticket that breached while unqueried stayed `breached: false`.
+// slaStatus is still derived on read for the general case (see
+// sla.service.ts's computeSlaStatus); Story 28 below is what actually flips
+// `breached` (and `atRiskAlerted`) via its periodic monitor.
 export interface ITicketSla {
   responseTargetAt?: Date;
   resolutionTargetAt?: Date;
   breached: boolean;
+  // sla-automation Story 28: single-fire flag so the SLA monitor doesn't
+  // spam the assignee every tick once the elapsed% crosses the at-risk
+  // threshold. Reset only when a new target is written (Story 26's
+  // resolveTicketSlaTargets — a fresh Ticket.create always starts false).
+  atRiskAlerted: boolean;
+}
+
+// sla-automation Story 28: explicit "SLA breached"/"SLA at risk" entries in
+// the ticket history timeline. Before this, a breach was only *inferable*
+// from statusHistory (the auto-escalation flips status to "escalated"),
+// with no entry that says "this happened because of an SLA breach"
+// specifically. No `changedBy` — unlike the other history arrays, these are
+// written by the system monitor, not a person, so there's no user to
+// attribute them to.
+export interface ITicketSlaHistoryEntry {
+  event: "at_risk" | "breached";
+  at: Date;
 }
 
 export interface ITicketStatusHistoryEntry {
@@ -85,6 +102,7 @@ export interface ITicket extends Document {
   priorityHistory: ITicketPriorityHistoryEntry[];
   assignedAgentHistory: ITicketAssignedAgentHistoryEntry[];
   chatPresenceHistory: ITicketChatPresenceHistoryEntry[];
+  slaHistory: ITicketSlaHistoryEntry[];
   sla: ITicketSla;
   escalatedTo: Types.ObjectId | null;
   // Story 62 (live-chat): provenance only — set when the customer accepted
@@ -175,11 +193,27 @@ const ticketSchema = new Schema<ITicket>(
       default: [],
       _id: false,
     },
+    slaHistory: {
+      type: [
+        {
+          event: { type: String, enum: ["at_risk", "breached"], required: true },
+          at: { type: Date, required: true },
+        },
+      ],
+      default: [],
+      _id: false,
+    },
 
+    // sla-automation Story 28: `sla.breached` has no scheduled job flipping
+    // it until this story's periodic monitor (slaMonitor.service.ts) exists
+    // — before it, a ticket that breached while unqueried stayed
+    // `breached: false` indefinitely (slaStatus was still correct on read,
+    // just not persisted). The monitor now does that flip proactively.
     sla: {
       responseTargetAt: Date,
       resolutionTargetAt: Date,
       breached: { type: Boolean, default: false },
+      atRiskAlerted: { type: Boolean, default: false },
     },
 
     escalatedTo: { type: Schema.Types.ObjectId, ref: "User", default: null },
