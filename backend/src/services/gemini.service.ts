@@ -19,6 +19,15 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 interface GenerateTextOptions {
   timeoutMs?: number;
+  /**
+   * Model sampling temperature. Left unset (provider default, ~1.0 — fine for
+   * open-ended chat/summaries) unless a caller has a task where creative
+   * drift is actively harmful — e.g. suggestTranslation in kbAi.service.ts,
+   * where a high temperature on a short/ambiguous input (a single word like
+   * "eat") let the model invent a plausible-sounding but unrelated
+   * customer-support phrase instead of translating the literal text.
+   */
+  temperature?: number;
 }
 
 /**
@@ -28,7 +37,7 @@ interface GenerateTextOptions {
  */
 export async function generateText(
   prompt: string,
-  { timeoutMs = DEFAULT_TIMEOUT_MS }: GenerateTextOptions = {}
+  { timeoutMs = DEFAULT_TIMEOUT_MS, temperature }: GenerateTextOptions = {}
 ): Promise<string | null> {
   if (!client) {
     console.warn("[gemini] GEMINI_API_KEY not set — skipping call");
@@ -37,6 +46,7 @@ export async function generateText(
 
   const model = client.getGenerativeModel({
     model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+    ...(temperature !== undefined ? { generationConfig: { temperature } } : {}),
   });
 
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));

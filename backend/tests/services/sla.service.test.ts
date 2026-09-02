@@ -1,10 +1,12 @@
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { SlaTarget } from "../../src/models/SlaTarget";
+import { Ticket } from "../../src/models/Ticket";
 import {
   computeSlaStatus,
   resolveTicketSlaTargets,
   resolveConversationSlaTargets,
+  recomputeTicketSla,
   SlaTargetNotConfiguredError,
   SLA_PAUSE_ON_ANSWERED,
 } from "../../src/services/sla.service";
@@ -137,5 +139,79 @@ describe("resolveTicketSlaTargets / resolveConversationSlaTargets", () => {
 
     expect(result.responseTargetAt.toISOString()).toBe("2026-01-01T01:00:00.000Z");
     expect((result as { resolutionTargetAt?: Date }).resolutionTargetAt).toBeUndefined();
+  });
+});
+
+describe("recomputeTicketSla (gap fix: priority/category can change post-creation via PATCH /tickets/:id)", () => {
+  // Mongoose's `timestamps: true` marks `createdAt` immutable after insert —
+  // any later `.set()`/direct assignment is silently ignored (verified: even
+  // findByIdAndUpdate can't move it). So these assertions check the targets
+  // against the ticket's REAL createdAt via arithmetic, rather than trying
+  // to force createdAt to a fixed literal for a hardcoded-ISO-string check.
+  async function seedTicket(overrides: Partial<{ category: string | null; priority: string }> = {}) {
+    return Ticket.create({
+      subject: "s",
+      description: "d",
+      customer: new mongoose.Types.ObjectId(),
+      category: overrides.category ?? null,
+      priority: overrides.priority ?? "medium",
+      sla: {
+        responseTargetAt: new Date(Date.now() + 60 * 60_000),
+        resolutionTargetAt: new Date(Date.now() + 480 * 60_000),
+        breached: false,
+        atRiskAlerted: true,
+      },
+    });
+  }
+
+  it("recomputes both targets anchored on the ticket's createdAt (not the moment recompute runs) when priority now matches a stricter target", async () => {
+    await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+
+    const ticket = await seedTicket({ priority: "medium" });
+    ticket.priority = "high";
+    await recomputeTicketSla(ticket);
+
+    expect(ticket.sla.responseTargetAt!.getTime()).toBe(ticket.createdAt.getTime() + 5 * 60_000);
+    expect(ticket.sla.resolutionTargetAt!.getTime()).toBe(ticket.createdAt.getTime() + 15 * 60_000);
+  });
+
+  it("resets atRiskAlerted to false so the monitor re-evaluates against the new target", async () => {
+    await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
+
+    const ticket = await seedTicket();
+    expect(ticket.sla.atRiskAlerted).toBe(true);
+
+    await recomputeTicketSla(ticket);
+
+    expect(ticket.sla.atRiskAlerted).toBe(false);
+  });
+
+  it("picks up a category change the same way", async () => {
+    await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
+    await SlaTarget.create({ priority: null, category: "Billing", responseMinutes: 20, resolutionMinutes: 90 });
+
+    const ticket = await seedTicket({ category: null });
+    ticket.category = "Billing";
+    await recomputeTicketSla(ticket);
+
+    expect(ticket.sla.responseTargetAt!.getTime()).toBe(ticket.createdAt.getTime() + 20 * 60_000);
+    expect(ticket.sla.resolutionTargetAt!.getTime()).toBe(ticket.createdAt.getTime() + 90 * 60_000);
+  });
+
+  it("is a no-op when the ticket is already breached — never un-breaches an escalated ticket", async () => {
+    await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+
+    const ticket = await seedTicket({ priority: "medium" });
+    ticket.sla.breached = true;
+    const before = { response: ticket.sla.responseTargetAt, resolution: ticket.sla.resolutionTargetAt };
+    ticket.priority = "high";
+
+    await recomputeTicketSla(ticket);
+
+    expect(ticket.sla.responseTargetAt).toEqual(before.response);
+    expect(ticket.sla.resolutionTargetAt).toEqual(before.resolution);
+    expect(ticket.sla.breached).toBe(true);
   });
 });

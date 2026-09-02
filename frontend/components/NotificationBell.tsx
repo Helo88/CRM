@@ -15,13 +15,14 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { fetchNotifications, markNotificationRead, type NotificationItem } from "@/app/actions/notifications";
+import { formatDateTime } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 60_000;
 // The dropdown is a quick-glance surface, not a browsable history — capped
 // at 10 with a "View all" link to the dedicated /notifications page (which
 // has real pagination + date filtering) rather than letting this list grow
 // unbounded as notifications pile up.
-const DROPDOWN_ITEM_LIMIT = 10;
+const DROPDOWN_ITEM_LIMIT = 8;
 
 const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_assigned: "notificationTicketAssigned",
@@ -110,7 +111,7 @@ export function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-96">
         <DropdownMenuLabel className="font-normal text-muted-foreground">{t("notifications")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {items.length === 0 ? (
@@ -138,6 +139,7 @@ export function NotificationBell() {
                   <span className="truncate text-xs text-muted-foreground">
                     {item.ticket ? `${item.ticket.reference} — ${item.ticket.subject}` : t("notificationChatLabel")}
                   </span>
+                  <span className="text-[11px] text-muted-foreground/70">{formatDateTime(item.createdAt)}</span>
                 </Link>
               </DropdownMenuItem>
             ))

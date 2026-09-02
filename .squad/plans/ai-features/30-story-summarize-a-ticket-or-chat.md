@@ -28,9 +28,9 @@ Out of scope: caching, versioning, editing, storing summaries on the ticket/conv
 3. `backend/src/models/Message.ts` — lines 3–79. Fields used: `parentType`, `parentId`, `senderType`, `text`, `internal` (line 38, defaults false on line 58), `createdAt`. Query pattern: `Message.find({ parentType, parentId }).sort({ createdAt: 1 })`.
 4. `backend/src/models/Ticket.ts` — read the schema fields you will surface in the prompt (subject, status, priority, ticketNumber). Grep for `subject` and `status`.
 5. `backend/src/models/Conversation.ts` — read the fields available for prompt context (status, customer ref).
-6. `backend/src/routes/ticket.routes.ts` — lines 66 and 269 for `requireAuth` / `requirePermission` usage. Match the existing pattern of ticket-scoped routes (see the router registrations at lines 66, 374, 449, 498, 658, 776, 820, 920). Grep `Ticket.findById` to see how ticket authorization is done in-route.
-7. `backend/src/routes/conversation.routes.ts` — lines 3, 34, 76, 95. Existing use of `requirePermission("chats:manage")` on `GET /`.
-8. `backend/src/constants/permissions.ts` — lines 13–47 (`PERMISSION_KEYS` list, `PermissionKey` type) and lines 55–82 (`SUBADMIN_ONLY_PERMISSIONS`, `DEFAULT_PERMISSIONS_BY_ROLE`).
+6. `backend/src/routes/ticket.routes.ts` (1274 lines — large, and has grown substantially since this plan was scouted; **grep for `router.(get|post|patch|delete)\(`, don't trust any cited line number in this section**). Match the existing pattern of ticket-scoped routes — current registrations sit at lines 76, 302, 444, 466, 569, 617, 801, 892, 1018, 1062, 1162, 1197, 1225. Grep `Ticket.findById` to see how ticket authorization is done in-route.
+7. `backend/src/routes/conversation.routes.ts` (small, 149 lines). Import block: lines 1–10. `POST /` (customer create): line 34, confirmed accurate. Staff `GET /` list (with `requirePermission("chats:manage")`): line 84 (drifted from an earlier line-76 citation). Single-conversation `GET /:id`: line 110 (drifted from an earlier line-95 citation).
+8. `backend/src/constants/permissions.ts` — `PERMISSION_KEYS` list / `PermissionKey` type: lines 13–54 (drifted from an earlier 13–47 citation). `SUBADMIN_ONLY_PERMISSIONS` / `DEFAULT_PERMISSIONS_BY_ROLE`: lines 64–111 (drifted from an earlier 55–82 citation) — `DEFAULT_PERMISSIONS_BY_ROLE.agent` in particular is now a longer list than before; add `"ai:summarize"` into it alongside the other agent defaults rather than assuming its old shape.
 9. `backend/src/middleware/auth.ts` — confirm `requireAuth`, `requireRole`, `requirePermission` signatures used elsewhere.
 10. `backend/src/app.ts` — lines 22–29. Route mounts at `/api/v1/tickets` and `/api/v1/conversations`.
 11. `frontend/app/tickets/[id]/page.tsx` and `frontend/app/tickets/[id]/TicketMessageThread.tsx` — where the summarize button will live on the ticket surface.
@@ -50,8 +50,8 @@ Attachments referenced in intake: none.
 
 **File:** `backend/src/constants/permissions.ts`
 
-- Add `"ai:summarize"` to `PERMISSION_KEYS` (the list at lines 13–46).
-- Add `"ai:summarize"` to `DEFAULT_PERMISSIONS_BY_ROLE.agent` and `.subadmin` (lines ~82+). Both agents and subadmins get the permission by default — the summary is agent-facing.
+- Add `"ai:summarize"` to `PERMISSION_KEYS` (the list is now at lines 13–54, drifted from an earlier 13–46 citation).
+- Add `"ai:summarize"` to `DEFAULT_PERMISSIONS_BY_ROLE.agent`. **Check `DEFAULT_PERMISSIONS_BY_ROLE.subadmin` before adding to it too** — as of now that array is deliberately empty (`subadmin: []`, with a file comment explaining sub-admin accounts start with no default permissions and are granted individually post-creation, unlike agents). Adding `"ai:summarize"` there would be the first entry ever in that list and a real precedent change, not a mechanical line-number fix — confirm this is still intended before doing it, rather than copying the old instruction as-is.
 - Do **not** add it to `SUBADMIN_ONLY_PERMISSIONS` (agents get it too).
 
 Add a short comment above the new entry: `// Story 32 — AI summary of a ticket/chat thread.`

@@ -1,4 +1,4 @@
-import type { TicketPriority } from "../models/Ticket";
+import type { TicketPriority, ITicket } from "../models/Ticket";
 import { SlaTarget } from "../models/SlaTarget";
 
 // sla-automation Story 26 (track SLA timers): resolves the deadline
@@ -77,6 +77,32 @@ export async function resolveConversationSlaTargets(input: {
   return {
     responseTargetAt: new Date(now.getTime() + target.responseMinutes * 60_000),
   };
+}
+
+// Gap fix: category/priority can change after creation via PATCH
+// /tickets/:id (ticket-management Story 9), but the targets stamped by
+// resolveTicketSlaTargets() above were never revisited when that happened
+// — a ticket promoted to a priority with a stricter SlaTarget kept running
+// against its original, looser deadline forever, and vice versa. Anchors
+// both new targets on the ticket's original createdAt (not `now`), because
+// slaMonitor.service.ts's elapsed-percent math is windowMs = target -
+// createdAt — anchoring on `now` instead would silently restart the clock.
+// Resets atRiskAlerted to false per ITicketSla's own doc comment ("Reset
+// only when a new target is written"). Skipped once sla.breached is true:
+// that ticket already dropped out of the monitor's scan scope and may
+// already be escalated, so recomputing later would just make it look
+// on_track again without undoing anything that already fired.
+export async function recomputeTicketSla(ticket: ITicket): Promise<void> {
+  if (ticket.sla.breached) return;
+
+  const targets = await resolveTicketSlaTargets({
+    category: ticket.category,
+    priority: ticket.priority,
+    now: ticket.createdAt,
+  });
+  ticket.sla.responseTargetAt = targets.responseTargetAt;
+  ticket.sla.resolutionTargetAt = targets.resolutionTargetAt;
+  ticket.sla.atRiskAlerted = false;
 }
 
 // 15 minutes. Not admin-configurable in this story — SlaSystemSettings.atRiskPercent

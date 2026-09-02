@@ -223,7 +223,9 @@ export interface TicketHistoryEvent {
     | "reply_posted"
     | "internal_note_added"
     | "chat_participant_joined"
-    | "chat_participant_left";
+    | "chat_participant_left"
+    | "sla_at_risk"
+    | "sla_breached";
   at: string;
   actor: { id: string; name: string | null; role: string } | null;
   data: Record<string, unknown>;

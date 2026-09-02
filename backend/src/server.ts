@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createApp } from "./app";
 import { connectDB } from "./config/db";
 import { registerChatHandlers } from "./sockets/chat.socket";
+import { setIoInstance } from "./sockets/ioRegistry";
 import { startSlaMonitor } from "./services/slaMonitor.service";
 
 async function start(): Promise<void> {
@@ -18,6 +19,7 @@ async function start(): Promise<void> {
     cors: { origin: process.env.CLIENT_ORIGIN || "http://localhost:3000" },
   });
   registerChatHandlers(io);
+  setIoInstance(io);
 
   const port = process.env.PORT || 4000;
   httpServer.listen(port, () => {

@@ -1,6 +1,9 @@
 import { Message } from "../models/Message";
 import { Conversation } from "../models/Conversation";
 import { generateText } from "./gemini.service";
+import { suggestKbContent, type KbSuggestion } from "./kbAi.service";
+
+export type { KbSuggestion };
 
 /**
  * Builds the Gemini prompt for live-chat Story 15 (AI agent responds first)
@@ -156,6 +159,23 @@ export async function evaluateTicketSuggestion(
     return { subject: parsed.subject.trim(), description: parsed.description.trim() };
   } catch (err) {
     console.error("[liveChatAi] evaluateTicketSuggestion failed:", (err as Error).message);
+    return null;
+  }
+}
+
+// ai-features Story 34/35 (live-chat half): thin wrapper so chat.socket.ts
+// only ever imports AI assists from this file, matching getAiReply/
+// evaluateTicketSuggestion above — the actual FAQ/article retrieval lives in
+// kbAi.service.ts alongside the admin-authoring assists it's built the same
+// way as. Wrapped in its own try/catch (unlike suggestKbContent itself,
+// which only wraps the Gemini call) so a DB hiccup on the shortlist query
+// can't take down the reply/ticket-suggestion calls it runs alongside in
+// chat.socket.ts's Promise.all.
+export async function evaluateKbSuggestion(latestCustomerMessage: string): Promise<KbSuggestion | null> {
+  try {
+    return await suggestKbContent(latestCustomerMessage);
+  } catch (err) {
+    console.error("[liveChatAi] evaluateKbSuggestion failed:", (err as Error).message);
     return null;
   }
 }

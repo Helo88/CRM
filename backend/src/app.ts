@@ -11,6 +11,9 @@ import conversationRoutes from "./routes/conversation.routes";
 import customerRoutes from "./routes/customer.routes";
 import meRoutes from "./routes/me.routes";
 import adminRoutes from "./routes/admin.routes";
+import kbFaqRoutes from "./routes/kbFaq.routes";
+import kbHelpArticleRoutes from "./routes/kbHelpArticle.routes";
+import kbPublicRoutes from "./routes/kbPublic.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export function createApp(): Application {
@@ -29,9 +32,12 @@ export function createApp(): Application {
   app.use("/api/v1/customers", customerRoutes);
   app.use("/api/v1/me", meRoutes);
   app.use("/api/v1/admin/users", adminRoutes);
+  app.use("/api/v1/kb/faqs", kbFaqRoutes);
+  app.use("/api/v1/kb/articles", kbHelpArticleRoutes);
+  app.use("/api/v1/kb/public", kbPublicRoutes);
   // TODO: mount remaining feature routers as they're implemented —
-  // agent-workspace, knowledge-base, ai-features, reports-management (see
-  // USER_STORIES.md for the full feature list).
+  // agent-workspace, ai-features, reports-management (see USER_STORIES.md
+  // for the full feature list).
 
   app.use((req: Request, res: Response) => {
     res.status(404).json({ error: "Not found" });

@@ -2,7 +2,7 @@
 // Permissions are granted PER INDIVIDUAL agent/sub-admin account (stored on
 // User.permissions, see backend/src/models/User.ts) — there is no shared
 // per-role permission set. Keys not yet backed by a real feature
-// (sla:configure, kb:publish, ...) are reserved here, ready for the story
+// (sla:configure, ...) are reserved here, ready for the story
 // that builds that feature to start gating its own routes with
 // requirePermission(key) using one of these.
 //
@@ -53,7 +53,23 @@ export const PERMISSION_KEYS = [
   // scan interval), not the target rows themselves.
   "sla:targets_view",
   "sla:targets_edit",
-  "kb:publish",
+  // knowledge-base Stories 29/30: FAQs and help articles. Per-ENTITY,
+  // per-ACTION keys (view/create/edit/delete for each of kb:faq_* and
+  // kb:article_* separately) rather than one umbrella "kb:manage" — see
+  // [[feedback_granular_action_permissions]]. Curating short Q&A pairs and
+  // writing long-form guides are separately delegable jobs, so an account
+  // can hold one family without the other. There is no draft/published
+  // state and no separate "publish" authority (product decision, 2026-09-02):
+  // an FAQ or article is live for customers as soon as it's saved, so
+  // *_create and *_edit are the only gates a customer-visible change needs.
+  "kb:faq_view_list",
+  "kb:faq_create",
+  "kb:faq_edit",
+  "kb:faq_delete",
+  "kb:article_view_list",
+  "kb:article_create",
+  "kb:article_edit",
+  "kb:article_delete",
   "reports:view",
   "reports:export",
   "ai:override_category",
@@ -79,7 +95,14 @@ export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
   "sla:configure",
   "sla:targets_view",
   "sla:targets_edit",
-  "kb:publish",
+  "kb:faq_view_list",
+  "kb:faq_create",
+  "kb:faq_edit",
+  "kb:faq_delete",
+  "kb:article_view_list",
+  "kb:article_create",
+  "kb:article_edit",
+  "kb:article_delete",
   "reports:export",
   "tickets:categories_view",
   "tickets:categories_create",

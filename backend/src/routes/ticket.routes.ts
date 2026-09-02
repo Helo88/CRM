@@ -27,7 +27,7 @@ import { uploadTicketMessageAttachments, ticketFilePath } from "../middleware/up
 import { applyStatusTransition, InvalidStatusTransitionError } from "../services/ticketStatus.service";
 import { escalateTicket, InvalidEscalationTargetError } from "../services/ticketEscalation.service";
 import { buildTicketHistory, TicketNotFoundError, TicketHistoryEvent } from "../services/ticketHistory.service";
-import { resolveTicketSlaTargets, computeSlaStatus } from "../services/sla.service";
+import { resolveTicketSlaTargets, recomputeTicketSla, computeSlaStatus } from "../services/sla.service";
 
 const router = express.Router();
 
@@ -772,6 +772,13 @@ router.patch(
         changedAt: new Date(),
       });
       console.info(`[tickets] ${req.params.id} priority changed by ${req.user!.id} to ${priority}`);
+    }
+
+    // sla-automation gap fix: category/priority are SLA-matching dimensions
+    // (sla.service.ts's findApplicableSlaTarget) — either changing means the
+    // deadlines stamped at creation may no longer be the right ones.
+    if ("category" in rawBody || "priority" in rawBody) {
+      await recomputeTicketSla(ticket);
     }
 
     await ticket.save();

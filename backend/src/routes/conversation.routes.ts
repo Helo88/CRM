@@ -26,7 +26,17 @@ async function callerAuthorizedOnConversation(
 ): Promise<boolean> {
   if (user.role === "admin") return true;
   if (user.role === "subadmin") return hasPermission(user.id, "chats:manage");
-  return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
+  if (user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent)) return true;
+  // An unclaimed conversation (assignedAgent: null) is visible to any agent
+  // holding chats:manage — same scope the GET / list route and the claim
+  // action itself already use. Without this, the chat_needs_agent
+  // notification/toast (sent to every chats:manage agent, not just whoever
+  // ends up claiming it) links to a page that 403s for everyone until one
+  // of them claims it first.
+  if (user.role === "agent" && conversation.assignedAgent == null) {
+    return hasPermission(user.id, "chats:manage");
+  }
+  return false;
 }
 
 // live-chat Story 14: customer starts a new conversation. Real-time messaging

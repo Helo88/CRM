@@ -16,6 +16,7 @@ import * as liveChatAiService from "../../src/services/liveChatAi.service";
 vi.mock("../../src/services/liveChatAi.service", () => ({
   getAiReply: vi.fn(),
   evaluateTicketSuggestion: vi.fn(),
+  evaluateKbSuggestion: vi.fn(),
 }));
 
 let mongod: MongoMemoryServer;
@@ -52,6 +53,8 @@ beforeEach(async () => {
   vi.mocked(liveChatAiService.getAiReply).mockReset();
   vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockReset();
   vi.mocked(liveChatAiService.evaluateTicketSuggestion).mockResolvedValue(null);
+  vi.mocked(liveChatAiService.evaluateKbSuggestion).mockReset();
+  vi.mocked(liveChatAiService.evaluateKbSuggestion).mockResolvedValue(null);
 });
 
 // Story 41-adjacent: real login tokens carry { sub, role, name } (see
@@ -326,22 +329,47 @@ describe("chat.socket.ts AI agent branch (Story 15)", () => {
     socket.disconnect();
   });
 
-  it.each(["escalated", "with_agent"])(
-    "does not trigger the AI branch when status is %s",
-    async (status) => {
-      const { user, token } = await seedUser();
-      const conversation = await Conversation.create({ customer: user._id, status });
-      const socket = await joinedSocket(conversation.id, token);
+  it("does not trigger the AI branch when status is with_agent", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "with_agent" });
+    const socket = await joinedSocket(conversation.id, token);
 
-      socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
-      await new Promise((resolve) => socket.on("conversation:message", resolve));
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+    await new Promise((resolve) => socket.on("conversation:message", resolve));
 
-      expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
-      expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
+    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(0);
 
-      socket.disconnect();
-    }
-  );
+    socket.disconnect();
+  });
+
+  // A customer who has escalated (asked for a human) but hasn't had anyone
+  // claim the chat yet must not be left hanging — the AI keeps answering
+  // until status flips to "with_agent" (see the with_agent test above and
+  // the escalate describe block's own coverage of this transition).
+  it("still triggers the AI branch when status is escalated (no human has claimed yet)", async () => {
+    const { user, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: user._id, status: "escalated" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Still happy to help while you wait.");
+    const socket = await joinedSocket(conversation.id, token);
+
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
+    socket.emit("conversation:message", { conversationId: conversation.id, text: "hi" });
+
+    const aiMessage = await secondMessage;
+    expect(aiMessage.senderType).toBe("ai");
+    expect(aiMessage.text).toBe("Still happy to help while you wait.");
+    expect(liveChatAiService.getAiReply).toHaveBeenCalled();
+    expect(await Message.countDocuments({ senderType: "ai" })).toBe(1);
+
+    socket.disconnect();
+  });
 });
 
 describe("chat.socket.ts escalate (Story 16)", () => {
@@ -439,12 +467,16 @@ describe("chat.socket.ts escalate (Story 16)", () => {
     socket.disconnect();
   });
 
-  it("after escalation, a customer message persists but does not trigger the AI branch", async () => {
+  it("after escalation, a customer message still triggers the AI branch until a human claims", async () => {
     // Status leaves "ai_handling" the moment escalation succeeds — this no
     // longer depends on anyone claiming the chat (claiming is a separate,
     // explicit staff action; see the claim/unclaim describe block below).
+    // The AI keeps answering through this "escalated" gap on purpose — a
+    // customer who escalated and then kept typing while waiting for a human
+    // must not be met with silence (see chat.socket.ts's AI-branch comment).
     const { user, token } = await seedUser();
     const conversation = await Conversation.create({ customer: user._id, status: "ai_handling" });
+    vi.mocked(liveChatAiService.getAiReply).mockResolvedValue("Someone will be with you, meanwhile...");
     const socket = await joinedSocket(conversation.id, token);
 
     await new Promise((resolve) => {
@@ -456,10 +488,18 @@ describe("chat.socket.ts escalate (Story 16)", () => {
       socket.emit("conversation:escalate", { conversationId: conversation.id });
     });
 
+    const messages: Record<string, unknown>[] = [];
+    const secondMessage = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("conversation:message", (msg: Record<string, unknown>) => {
+        messages.push(msg);
+        if (messages.length === 2) resolve(msg);
+      });
+    });
     socket.emit("conversation:message", { conversationId: conversation.id, text: "still here?" });
-    await new Promise((resolve) => socket.on("conversation:message", resolve));
 
-    expect(liveChatAiService.getAiReply).not.toHaveBeenCalled();
+    const aiMessage = await secondMessage;
+    expect(aiMessage.senderType).toBe("ai");
+    expect(liveChatAiService.getAiReply).toHaveBeenCalled();
     expect(await Message.countDocuments({ senderType: "customer" })).toBe(1);
     expect((await Conversation.findById(conversation.id))!.status).toBe("escalated");
 

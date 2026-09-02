@@ -8,6 +8,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/SiteHeader";
+import { Toaster } from "@/components/ui/sonner";
 import { THEME_COOKIE, type Theme } from "@/lib/theme";
 import { localeDir, type Locale } from "@/lib/locale";
 
@@ -53,6 +54,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <Direction.Provider dir={dir}>
             <SiteHeader />
             {children}
+            <Toaster
+              theme={theme}
+              dir={dir}
+              position={dir === "rtl" ? "top-left" : "top-right"}
+              // Persistent chat-needs-agent alerts (StaffNotificationSocket.tsx)
+              // can pile up several at once with none auto-dismissing — always
+              // show them as a full vertical list rather than sonner's default
+              // collapsed/peek stack that only expands on hover.
+              expand
+            />
           </Direction.Provider>
         </NextIntlClientProvider>
       </body>

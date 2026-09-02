@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, UserPlus, ShieldPlus, Settings2 } from "lucide-react";
+import { LayoutDashboard, Users, ShieldUser, Ticket, MessageSquare, TicketPlus, UserPlus, ShieldPlus, Settings2, MessagesSquare, BookOpen } from "lucide-react";
 
 // Shared between the desktop hover-expand rail and the mobile drawer
 // (components/StaffSidebar.tsx, components/MobileStaffNav.tsx) so both stay
@@ -23,6 +23,12 @@ export const STAFF_NAV_ITEMS = [
   { key: "tickets", href: "/tickets", icon: Ticket, staffOnly: false, agentOrAdminOnly: false, permission: undefined, pinned: false },
   { key: "chats", href: "/chats", icon: MessageSquare, staffOnly: false, agentOrAdminOnly: false, permission: "chats:manage", pinned: false },
   { key: "accounts", href: "/admin/users", icon: ShieldUser, staffOnly: true, agentOrAdminOnly: false, permission: "staff:view_list", pinned: false },
+  // knowledge-base Stories 29/30: FAQs and help articles are two separate
+  // destinations (separately delegable permission families — see
+  // backend/src/constants/permissions.ts) even though their admin UI lives
+  // side by side under /admin/kb.
+  { key: "kbFaqs", href: "/admin/kb/faqs", icon: MessagesSquare, staffOnly: true, agentOrAdminOnly: false, permission: "kb:faq_view_list", pinned: false },
+  { key: "kbArticles", href: "/admin/kb/articles", icon: BookOpen, staffOnly: true, agentOrAdminOnly: false, permission: "kb:article_view_list", pinned: false },
   // sla-automation Story 25: the /admin/system-configuration shell
   // (categories/SLA targets/quick replies/branding tabs). `pinned: true`
   // means StaffSidebar/MobileStaffNav render this separately, anchored to

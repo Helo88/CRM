@@ -12,7 +12,7 @@ import {
   conversationAiSuggestionDeclinedPayloadSchema,
   conversationClaimPayloadSchema,
 } from "../validation/conversation.schema";
-import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
+import { getAiReply, evaluateTicketSuggestion, evaluateKbSuggestion } from "../services/liveChatAi.service";
 import { hasPermission } from "../services/permissions";
 import { escalateConversation } from "../services/conversationEscalation.service";
 
@@ -152,6 +152,13 @@ export function registerChatHandlers(io: Server): void {
   io.on("connection", (socket: Socket) => {
     console.log(`[socket] client connected: ${socket.id}`);
 
+    // Every authenticated connection (not just chat-page ones) joins its own
+    // personal room, keyed by user id — this is what lets
+    // notification.service.ts push a real-time event to a specific user from
+    // outside the chat feature entirely (see ioRegistry.ts), without needing
+    // to know which conversation, if any, that user currently has open.
+    socket.join(`user:${socket.data.user.id}`);
+
     // Client joins the room for a specific conversation so messages only broadcast
     // to participants of that conversation.
     socket.on("conversation:join", async (conversationId: string) => {
@@ -229,22 +236,32 @@ export function registerChatHandlers(io: Server): void {
 
       io.to(`conversation:${conversationId}`).emit("conversation:message", message);
 
-      // Story 15: the AI agent answers every customer message while the
-      // conversation hasn't been escalated. Keying off `status` (rather than
-      // "no prior AI/agent message") means Story 16's escalation flips this
-      // off with no change here.
-      if (senderType === "customer" && conversation.status === "ai_handling") {
+      // Story 15: the AI agent answers every customer message up until a
+      // human actually claims the chat. This deliberately covers BOTH
+      // "ai_handling" and "escalated" — escalating (asking for a human) only
+      // flags the chat for pickup and shows the customer a "someone will
+      // join shortly" banner; it does not mean a human is present yet. Before
+      // this fix, the AI branch only ran in "ai_handling", so a customer who
+      // escalated and then kept typing while waiting got no reply at all
+      // until an agent clicked "Join chat" (status -> "with_agent", which is
+      // correctly excluded here since a human is actually handling by then).
+      if (
+        senderType === "customer" &&
+        (conversation.status === "ai_handling" || conversation.status === "escalated")
+      ) {
         const roomKey = `conversation:${conversationId}`;
         io.to(roomKey).emit("conversation:ai-typing", { conversationId });
 
         try {
-          // Story 62: the ticket-suggestion classifier runs alongside the
-          // normal reply, not instead of it -- each is independently
-          // safe/non-throwing (see liveChatAi.service.ts), so a Promise.all
-          // here never lets one call's failure affect the other.
-          const [reply, ticketSuggestion] = await Promise.all([
+          // Story 62's ticket-suggestion classifier and ai-features Story
+          // 34/35's KB-content suggestion both run alongside the normal
+          // reply, not instead of it -- each is independently safe/
+          // non-throwing (see liveChatAi.service.ts), so a Promise.all here
+          // never lets one call's failure affect the others.
+          const [reply, ticketSuggestion, kbSuggestion] = await Promise.all([
             getAiReply(conversationId),
             evaluateTicketSuggestion(conversationId, conversation.aiTicketSuggestionDeclined),
+            evaluateKbSuggestion(text),
           ]);
           const aiMessage = await Message.create({
             parentType: "conversation",
@@ -253,6 +270,7 @@ export function registerChatHandlers(io: Server): void {
             senderId: null,
             text: reply ?? AI_FALLBACK_TEXT,
             aiTicketSuggestion: ticketSuggestion,
+            aiKbSuggestion: kbSuggestion,
           });
           io.to(roomKey).emit("conversation:message", aiMessage);
         } catch (err) {

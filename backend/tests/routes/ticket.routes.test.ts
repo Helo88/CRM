@@ -1034,6 +1034,129 @@ describe("PATCH /api/v1/tickets/:id (Story 9)", () => {
   });
 });
 
+// sla-automation gap fix: sla.responseTargetAt/resolutionTargetAt were only
+// ever computed once, at POST /tickets creation time — changing priority or
+// category afterward via this same PATCH /:id left a ticket running against
+// its original (possibly now-wrong) deadlines forever. See sla.service.ts's
+// recomputeTicketSla.
+describe("PATCH /api/v1/tickets/:id — recomputes SLA targets when priority/category change (sla-automation gap fix)", () => {
+  afterEach(async () => {
+    // The default (null, null) row seeded in beforeAll must survive; only
+    // clear the extra specific rows each test adds.
+    await SlaTarget.deleteMany({ $or: [{ priority: { $ne: null } }, { category: { $ne: null } }] });
+  });
+
+  // Mongoose's `timestamps: true` makes `createdAt` immutable after insert,
+  // so these tests can't force it to a fixed literal — they check the
+  // recomputed targets against the ticket's REAL createdAt via arithmetic
+  // instead of hardcoded absolute ISO strings.
+  async function seedTicketWithSla(overrides: {
+    category?: string | null;
+    priority?: string;
+    responseTargetAt: Date;
+    resolutionTargetAt: Date;
+    atRiskAlerted?: boolean;
+    breached?: boolean;
+  }) {
+    const ticket = await seedTicket({ category: overrides.category, priority: overrides.priority });
+    ticket.sla = {
+      responseTargetAt: overrides.responseTargetAt,
+      resolutionTargetAt: overrides.resolutionTargetAt,
+      breached: overrides.breached ?? false,
+      atRiskAlerted: overrides.atRiskAlerted ?? true,
+    };
+    await ticket.save();
+    return ticket;
+  }
+
+  it("recomputes responseTargetAt/resolutionTargetAt anchored on the ticket's createdAt when priority changes to a stricter target", async () => {
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+    const ticket = await seedTicketWithSla({
+      priority: "medium",
+      responseTargetAt: new Date(Date.now() + 60 * 60_000),
+      resolutionTargetAt: new Date(Date.now() + 480 * 60_000),
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_priority"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ priority: "high" });
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.responseTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 5 * 60_000);
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 15 * 60_000);
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.atRiskAlerted).toBe(false);
+  });
+
+  it("recomputes SLA targets when only category changes", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    await SlaTarget.create({ priority: null, category: "Billing", responseMinutes: 20, resolutionMinutes: 90 });
+    const ticket = await seedTicketWithSla({
+      category: null,
+      responseTargetAt: new Date(Date.now() + 60 * 60_000),
+      resolutionTargetAt: new Date(Date.now() + 480 * 60_000),
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:categorize"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing" });
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.responseTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 20 * 60_000);
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 90 * 60_000);
+  });
+
+  it("leaves SLA targets untouched when neither category nor priority is sent (e.g. reassignment-only)", async () => {
+    const responseTargetAt = new Date(Date.now() + 60 * 60_000);
+    const resolutionTargetAt = new Date(Date.now() + 480 * 60_000);
+    const ticket = await seedTicketWithSla({ responseTargetAt, resolutionTargetAt, atRiskAlerted: true });
+    const { user: agent } = await seedUser({ role: "agent", isActive: true });
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.responseTargetAt).toBe(responseTargetAt.toISOString());
+    expect(res.body.resolutionTargetAt).toBe(resolutionTargetAt.toISOString());
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.atRiskAlerted).toBe(true);
+  });
+
+  it("does not recompute (and does not un-breach) a ticket whose SLA already breached", async () => {
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+    const responseTargetAt = new Date(Date.now() + 60 * 60_000);
+    const resolutionTargetAt = new Date(Date.now() + 480 * 60_000);
+    const ticket = await seedTicketWithSla({
+      priority: "medium",
+      responseTargetAt,
+      resolutionTargetAt,
+      breached: true,
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_priority"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ priority: "high" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.responseTargetAt).toBe(responseTargetAt.toISOString());
+    expect(res.body.resolutionTargetAt).toBe(resolutionTargetAt.toISOString());
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.breached).toBe(true);
+  });
+});
+
 async function seedActiveAgent(overrides: Partial<{ isOnline: boolean; email: string }> = {}) {
   return User.create({
     name: "Assignable Agent",

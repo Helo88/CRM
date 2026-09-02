@@ -3,7 +3,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
+  AlertOctagon,
   CirclePlus,
+  Clock,
   Download,
   Flag,
   History,
@@ -104,6 +106,8 @@ const HISTORY_EVENT_ICON: Record<TicketHistoryEvent["kind"], typeof CirclePlus> 
   internal_note_added: StickyNote,
   chat_participant_joined: LogIn,
   chat_participant_left: LogOut,
+  sla_at_risk: Clock,
+  sla_breached: AlertOctagon,
 };
 
 // Story 63: the "created" event's data.createdVia rides along so the label
@@ -383,6 +387,13 @@ export function TicketDetailSidebar({
         return t("history.event.chatParticipantJoined", { name });
       case "chat_participant_left":
         return t("history.event.chatParticipantLeft", { name });
+      // sla-automation Story 28: written by the periodic SLA monitor, not a
+      // person — no {name} to interpolate (event.actor is always null for
+      // these, see backend/src/services/ticketHistory.service.ts).
+      case "sla_at_risk":
+        return t("history.event.slaAtRisk");
+      case "sla_breached":
+        return t("history.event.slaBreached");
     }
   }
 
