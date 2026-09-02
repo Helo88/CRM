@@ -376,7 +376,28 @@
     "reportsTileTitle": "Reports",
     "reportsTileBody": "Ticket, SLA and CSAT reporting.",
     "comingLater": "Coming later",
-    "noAccessNote": "No access"
+    "noAccessNote": "No access",
+    "triage": {
+      "heading": "My triage board",
+      "subheading": "Your assigned tickets and live chats, most urgent first.",
+      "columnBreached": "Breached",
+      "columnAtRisk": "At risk",
+      "columnOnTrack": "On track",
+      "emptyColumn": "Nothing here.",
+      "emptyBoard": "You have no open tickets or live chats assigned to you.",
+      "chatLabel": "Live chat",
+      "ticketLabel": "Ticket",
+      "overdueBy": "Overdue by {delta}",
+      "timeLeft": "{delta} left",
+      "noTarget": "No SLA target",
+      "unknownCustomer": "Unknown customer",
+      "moreItems": "+{count} more",
+      "viewAllTickets": "All tickets",
+      "viewAllChats": "All chats",
+      "assignedTo": "Assigned to {name}",
+      "unavailable": "Your board couldn't be loaded. Try refreshing.",
+      "sectionsHeading": "Sections"
+    }
   },
   "AdminUsersList": {
     "heading": "Staff accounts",

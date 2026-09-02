@@ -6,228 +6,487 @@
 
 ## Prerequisites
 
-- Ticket-management stories that establish `Ticket.assignedAgent` (see `backend/src/models/Ticket.ts:28,53`) and the agent-filtered ticket list at `backend/src/routes/ticket.routes.ts:323` are already merged.
-- Live-chat stories that establish `Conversation.assignedAgent` (see `backend/src/models/Conversation.ts:17,30`) and the agent-scoped conversation list at `backend/src/routes/conversation.routes.ts:80` are already merged.
-- SLA stories 25–27 are **not yet** implemented. This story ships **without** true urgency sorting; see "Product rules" and "Out of scope".
-- Related but out of scope in this plan: Story 21 (agent availability toggle), Stories 22–24 (tasks/reminders, quick replies, internal notes). Those extend the workspace but are separate stories.
+- Ticket-management stories that establish `Ticket.assignedAgent` are merged — see `backend/src/models/Ticket.ts:92` (interface) and `:128` (schema). The agent-narrowed ticket list already exists at `backend/src/routes/ticket.routes.ts:376-378`.
+- Live-chat stories that establish `Conversation.assignedAgent` are merged — see `backend/src/models/Conversation.ts:20` (interface) and `:39` (schema). The staff-scoped conversation list is at `backend/src/routes/conversation.routes.ts:101-126`.
+- **sla-automation is fully implemented.** This is the single biggest change from the previous version of this plan, which stated SLA "is not yet implemented" and shipped a `createdAt` sorting proxy behind a `// TODO(story-25-sla)` marker. That statement is now **false** and the marker is **removed**:
+  - [`.squad/plans/sla-automation/38-story-define-sla-targets.md`](../sla-automation/38-story-define-sla-targets.md) — `SlaTarget` rows (admin-configurable durations).
+  - [`.squad/plans/sla-automation/40-story-track-sla-timers-on-tickets-and-chats.md`](../sla-automation/40-story-track-sla-timers-on-tickets-and-chats.md) — stamps `Ticket.sla.responseTargetAt` / `resolutionTargetAt` and `Conversation.sla.responseTargetAt` at creation, and adds the pure `computeSlaStatus()` derivation at `backend/src/services/sla.service.ts:129-159`.
+  - [`.squad/plans/sla-automation/39-story-sla-breach-alerts-and-auto-escalation.md`](../sla-automation/39-story-sla-breach-alerts-and-auto-escalation.md) — `backend/src/services/slaMonitor.service.ts`, which proactively flips `sla.breached` / `sla.atRiskAlerted` and fires notifications.
+  - Every ticket/chat read response already carries `slaStatus`, `responseTargetAt` and (tickets only) `resolutionTargetAt` — see `backend/src/routes/ticket.routes.ts:594-600` and `backend/src/routes/conversation.routes.ts:119-124`. **This story is the first surface that renders that data.**
+- **Design direction is already decided** — "Triage Board", chosen by the user from the three-option `SLA View Concepts` artifact (Pulse List / Triage Board / Ops Radar). Do **not** re-open the layout question, and do **not** rebuild the two-section ("Live chats" card + "Tickets" card) layout the previous version of this plan specified. Full card/column spec is in `.squad/stories/agent-workspace/unified-agent-dashboard/intake.md`, "Extra notes".
+- Story 19 (agent availability toggle) is **already implemented** — `PATCH /api/v1/me/availability` at `backend/src/routes/me.routes.ts:45-67`, frontend at `frontend/app/actions/availability.ts` + `frontend/components/UserMenu.tsx`. Do not re-add it here.
+- Story 27 (manually reassign a ticket) is **already implemented** — `frontend/app/tickets/ReassignAgentMenu.tsx`, backend at `backend/src/routes/ticket.routes.ts:706-732`. Do not re-add it here.
+- Related but out of scope: Story 36 (tasks/reminders), Story 37 (quick canned replies), Story 34 (internal notes). Those extend the workspace; they are separate stories with their own plans in this folder.
 
 ---
 
 ## Story Goal
 
-Deliver a single agent-facing dashboard page at `/dashboard` that lists the current agent's assigned open **tickets** and assigned open **live chats** side by side, clearly labelled by type, sorted so the most time-sensitive items surface first, with each row a direct link to the item's existing detail page. Access is limited to `agent` and `admin` roles via `requireAuth` + `requireRole` (with `requirePermission` on the aggregation endpoint per the project's "every route needs a permission" rule).
+Replace the agent's view of `/dashboard` with a **Triage Board**: three fixed columns — **Breached**, **At risk**, **On track** — into which the agent's assigned open **tickets and live chats are mixed together as cards**, grouped by the SLA status the backend derives with `computeSlaStatus()`, and ordered most-urgent-first inside each column. Every card links straight to that item's existing detail page (`/tickets/[id]` or `/chats/[id]`), so the agent never has to visit `/tickets` and `/chats` separately to find what needs attention next.
 
-In scope:
-1. New backend aggregation endpoint `GET /api/me/workspace` returning `{ tickets: [...], chats: [...] }` for the authenticated agent.
-2. Replacement of the placeholder `frontend/app/page.tsx` / `frontend/app/dashboard/page.tsx` with a real dashboard UI using the existing shadcn/ui primitives (`Card`, `Tabs`, `Table`, `Badge`, `Avatar`).
-3. Sorting proxy: **oldest-first by `createdAt`** (older items are the ones most at risk), plus a "New" badge on items updated in the last 15 minutes. A `// TODO(story-25-sla)` marker records that this is a placeholder for real SLA-based urgency.
+Concretely:
 
-Not in scope: SLA countdown timers, availability toggle, filters/pagination on the dashboard itself (existing queue pages own that), realtime push (initial render is server-side; auto-refresh on interval is acceptable but not required).
+1. New backend endpoint **`GET /api/v1/me/workspace`** returning the caller's assigned open tickets + conversations, already grouped into the three SLA columns and sorted by urgency, with `slaStatus` computed server-side (never re-derived in the route body or on the frontend).
+2. A Triage Board rendered on `frontend/app/dashboard/page.tsx` for **role `agent`**, above the existing tile grid, which stays exactly as it is today for every staff role.
+3. Card anatomy per the agreed concept: reference/chat label + priority chip on the top row, subject (tickets) or customer name (chats) in the body, a color-coded SLA time indicator (`−38m` overdue / `12m` remaining) and the assignee avatar on the bottom row. Column accents reuse `--destructive` / `--warning` / `--success` only.
+
+**Not in scope:**
+
+- Agent availability toggle (Story 19) — already shipped, unchanged by this story.
+- Tasks/reminders (Story 36), quick canned replies (Story 37), internal notes (Story 34) — separate stories, separate plans.
+- Drag-and-drop between columns. The columns are a *derived* grouping over `slaStatus`; nothing an agent can drag would change an SLA deadline. The board is read-and-navigate only.
+- A live-ticking per-second countdown, or push over Socket.io/WebSocket. Instead, the board refreshes on a fixed interval via client-side polling — see Frontend Task 2a — which keeps columns and SLA deltas reasonably current without either. See "Edge Cases & Failure Modes".
+- Cross-agent / team-wide oversight for admins and sub-admins. Their `/dashboard` is unchanged (tile grid only) — a "team board" is a future story.
+- Filters/pagination on the board. `/tickets` and `/chats` own those.
 
 ---
 
 ## Context — Read These Files First
 
-1. `backend/src/models/Ticket.ts` — read `~lines 1–90`. Confirm `ITicket` shape: `ticketNumber`, `subject`, `status`, `priority`, `category`, `customer`, `assignedAgent`, `createdAt`, `updatedAt`. The list response uses these fields.
-2. `backend/src/models/Conversation.ts` — read the whole file (small). Confirm `IConversation` shape: `customer`, `assignedAgent`, `status`, timestamps. Live-chat conversations do not have `subject`/`ticketNumber`; the dashboard row uses customer name + last message time + status.
-3. `backend/src/routes/ticket.routes.ts` (1274 lines — large; grep, don't skim) — the list handler is `router.get("/", ...)` at line 302. Line 356 already builds `filter.assignedAgent = new Types.ObjectId(req.user!.id)` when the caller is an agent — this endpoint is the shape precedent for the tickets slice.
-4. `backend/src/routes/conversation.routes.ts` (small, 149 lines) — the staff `GET /` list handler is at lines 84–103. Its filter (lines 85–91) builds `{ status: { $in: ["escalated", "with_agent"] }, $or: [{ assignedAgent: ObjectId(user.id) }, { assignedAgent: null }] }` for a plain agent (admin/subadmin see all) — note this is slightly richer than a flat `assignedAgent` match (it also surfaces unclaimed chats to agents); the dashboard's own `/me/workspace` query should filter strictly on `assignedAgent: agentId` only (claimed-by-me), not this broader union — this is the shape precedent for the chats slice, not a query to copy verbatim. Also note: live-chat assignment is claim-based, not auto-assigned — `assignedAgent` is set by a staff member explicitly clicking "Join chat" (`chat.socket.ts`'s `conversation:claim`), not by any automatic picker.
-5. `backend/src/services/assignment.service.ts` — read `~lines 40–70`. It already does a two-collection aggregate (open tickets + open conversations grouped by `assignedAgent`) for load-based auto-assignment. **Follow this pattern** for the merge in the new endpoint: two `find(...)` calls, hydrate, merge, sort, cap.
-6. `backend/src/routes/me.routes.ts` — read `~lines 1–120`. This is where the new endpoint lives (`router.get("/workspace", requireAuth, requireRole("agent","admin"), requirePermission("workspace:view"), ...)`). Match the existing route style (async handler, `res.status(...).json(...)`, no manual try/catch — `errorHandler` middleware handles thrown errors).
-7. `backend/src/constants/permissions.ts` — read whole file. Add a new permission key `"workspace:view"` (agent + admin + subadmin) matching the granular-per-action convention already used (`tickets:view_all`, `chats:manage`).
-8. `backend/src/middleware/auth.ts` — read `~lines 1–80`. Confirm `requireAuth`, `requireRole`, and `requirePermission` middleware signatures for the new route wiring.
-9. `frontend/app/page.tsx` — read the whole file. Currently a placeholder health-check landing. Its `Home()` export must remain the marketing/landing for unauthenticated visitors; **authenticated** agents/admins hitting `/` are already redirected to `/dashboard` in the existing session flow (grep `redirect("/dashboard")` in `frontend/app/` to confirm).
-10. `frontend/app/dashboard/page.tsx` — read the whole file. Currently a placeholder KPI/stat surface. This story replaces its body with the unified workspace list for agents. Admins keep the existing overview.
-11. `frontend/lib/session.ts` — read the whole file. Provides the auth helper used by all authenticated server components (grep for its named export). Use it to read the current user + role in the new dashboard.
-12. `frontend/components/ui/tabs.tsx`, `frontend/components/ui/card.tsx`, `frontend/components/ui/badge.tsx`, `frontend/components/ui/table.tsx` — skim signatures; these are the primitives the new UI must use.
-13. `frontend/messages/en.json` + `frontend/messages/ar.json` — grep for an existing key like `"tickets"` to see the namespace layout. Add `dashboard.workspace.*` entries for both locales.
-14. Precedent: `frontend/app/tickets/StaffTicketQueue.tsx` — read the whole file. Row layout for tickets in the dashboard should mirror its column choices (ticket number, subject, customer, status badge, priority badge, updated-at) but in a **compact card-list** rather than a full table.
-15. Precedent aggregation: `.squad/stories/customer-management/view-customer-interaction-history/intake.md` (Story 6) — read for the two-collection merge convention referenced by this intake.
+1. `backend/src/services/sla.service.ts` — read **lines 108-159** in full. `computeSlaStatus(input: { responseTargetAt?, resolutionTargetAt?, currentStatus?, now? }): SlaStatus` (line 129) is the **only** place the three-way status is decided. `SlaStatus = "on_track" | "at_risk" | "breached"` (line 10). `AT_RISK_THRESHOLD_MS` is 15 minutes (line 111); `SLA_PAUSE_ON_ANSWERED` is `false` (line 118). It is pure and does no I/O — safe to call per row. **Do not reimplement any of this threshold logic in the new endpoint or in any React component.**
+2. `backend/src/models/Ticket.ts` — read **lines 21-30** (`ITicketSla`: `responseTargetAt?`, `resolutionTargetAt?`, `breached`, `atRiskAlerted`) and **lines 212-217** (the `sla` schema sub-document). The SLA fields are **nested under `sla`**, not top-level. Also confirm on `ITicket` (lines 87-120): `ticketNumber` (88), `subject` (89), `customer` (91), `assignedAgent` (92), `priority` (94), `status` (95), `sla` (106), `createdAt` (118). `TicketStatus` is `"new" | "in_progress" | "answered" | "escalated" | "closed"` (line 5, schema enum lines 132-136).
+3. `backend/src/models/Conversation.ts` — read the whole file (59 lines). `IConversationSla` (lines 5-11) has **`responseTargetAt` only — chats have no `resolutionTargetAt`**, and it is likewise nested under `sla` (schema lines 47-51). `ConversationStatus` is `"ai_handling" | "escalated" | "with_agent" | "resolved"` (line 3). A conversation has **no `subject` and no reference number** — the card's title falls back to the customer's name.
+4. `backend/src/sockets/chat.socket.ts` — read **lines 390-456** (`conversation:claim`) and **lines 463-483** (`conversation:unclaim`). This is the load-bearing fact for the chat query: claiming atomically sets `{ assignedAgent: <user>, status: "with_agent" }` (line 426) and unclaiming reverts to `{ assignedAgent: null, status: "escalated" }` (line 473). **Therefore an assigned, still-open conversation is always `status: "with_agent"`** — `escalated`/`ai_handling` conversations are by construction unassigned and belong to nobody's board.
+5. `backend/src/services/assignment.service.ts` — read **lines 10-14** (`OPEN_STATUSES` / `OPEN_CONVERSATION_STATUSES`) and **lines 54-71**. This is the repo's existing two-collection ticket+conversation aggregation precedent: one `Promise.all` over both collections, then a merge loop over the results. **Follow this shape** (parallel queries, merge in JS) rather than inventing a `$unionWith` pipeline.
+6. `backend/src/routes/me.routes.ts` — read **lines 1-8** (imports) and **lines 16-67** (`GET /status`, `PATCH /availability`). This is where the new endpoint goes. Note the file's established convention, stated in its own comments at lines 22-23 and 38-40: **every `/me/*` route is self-scoped and therefore uses `requireAuth` only, with no permission key**. Match it — see Backend Task 1 for why this story does not add a `workspace:view` permission.
+7. `backend/src/middleware/auth.ts` — read **lines 30-45** (the `requireAuth` doc comment) and **lines 68-76** (`requireRole`). The comment at lines 41-44 names the exact gap this story must close by hand: *"a route gated by requireRole alone (no requirePermission key) won't see this"* — i.e. `requireAuth` + `requireRole` alone will **not** reject a just-deactivated agent whose token has not yet expired.
+8. `backend/src/services/permissions.ts` — `isActiveAccount(userId: string): Promise<boolean>` at **line 34**. This is the helper that closes the gap named in item 7; call it from inside the new handler.
+9. `backend/src/routes/ticket.routes.ts` (1274 lines — grep, don't skim) — read **lines 563-602**: `TicketListFields` (566-573) and `toTicketListItem` (575-602), including how it emits `slaStatus` / `responseTargetAt` / `resolutionTargetAt` at lines 592-600 and builds `reference: \`TCK-${ticket.ticketNumber}\`` at line 578. The new endpoint's ticket DTO must produce the **same `reference` format** so the board and the queue agree. Also read **lines 376-378** — the existing agent-narrowing filter, the shape precedent for the tickets query.
+10. `backend/src/routes/conversation.routes.ts` (small) — read **lines 101-126**, the staff `GET /`. Its filter (102-108) deliberately widens a plain agent's view to *also* include unclaimed chats (`assignedAgent: null`). **The workspace endpoint must NOT copy that union** — the board shows only work the agent has actually claimed. Lines 119-124 are the SLA mapping precedent to mirror.
+11. `backend/src/services/slaMonitor.service.ts` — read **lines 53-62** (`activeTarget = ticket.sla.responseTargetAt ?? ticket.sla.resolutionTargetAt`, and the comment at 54-61 establishing that `responseTargetAt`, when present, is always the *nearer* deadline) and **lines 191-209** (which statuses the monitor considers "still open": tickets `new`/`in_progress`/`answered`, conversations `ai_handling`/`with_agent`). The board's "urgency timestamp" derivation in Backend Task 2 follows the same "earliest defined target" rule.
+12. `backend/src/app.ts` — **line 33**: `app.use("/api/v1/me", meRoutes)`. The endpoint's full path is therefore **`/api/v1/me/workspace`** (the previous version of this plan wrote `/api/me/workspace`, which is wrong — there is no unversioned mount).
+13. `frontend/app/dashboard/page.tsx` — read the whole file (225 lines). `DashboardTile` (22-93) is the greyed-out-not-hidden tile primitive. The page body (108-225) does: cookie read + refresh redirect (117-144), a live `GET /api/v1/me/status` call (134-147) whose `isActive`/`permissions` (not the token's claims) drive the tiles, deactivation redirect (149-151), permission derivation (162-164), and the tile grid (177-221). **This page is shared by admin, sub-admin and agent today — it is not agent-specific.** This story branches inside it; it does not fork a new route.
+14. `frontend/app/tickets/StaffTicketQueue.tsx` — read **lines 74-87** (`STATUS_BADGE_CLASS` / `PRIORITY_BADGE_CLASS`) and **lines 165-188** (the mobile stacked-card variant). The triage card's priority chip must reuse `PRIORITY_BADGE_CLASS`'s exact token classes; the mobile card at 165-188 is the closest existing "compact clickable card" markup to model the triage card on.
+15. `frontend/app/chats/page.tsx` — read **lines 17-37** (the `ConversationRow` DTO and its status badge map) and **lines 60-77** (the server-side authenticated fetch + 401-refresh pattern). The board's chat cards link to `/chats/${id}`, the route this page already links to at line 122.
+16. `frontend/app/globals.css` — confirm the semantic tokens exist in both themes: `--destructive` (line 201 light / 298 dark), `--success` (205 / 302), `--warning` (209 / 306), each with a `-foreground` pair, all exposed as Tailwind utilities via the `@theme inline` block (lines 50-60). **These three are the only colors the board's columns and SLA indicators may use.**
+17. `frontend/components/ui/avatar.tsx` — `Avatar` (8-26, supports `size="sm"`) and `AvatarFallback` (44-58). The card's assignee avatar is an initial-only `Avatar size="sm"` + `AvatarFallback`; there is no avatar-image field on `User` to load.
+18. `frontend/lib/utils.ts` — `cn` (4-6) and `formatDateTime` (12-14). `formatDateTime` renders an absolute date/time and is **not** what the SLA indicator needs (a signed relative delta) — Frontend Task 3 adds that formatter.
+19. `frontend/messages/en.json` / `frontend/messages/ar.json` — the `Dashboard` section currently holds 13 keys (`heading`, `greeting`, `subheading`, the tile bodies/notes, `comingLater`, `noAccessNote`). New keys nest under `Dashboard.triage.*` in **both** files.
+20. `.squad/stories/agent-workspace/unified-agent-dashboard/intake.md` — read in full, especially "Acceptance criteria" and "Extra notes". The card anatomy and column-color spec live there; this plan does not restate every visual detail.
+21. `frontend/components/NotificationBell.tsx` — read **line 20** (`const POLL_INTERVAL_MS = 60_000;`) and **lines 61-74** (the `useEffect`: an initial `refresh()`, a `setInterval` that only calls `refresh()` when `!document.hidden`, a `visibilitychange` listener that force-refreshes the moment the tab regains focus, and cleanup that clears both). **This is the exact polling pattern the Triage Board's scheduled refresh (Frontend Task 2a) must copy** — same interval value, same visibility guards — rather than inventing a bespoke refresh loop for the board.
+22. `frontend/app/actions/notifications.ts` — read the whole file (148 lines). `getBearerToken()` (39-44) + `fetchNotifications()` (53-75) is the established shape for a Client-Component-facing Server Action that reads cookie-scoped backend data: read the session cookie, call the backend with a Bearer header, retry once through `refreshSession()` (`frontend/lib/session.ts`) on a 401, and **degrade to a safe fallback value on any failure instead of throwing** (the comment at lines 46-52 explains why this matters for a background polling fetch specifically). The new `fetchWorkspace()` action (Frontend Task 2a) copies this shape exactly, swapping the notifications endpoint for `/api/v1/me/workspace` and `null` in place of `[]` as the fallback (a board has no natural "empty but valid" default the way a notification list does).
+
+**Grep before editing:**
+
+- `grep -n "computeSlaStatus" backend/src/` — four call sites exist today (2 in `ticket.routes.ts`, 2 in `conversation.routes.ts`); yours is the fifth. Confirm none of them re-derives thresholds locally.
+- `grep -rn "workspace" backend/src/ frontend/app/` — must return nothing route-related before you start; this story owns the name.
+- `grep -n "assignedAgent" backend/src/routes/conversation.routes.ts` — confirms the union filter described in item 10 is still there and is the thing you are deliberately not copying.
 
 ---
 
 ## Product rules (from story)
 
-- **Current behaviour:** agents check `/tickets` (their queue) and `/chats` (their conversations) in two separate places. `/dashboard` is a stub.
-- **New behaviour:** agents land on `/dashboard` and see **both** in one view, grouped by type with clear section headers ("Live chats" and "Tickets"), each row linking to its detail page.
-- **Sorting (until SLA lands):** within each group, sort ascending by `createdAt` (oldest first — closest to any implicit SLA breach). Cap at 25 items per group; if truncated, render a "View all" link to the existing `/tickets` or `/chats` list. **Flag with `// TODO(story-25-sla)`** so the SLA story can replace this with real breach-risk sorting.
-- **Empty state:** when the agent has 0 items in a section, render a muted "You have no assigned live chats." / "You have no assigned tickets." message inside the section card. Never hide the section — it must always show which types exist.
-- **Admins:** admins can view the dashboard too (they may or may not have assigned items). Their query uses their own `req.user.id` — no cross-agent aggregation in this story. A follow-up story can add "Team workspace" for admins.
+- **Current behaviour.** `/dashboard` renders one static, permission-gated tile grid (Tickets / Customers / Accounts / a disabled "Reports — coming later" placeholder) identically for `agent`, `admin` and `subadmin` (`frontend/app/dashboard/page.tsx:177-221`). It shows nothing about the viewer's own workload. An agent finds their work by visiting `/tickets` (auto-narrowed to their assignments at `ticket.routes.ts:376-378`) and `/chats` separately.
+- **New behaviour.** For **`role === "agent"`**, `/dashboard` renders the Triage Board first, then the existing tile grid **unchanged** beneath it under a small section heading. For `admin` and `subadmin`, the page is byte-for-byte what it is today — no board. Rationale: the board is "my assigned queue"; admins/sub-admins are not auto-assigned tickets (`assignment.service.ts:39` picks `role: "agent"` only) and never claim chats as their day job, so their board would be permanently empty. Cross-agent oversight is a separate story.
+- **The tile grid is never removed and never hidden.** Per the project's dashboard convention (tiles a viewer lacks access to render greyed-out and inert, not absent), the board is *added above* the grid, not swapped in for it.
+- **Three columns, always all three.** Order is **Breached → At risk → On track**, left to right in LTR (RTL mirrors automatically via logical properties — do not hardcode `left`/`right`). A column with zero cards still renders its header, its count `(0)` and an empty-state line. Columns never collapse or reorder.
+- **Tickets and chats are mixed inside a column**, distinguished by a small type icon + label on the card, never by splitting the column into two lists.
+- **Sorting inside a column: ascending by the item's urgency timestamp** — the earliest *defined* SLA target on that item. One rule covers all three columns: in **Breached** it surfaces the most-overdue item first; in **At risk** and **On track** it surfaces the nearest deadline first. An item with no SLA target at all (created before sla-automation shipped) sorts **last** within its column.
+- **"Open" means:** tickets with `status` in `["new", "in_progress", "answered", "escalated"]` (i.e. every status but `closed`); conversations with `status: "with_agent"` (the only status an assigned, still-open chat can have — see Context item 4). `resolved` chats and `closed` tickets never appear.
+- **Every card is a link** — the whole card, not just a "View" affordance — to `/tickets/${id}` or `/chats/${id}`.
+- **Cap:** each column renders at most **25** cards. When a column has more, its footer reads "+N more" and links to `/tickets` or `/chats`. The backend returns each column's true `total` alongside its capped `items`.
 
 ---
 
 ## Backend Tasks
 
-### 1 — Add the `workspace:view` permission
+### 1 — Authorization decision: no new permission key
 
-**File:** `backend/src/constants/permissions.ts`
+**Do not add a `workspace:view` key** to `backend/src/constants/permissions.ts` (an earlier version of this plan called for one). Two reasons, both grounded in code read this session:
 
-- Add `"workspace:view"` to the permission-key union in the same alphabetical/grouped position as similar `*:view` keys.
-- Grant it to roles `agent`, `admin`, and `subadmin` in the same map/lookup that grants `tickets:view_all` and `chats:manage`. Do **not** grant it to `customer`.
+- Every route in `backend/src/routes/me.routes.ts` is self-scoped and gated by `requireAuth` alone, with the file's own comments stating exactly that (lines 22-23: *"Self-scoped, so no permission key needed"*; lines 38-40 repeat it for `/availability`). Adding a permission key would make this the only `/me/*` route that behaves differently, for data that is strictly "my own assignments".
+- The project's "every authenticated route needs a permission" rule names **the dashboard as its one explicit exception**, and `backend/src/middleware/auth.ts:41-44` documents that exception in the same terms.
 
-### 2 — Add the aggregation endpoint
+Consequently `frontend/lib/permissions.ts` (`PERMISSION_CATEGORIES`, lines 5-47) and `frontend/messages/*.json`'s `Permissions.keys` need **no** edit for this story.
+
+The one thing that convention costs you is the live `isActive` check that `requirePermission` performs for free (`auth.ts:99-105`, `:111`). Backend Task 2 closes that by hand with `isActiveAccount()`.
+
+### 2 — The workspace aggregation endpoint
 
 **File:** `backend/src/routes/me.routes.ts`
 
-Add a new handler (place it near the other agent-scoped GETs, after `/status`):
+Add imports at the top, matching the existing import block (lines 1-8): `Ticket` from `../models/Ticket`, `Conversation` from `../models/Conversation`, `requireRole` from `../middleware/auth`, `isActiveAccount` from `../services/permissions`, and `computeSlaStatus` + type `SlaStatus` from `../services/sla.service`.
+
+Place the handler immediately after `PATCH /availability` (i.e. after line 67), keeping the agent-scoped routes together.
 
 ```ts
-// GET /api/me/workspace
-// Returns the caller's assigned open tickets and assigned open live chats,
-// merged into two type-tagged arrays, oldest-first (SLA-aware sorting is a
-// follow-up once story 25 lands — see TODO below).
-router.get(
-  "/workspace",
-  requireAuth,
-  requireRole("agent", "admin"),
-  requirePermission("workspace:view"),
-  async (req: Request, res: Response) => {
-    const agentId = new Types.ObjectId(req.user!.id);
+// agent-workspace Story 20: the Triage Board's data source — the caller's
+// own assigned open tickets AND live chats, merged and grouped by the SLA
+// status sla.service.ts derives, so the frontend's three columns are a
+// straight read of `columns`, not a client-side re-derivation of the
+// at-risk threshold.
+//
+// Self-scoped ("my assignments"), so requireAuth + requireRole only, no
+// permission key — same convention as /status, /availability and /contact
+// above, and the documented dashboard exception to the project's
+// every-route-needs-a-permission rule. Because requireRole alone does NOT
+// re-check isActive (see middleware/auth.ts's requireAuth doc comment), the
+// deactivation check is done explicitly below.
+const OPEN_TICKET_STATUSES = ["new", "in_progress", "answered", "escalated"] as const;
+// A claimed, still-open chat is always "with_agent" — conversation:claim
+// sets assignedAgent + "with_agent" atomically and conversation:unclaim
+// reverts both (sockets/chat.socket.ts). "escalated"/"ai_handling" chats
+// are by construction unassigned; "resolved" is done.
+const OPEN_CHAT_STATUSES = ["with_agent"] as const;
 
-    const OPEN_TICKET_STATUSES = ["new", "open", "in_progress", "pending"] as const;
-    const OPEN_CHAT_STATUSES  = ["escalated", "with_agent"] as const;
+const COLUMN_CAP = 25;
 
-    const [tickets, chats] = await Promise.all([
-      Ticket.find({ assignedAgent: agentId, status: { $in: OPEN_TICKET_STATUSES } })
-        .select("ticketNumber subject status priority category customer assignedAgent createdAt updatedAt")
-        .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
-        .sort({ createdAt: 1 })
-        .limit(25),
-      Conversation.find({ assignedAgent: agentId, status: { $in: OPEN_CHAT_STATUSES } })
-        .select("customer status createdAt updatedAt")
-        .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
-        .sort({ createdAt: 1 })
-        .limit(25),
-    ]);
+interface WorkspaceItem {
+  id: string;
+  type: "ticket" | "chat";
+  // "TCK-1234" for tickets (same format as ticket.routes.ts's
+  // toTicketListItem), null for chats — a conversation has no reference
+  // number, so the card falls back to its customer name.
+  reference: string | null;
+  title: string | null;
+  priority: "low" | "medium" | "high" | "urgent" | null; // chats carry no priority
+  status: string;
+  customer: { id: string; name: string } | null;
+  assignedAgent: { id: string; name: string } | null;
+  slaStatus: SlaStatus;
+  // The single timestamp the column sorts on and the card counts down to:
+  // the earliest DEFINED target on the item. Null when the item predates
+  // sla-automation; those sort last.
+  urgencyAt: string | null;
+  responseTargetAt: string | null;
+  resolutionTargetAt: string | null; // always null for chats
+  createdAt: string;
+  updatedAt: string;
+}
 
-    // TODO(story-25-sla): once SLA timers exist, sort by (breach_risk desc,
-    // createdAt asc) and expose `slaStatus: 'on_track'|'at_risk'|'breached'`
-    // on each row so the UI can badge them.
-
-    res.json({
-      tickets: tickets.map((t) => ({
-        id: t._id.toString(),
-        ticketNumber: t.ticketNumber,
-        subject: t.subject,
-        status: t.status,
-        priority: t.priority,
-        customer: t.customer ? { id: t.customer._id.toString(), name: t.customer.name } : null,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      })),
-      chats: chats.map((c) => ({
-        id: c._id.toString(),
-        status: c.status,
-        customer: c.customer ? { id: c.customer._id.toString(), name: c.customer.name } : null,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      })),
-    });
+router.get("/workspace", requireAuth, requireRole("agent", "admin", "subadmin"), async (req: Request, res: Response) => {
+  if (!(await isActiveAccount(req.user!.id))) {
+    res.status(403).json({ error: "You do not have permission to perform this action" });
+    return;
   }
-);
+
+  const agentId = new Types.ObjectId(req.user!.id);
+  const now = new Date();
+
+  const [tickets, conversations] = await Promise.all([
+    Ticket.find({ assignedAgent: agentId, status: { $in: [...OPEN_TICKET_STATUSES] } })
+      .select("ticketNumber subject status priority customer assignedAgent sla createdAt updatedAt")
+      .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
+      .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name")
+      .limit(FETCH_CAP)
+      .lean(),
+    Conversation.find({ assignedAgent: agentId, status: { $in: [...OPEN_CHAT_STATUSES] } })
+      .select("status customer assignedAgent sla createdAt updatedAt")
+      .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
+      .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name")
+      .limit(FETCH_CAP)
+      .lean(),
+  ]);
+  // ... map -> merge -> group -> sort -> cap (below)
+});
 ```
 
-Confirm the exact status-value literals for tickets and conversations by reading `Ticket.ts` and `Conversation.ts` schema enums; adjust `OPEN_TICKET_STATUSES` / `OPEN_CHAT_STATUSES` if they don't match. Also confirm imports (`Ticket`, `Conversation`, `Types`, `requireRole`, `requirePermission`) — mirror the imports already at the top of `me.routes.ts`.
+Then, in the same handler:
 
-### 3 — Validation
+1. **Map each ticket** to a `WorkspaceItem` with
+   `slaStatus: computeSlaStatus({ responseTargetAt: t.sla?.responseTargetAt, resolutionTargetAt: t.sla?.resolutionTargetAt, currentStatus: t.status, now })`,
+   `reference: \`TCK-${t.ticketNumber}\``, `title: t.subject`, `priority: t.priority`.
+2. **Map each conversation** to a `WorkspaceItem` with
+   `slaStatus: computeSlaStatus({ responseTargetAt: c.sla?.responseTargetAt, now })`
+   — **pass no `resolutionTargetAt` and no `currentStatus`**, exactly as `conversation.routes.ts:122` does — plus `reference: null`, `title: null`, `priority: null`, `resolutionTargetAt: null`.
+3. **Derive `urgencyAt`** with one shared helper used by both mappers:
 
-No request body / query on this endpoint, so no zod schema. Rely on middleware for auth + role + permission enforcement.
+   ```ts
+   // The earliest DEFINED target. Mirrors slaMonitor.service.ts's
+   // `activeTarget` rule (responseTargetAt, when present, is always the
+   // nearer deadline — resolutionMinutes >= responseMinutes is enforced at
+   // the SlaTarget level), generalised so a ticket missing one of the two
+   // still sorts correctly.
+   function earliestTarget(...targets: Array<Date | undefined | null>): Date | null {
+     const defined = targets.filter((d): d is Date => Boolean(d));
+     if (defined.length === 0) return null;
+     return defined.reduce((a, b) => (a.getTime() < b.getTime() ? a : b));
+   }
+   ```
+
+4. **Pass the same `now`** into every `computeSlaStatus` call in the request. Do not let each row default to its own `new Date()` — two rows evaluated microseconds apart could otherwise land in different columns from the same request.
+5. **Group** the merged array by `slaStatus` into `breached` / `at_risk` / `on_track`.
+6. **Sort** each group ascending by `urgencyAt`, with `null` last:
+   `(a, b) => (a.urgencyAt === null ? 1 : b.urgencyAt === null ? -1 : a.urgencyAt.localeCompare(b.urgencyAt))`.
+   Break exact ties by `createdAt` ascending so the order is deterministic across requests.
+7. **Cap and respond:**
+
+   ```ts
+   res.status(200).json({
+     columns: {
+       breached:  { items: breached.slice(0, COLUMN_CAP),  total: breached.length },
+       at_risk:   { items: atRisk.slice(0, COLUMN_CAP),    total: atRisk.length },
+       on_track:  { items: onTrack.slice(0, COLUMN_CAP),   total: onTrack.length },
+     },
+     generatedAt: now.toISOString(),
+   });
+   ```
+
+   All three keys are **always present**, even when every `items` array is empty — the frontend must never have to invent a missing column.
+
+**`FETCH_CAP`:** define as `200` per collection. It is a safety bound on a pathological assignment count, not a product cap — an agent's open assigned workload is tens of items, and `COLUMN_CAP` is what the UI actually enforces. Add a one-line comment saying exactly that, so nobody later mistakes it for the paging story.
+
+**No zod schema** — the endpoint takes no body and no query params.
+
+### 3 — Do not touch the SLA service
+
+`computeSlaStatus` is consumed as-is. **No change** to `backend/src/services/sla.service.ts`, `backend/src/services/slaMonitor.service.ts`, `backend/src/models/Ticket.ts` or `backend/src/models/Conversation.ts` in this story. If a mapping seems to need a new field, re-read Context items 1-3 before adding one.
 
 ---
 
 ## Frontend Tasks
 
-### 1 — Server component that fetches and renders the workspace
+### 1 — Branch the dashboard page
 
 **Edit file:** `frontend/app/dashboard/page.tsx`
 
-- Keep the existing admin-only overview cards for the `admin`/`subadmin` case if they exist there today. For role `agent`, render the new unified workspace instead of the current placeholder.
-- Add a server-side fetch to `GET /api/me/workspace` (use the same server-fetch helper the other authenticated pages use — grep the file for the current pattern before adding one; typically an internal `fetch(...)` with the auth cookie forwarded).
-- Compose the page from two side-by-side sections on desktop (`grid grid-cols-1 lg:grid-cols-2 gap-6`) and stacked on mobile. Each section is a `Card` with `CardHeader` ("Live chats" / "Tickets" — via `next-intl` message keys) and `CardContent` containing the rows.
-- Each **ticket row**: ticket number (mono), subject (line-clamp-1), customer name, priority badge, status badge, "opened X ago" — clickable, wraps a `<Link href={\`/tickets/${t.id}\`}>` around the row.
-- Each **chat row**: customer name, chat status badge (`escalated` → `bg-warning`, `with_agent` → `bg-success`), "started X ago" — wraps `<Link href={\`/chats/${c.id}\`}>`.
-- Empty state per section: muted paragraph inside `CardContent`.
-- If a section returns 25 items, show a "View all →" link in the `CardHeader` action slot pointing at `/tickets?assignedAgent=me` and `/chats` respectively.
+Everything from the top of the file through the `isActive` redirect (lines 108-151) and the permission derivation (162-164) stays as it is. After that:
 
-### 2 — Row components
+- When `role === "agent"`, fetch the initial board snapshot server-side via the new `fetchWorkspace()` Server Action (Frontend Task 2a) instead of an inline `fetch` — this keeps the 401-retry/refresh logic in exactly one place, shared with the client-side polling that calls the same action later:
 
-**Create file:** `frontend/app/dashboard/WorkspaceTicketRow.tsx` — small client-free presentational component receiving the row DTO. Reuse status/priority badge colour tokens (`bg-success`, `bg-warning`, `bg-destructive`) exactly as `frontend/app/tickets/StaffTicketQueue.tsx` uses them.
+  ```ts
+  const workspace = await fetchWorkspace();
+  ```
 
-**Create file:** `frontend/app/dashboard/WorkspaceChatRow.tsx` — same, for a chat row.
+  `fetchWorkspace()` returns `null` on any failure (no session, network error, non-2xx) instead of throwing — when it does, **render the tile grid alone** plus the `triage.unavailable` string, and skip the board entirely. Do not `redirect("/")` on it; the page's existing session-refresh redirect (lines 122-125, 139-141) is driven by the separate `/me/status` call, not by this one.
+- Render `<TriageBoard initialColumns={workspace.columns} />` (only when `workspace` is non-`null`) between the greeting block (lines 170-175) and the tile grid (line 177).
+- Put the existing tile grid behind a small `<h2>` using a new `Dashboard.triage.sectionsHeading` key so the two regions read as distinct sections rather than one run-on page.
+- For `admin` / `subadmin`, render exactly what renders today — no fetch, no board, no extra heading.
 
-### 3 — i18n keys
+### 2a — Server Action for fetching the board
 
-**Files:** `frontend/messages/en.json`, `frontend/messages/ar.json`
+**Create file:** `frontend/app/actions/workspace.ts`
 
-Add under a new `dashboard.workspace` namespace:
+`"use server"`, copying the exact shape of `getBearerToken()` and `fetchNotifications()` in `frontend/app/actions/notifications.ts:39-75` (Context item 22): read the session cookie, call the backend with a Bearer header, retry once via `refreshSession()` on a 401, and return `null` — not throw — on any failure (missing session, non-`ok` response, a rejected `fetch()`).
 
-- `title` → "My workspace" / "مساحة عملي"
-- `sections.chats` → "Live chats" / "المحادثات المباشرة"
-- `sections.tickets` → "Tickets" / "التذاكر"
-- `empty.chats` → "You have no assigned live chats." / "لا توجد لديك محادثات مباشرة مُعيَّنة."
-- `empty.tickets` → "You have no assigned tickets." / "لا توجد لديك تذاكر مُعيَّنة."
-- `viewAll` → "View all" / "عرض الكل"
-- `openedAgo` → "Opened {relative}" / "فُتحت {relative}"
+```ts
+"use server";
 
-Match the existing key-nesting style (grep `dashboard` in `en.json` first — if a namespace already exists, extend it).
+import { cookies } from "next/headers";
+import { API_URL, SESSION_COOKIE } from "@/lib/auth";
+import { refreshSession } from "@/lib/session";
 
-### 4 — Redirect on landing
+export interface WorkspaceItem { /* mirrors Backend Task 2's WorkspaceItem field-for-field */ }
+export interface WorkspaceColumn { items: WorkspaceItem[]; total: number; }
+export interface WorkspaceResponse {
+  columns: { breached: WorkspaceColumn; at_risk: WorkspaceColumn; on_track: WorkspaceColumn };
+  generatedAt: string;
+}
 
-Confirm (via `grep -r "redirect(\"/dashboard\")" frontend/app`) that authenticated agents/admins hitting `/` are already redirected to `/dashboard`. If not, add that redirect in the appropriate server component (likely `frontend/app/page.tsx` or `frontend/lib/session.ts`) so the workspace is the landing surface.
+async function getBearerToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (token) return token;
+  return refreshSession();
+}
+
+// Used both for the page's initial server-rendered snapshot (dashboard/page.tsx)
+// and for TriageBoard's client-side polling refresh (Frontend Task 2b) — one
+// action, one place that knows how to authenticate this call. Returns null
+// (not an empty board) on any failure so callers can tell "no data yet" apart
+// from "genuinely nothing assigned" ({ breached: { items: [], total: 0 }, ... }).
+export async function fetchWorkspace(): Promise<WorkspaceResponse | null> {
+  const token = await getBearerToken();
+  if (!token) return null;
+
+  const doFetch = (bearer: string) =>
+    fetch(`${API_URL}/api/v1/me/workspace`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+      cache: "no-store",
+    });
+
+  try {
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession();
+      if (!refreshedToken) return null;
+      res = await doFetch(refreshedToken);
+    }
+    if (!res.ok) return null;
+    return (await res.json()) as WorkspaceResponse;
+  } catch {
+    return null;
+  }
+}
+```
+
+### 2b — The board, with scheduled auto-refresh
+
+**Create file:** `frontend/app/dashboard/TriageBoard.tsx` — **`"use client"`** (not the Server Component an earlier draft of this plan specified — the scheduled-refresh requirement needs client-side state and an interval timer, which a Server Component cannot hold).
+
+- Props: `{ initialColumns: WorkspaceResponse["columns"] }`.
+- `const [columns, setColumns] = useState(initialColumns);` — seeded from the page's server-rendered fetch, so first paint has no loading flash.
+- Auto-refresh, copying `NotificationBell.tsx:20,61-74` (Context item 21) verbatim in shape:
+
+  ```ts
+  const POLL_INTERVAL_MS = 60_000; // same cadence as NotificationBell — no need for finer granularity than AT_RISK_THRESHOLD_MS (15 min, sla.service.ts)
+
+  useEffect(() => {
+    const poll = async () => {
+      const result = await fetchWorkspace();
+      if (result) setColumns(result.columns); // null (a failed poll) keeps the last-good columns — see Edge Cases
+    };
+    const interval = setInterval(() => {
+      if (!document.hidden) poll();
+    }, POLL_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  ```
+
+  No initial `poll()` call on mount — `initialColumns` already covers it (unlike the bell, which has nothing until its first `refresh()`).
+- Strings via `useTranslations("Dashboard")` (the Client Component form of the hook the page already uses server-side).
+- Layout: `grid gap-4 md:grid-cols-3` — three equal columns on `md` and up, stacked on mobile. Each column is a rounded panel (`rounded-2xl border border-border`) with a **top or inline-start accent** driven by one token per column, and a header row holding a status dot, the column label, and the column's `total` in muted text.
+
+  ```ts
+  const COLUMN_ACCENT = {
+    breached: { dot: "bg-destructive", text: "text-destructive", ring: "border-destructive/30" },
+    at_risk:  { dot: "bg-warning",     text: "text-warning",     ring: "border-warning/30" },
+    on_track: { dot: "bg-success",     text: "text-success",     ring: "border-success/30" },
+  } as const;
+  ```
+
+  These three token families are the **only** colors the board introduces — no hex values, no new tokens (`frontend/app/globals.css` already defines all three in both themes).
+- Use logical properties throughout (`ps-`/`pe-`, `ms-`/`me-`, `border-s-`, `start-`/`end-`), never `pl-`/`pr-`/`left`/`right`, so the Arabic RTL layout mirrors without a second code path — the same discipline `frontend/app/dashboard/page.tsx:52` and `:73` already use.
+- Empty column: a centered muted line (`Dashboard.triage.emptyColumn`) inside the panel. **The panel, its header and its count still render.**
+- Truncation: when `total > items.length`, a footer link reading `Dashboard.triage.moreItems` with `{count: total - items.length}`, pointing at `/tickets` (breached/at-risk columns lean ticket-heavy, but the honest target is the union — link `/tickets` and put a second `/chats` link beside it rather than guessing which the overflow contains).
+- Column max height: `max-h-[70vh] overflow-y-auto` on the card list so a long column scrolls inside its own panel instead of stretching the page.
+
+### 3 — The card
+
+**Create file:** `frontend/app/dashboard/TriageCard.tsx` — presentational component, one `WorkspaceItem` in. No `"use client"` directive of its own needed, but it renders inside `TriageBoard` (Frontend Task 2b, now a Client Component) so it is bundled client-side regardless.
+
+Anatomy, per the agreed concept (intake, "Extra notes"):
+
+- The whole card is a `<Link href={item.type === "ticket" ? \`/tickets/${item.id}\` : \`/chats/${item.id}\`}>` — model the markup on the mobile ticket card at `frontend/app/tickets/StaffTicketQueue.tsx:165-188`.
+- **Top row:** type icon + label on the start side — `Ticket` icon for tickets, `MessageSquare` for chats (both already imported elsewhere from `lucide-react`, e.g. `frontend/lib/staffNav.ts:1`) — followed by `item.reference` in `font-mono text-xs text-muted-foreground` for tickets, or the `Dashboard.triage.chatLabel` string for chats. On the end side, the priority chip, reusing `PRIORITY_BADGE_CLASS` from `StaffTicketQueue.tsx:82-87` (export it from there, or duplicate the four-entry map with a comment pointing at the original — do **not** invent different colors). Chats have `priority: null` and render no chip.
+- **Body:** `item.title` (the ticket subject, `line-clamp-2`) for tickets; `item.customer?.name` for chats. Under it, in `text-xs text-muted-foreground`, the customer name for tickets (so both card types show who it is for), or `Dashboard.triage.unknownCustomer` when `customer` is `null`.
+- **Bottom row:** the SLA indicator on the start side, the assignee avatar on the end side.
+  - SLA indicator: a signed relative delta computed from `item.urgencyAt` against the server's render time — `−38m` when overdue, `12m` when remaining, `2h 15m` past the hour, and the `Dashboard.triage.noTarget` string when `urgencyAt` is `null`. Add the formatter to `frontend/lib/utils.ts` next to `formatDateTime` (line 12) as `formatSlaDelta(targetIso: string, now?: Date)` returning `{ text: string; overdue: boolean }` — do not inline the arithmetic in JSX, and do not reuse `formatDateTime`, which renders an absolute timestamp.
+  - Color it with the same `COLUMN_ACCENT[...].text` class as its column, so an indicator's color never contradicts the column it sits in.
+  - Give it a `title` attribute with the absolute `formatDateTime(item.urgencyAt)` so hovering reveals the real deadline behind the relative text.
+  - Avatar: `<Avatar size="sm"><AvatarFallback>{initial}</AvatarFallback></Avatar>` from `@/components/ui/avatar` (lines 8-26, 44-58), initial taken from `item.assignedAgent?.name`. Wrap it in a `title`/`sr-only` label with the agent's name — an initial alone is not accessible.
+
+### 4 — i18n keys
+
+**Files:** `frontend/messages/en.json` **and** `frontend/messages/ar.json` — both in the same change, nested under the existing `Dashboard` section as `triage`:
+
+| Key | en | ar |
+| --- | --- | --- |
+| `triage.heading` | `My triage board` | `لوحة الأولويات` |
+| `triage.subheading` | `Your assigned tickets and live chats, most urgent first.` | `التذاكر والمحادثات المسندة إليك، الأكثر إلحاحًا أولًا.` |
+| `triage.columnBreached` | `Breached` | `تجاوزت المهلة` |
+| `triage.columnAtRisk` | `At risk` | `على وشك التجاوز` |
+| `triage.columnOnTrack` | `On track` | `ضمن المهلة` |
+| `triage.emptyColumn` | `Nothing here.` | `لا يوجد شيء هنا.` |
+| `triage.emptyBoard` | `You have no open tickets or live chats assigned to you.` | `لا توجد لديك تذاكر أو محادثات مفتوحة مسندة إليك.` |
+| `triage.chatLabel` | `Live chat` | `محادثة مباشرة` |
+| `triage.ticketLabel` | `Ticket` | `تذكرة` |
+| `triage.overdueBy` | `Overdue by {delta}` | `متأخرة بمقدار {delta}` |
+| `triage.timeLeft` | `{delta} left` | `متبقٍ {delta}` |
+| `triage.noTarget` | `No SLA target` | `لا يوجد هدف زمني` |
+| `triage.unknownCustomer` | `Unknown customer` | `عميل غير معروف` |
+| `triage.moreItems` | `+{count} more` | `+{count} أخرى` |
+| `triage.viewAllTickets` | `All tickets` | `كل التذاكر` |
+| `triage.viewAllChats` | `All chats` | `كل المحادثات` |
+| `triage.assignedTo` | `Assigned to {name}` | `مسندة إلى {name}` |
+| `triage.unavailable` | `Your board couldn't be loaded. Try refreshing.` | `تعذّر تحميل لوحتك. حاول التحديث.` |
+| `triage.sectionsHeading` | `Sections` | `الأقسام` |
+
+Every string on the board goes through these keys. No inline English in JSX, and `en.json`/`ar.json` do not drift apart.
+
+### 5 — Nothing else changes
+
+No new nav entry (`frontend/lib/staffNav.ts:20-41` already has `dashboard` at `/dashboard`, ungated). No change to `/tickets`, `/chats`, `frontend/lib/permissions.ts`, or `frontend/components/StaffSidebar.tsx`.
 
 ---
 
 ## Edge Cases & Failure Modes
 
-- **Agent has zero assigned items in both groups** → both cards render with their empty-state message. Never render a bare page. Enforced in the section-render branches in `frontend/app/dashboard/page.tsx`.
-- **Customer document deleted after assignment** → `populate("customer", "name")` returns `null`. The mapper emits `customer: null`; the row falls back to the string "Deleted customer" (add to i18n). Enforced in the backend mapper (`me.routes.ts` new handler) and in the row components.
-- **More than 25 items in a section** → truncated; the "View all" link in the `CardHeader` action slot is the escape hatch. Enforced by `.limit(25)` on both queries.
-- **Concurrent status change** (ticket closes while dashboard is being rendered) → the row shows stale status until next refresh; acceptable for this story. No optimistic update.
-- **Unicode / RTL customer names** → row uses the same typography stack as the tickets queue; verify RTL mirroring in Arabic locale (Playwright screenshot, both locales).
-- **Non-agent hitting `/api/me/workspace`** → `requireRole("agent","admin")` returns 403 before the handler runs.
-- **Deactivated agent** → `requireAuth` short-circuits (see the deactivation-bug fix in `backend/src/middleware/auth.ts`). The row-level permission check via `requirePermission("workspace:view")` runs the `isActive` check regardless.
-- **`assignedAgent: null` after auto-unassignment** → excluded by the `assignedAgent: agentId` filter.
-- **SLA data absent (this story's known gap)** → sorting falls back to `createdAt` ascending. Marked with `TODO(story-25-sla)` in `me.routes.ts` and in a plan follow-up note.
+- **Agent has zero assigned open items.** All three columns render with headers, `(0)` counts and their `triage.emptyColumn` line; the board additionally shows `triage.emptyBoard` above the columns. The board never collapses to nothing. *Enforced in* `TriageBoard.tsx` (the columns are rendered from a fixed literal array of the three keys, never from `Object.keys(columns)`).
+- **One column empty, others populated.** Same as above for that column only — it keeps its width in the `md:grid-cols-3` grid so the board's shape stays stable. *Enforced in* `TriageBoard.tsx`.
+- **A chat has no `resolutionTargetAt`.** By schema it never can — `IConversationSla` (`Conversation.ts:5-11`) has `responseTargetAt` only. The chat mapper passes just `responseTargetAt` to `computeSlaStatus` (matching `conversation.routes.ts:122`) and emits `resolutionTargetAt: null`. The card renders no second deadline. *Enforced in* the chat mapper, Backend Task 2 step 2.
+- **An item has no SLA target at all** (created before sla-automation landed; `computeSlaStatus` returns `"on_track"` for that case — `sla.service.ts:138`). It lands in **On track**, gets `urgencyAt: null`, sorts **last** in that column, and its card shows `triage.noTarget` instead of a delta. *Enforced in* the sort comparator (Backend Task 2 step 6) and `TriageCard.tsx`.
+- **SLA status changes while the agent has the board open.** `TriageBoard` (Frontend Task 2b) polls `fetchWorkspace()` every `POLL_INTERVAL_MS` (60s, matching `NotificationBell.tsx`) while the tab is visible, and once immediately on regaining focus after being backgrounded — so a card moves columns within about a minute of its status actually changing, without a live per-second countdown or a socket channel. Each individual poll is still one `now`-consistent snapshot (Backend Task 2 step 4, `generatedAt` returned with it); `slaMonitor.service.ts` independently fires the real breach notification through the bell regardless of whether the dashboard tab is open at all.
+- **A poll fails (network hiccup, backend blip) while the board already has data.** `fetchWorkspace()` returns `null`; `TriageBoard` keeps rendering its last-good `columns` unchanged — no error toast, no blanked columns, no retry storm (the next poll is still `POLL_INTERVAL_MS` away). Only the very first, page-load fetch failing hides the board entirely (Frontend Task 1). *Enforced in* `TriageBoard.tsx`'s poll handler (`if (result) setColumns(...)`, no `else`).
+- **Agent leaves the dashboard tab backgrounded for a long time, then returns.** No polls fired while `document.hidden` was true; the `visibilitychange` listener fires one immediate `poll()` on return, so the board is fresh again within one request rather than waiting up to `POLL_INTERVAL_MS`. *Enforced in* `TriageBoard.tsx`, mirroring `NotificationBell.tsx:66-68`.
+- **More than 25 items in a column.** Only 25 render; the column footer shows `+N more` with links to `/tickets` and `/chats`. *Enforced by* `COLUMN_CAP` in Backend Task 2 step 7.
+- **More than 200 assigned open items in one collection.** `FETCH_CAP` truncates the query, so `total` under-reports. Documented as a deliberate safety bound, not a paging feature — an agent at that volume has a staffing problem, not a UI problem.
+- **Non-agent role hits `GET /api/v1/me/workspace`.** A `customer` gets **403** from `requireRole("agent","admin","subadmin")` before the handler runs. An `admin`/`subadmin` gets **200** with their own (near-always empty) assignments — the endpoint is honest for them even though their `/dashboard` doesn't render the board.
+- **Deactivated agent with a still-valid token.** `requireAuth` is stateless and `requireRole` does no DB lookup (`middleware/auth.ts:30-45`, `:68-76`), so the explicit `isActiveAccount(req.user!.id)` check at the top of the handler is what returns **403**. On the page side, the pre-existing `GET /me/status` → `redirect("/api/session/deactivated")` branch (`dashboard/page.tsx:149-151`) fires first anyway. *Enforced in both places, deliberately.*
+- **Customer document missing on populate.** `customer` is `required: true` on both models and users are soft-deleted, so this should not occur — but `populate` nulling a dangling ref is cheaper to guard than to assume away (same reasoning as `me.routes.ts:128-131`). The mapper emits `customer: null`; the card renders `triage.unknownCustomer`, and a chat card whose title *is* the customer name falls back to that string too.
+- **Chat unclaimed (`conversation:unclaim`) while the board is open.** That chat's `assignedAgent` becomes `null` and its status reverts to `escalated` (`chat.socket.ts:473`), so it drops out on the next render. Clicking its stale card still opens `/chats/[id]`, which remains readable — no broken link.
+- **Ticket closed in another tab.** `closed` is excluded from `OPEN_TICKET_STATUSES`, so it disappears on next render; the stale card's link still resolves to a valid ticket detail page.
+- **Unicode / RTL customer names and subjects.** Rendered as-is with `line-clamp-2`; the whole board uses logical properties, so the columns, the card's top/bottom rows and the SLA indicator all mirror in Arabic without a second layout. Verify with a Playwright screenshot in `ar` — do not eyeball it from the LTR build.
+- **Workspace fetch fails (5xx, backend down).** The page renders the tile grid alone plus the `triage.unavailable` line. It must **not** redirect and must **not** throw — the dashboard's existing functionality is unaffected by a board that could not load. *Enforced in* `frontend/app/dashboard/page.tsx`'s non-`ok` branch.
+- **Access token expired mid-render.** The board fetch's 401 reuses the page's existing one-shot `?_refreshed` redirect to `/api/session/refresh` (lines 122-125, 139-141). Do not add a second, independent loop guard.
 
 ---
 
 ## Test Plan
 
-1. **Backend unit — endpoint contract.** In a new `backend/tests/routes/me.workspace.test.ts` (mirror the layout of `backend/tests/routes/me.routes.test.ts`):
-   - `GET /api/me/workspace` returns `{ tickets: [], chats: [] }` when the agent has no assignments.
-   - Returns only the caller's assigned open tickets/chats (seed two agents, assert isolation).
-   - Excludes closed tickets and closed conversations (seed one of each in a closed state).
-   - Sorts ascending by `createdAt` in both arrays.
-   - Caps each array at 25.
-   - Returns 401 without a session, 403 for role `customer`.
-2. **Backend permission test.** Extend `backend/tests/constants/permissions.test.ts` to assert `workspace:view` is granted to `agent`, `admin`, `subadmin` and denied to `customer`.
-3. **Frontend server-render smoke.** Add a Playwright test (or extend the closest existing one; grep the repo for `page.goto("/dashboard")`) that logs in as an agent with one assigned open ticket and one escalated conversation, visits `/dashboard`, and asserts both section headers plus one row each are visible and clickable, in `en` and `ar` locales.
-4. **RTL screenshot.** Playwright snapshot in Arabic locale to confirm the two-column layout mirrors correctly (per project's Playwright-debugging convention).
+Backend tests use Vitest + `supertest` + `mongodb-memory-server` against `createApp()`. Match the harness in `backend/tests/routes/me.routes.test.ts:1-48` (its `beforeAll`/`afterAll` Mongo lifecycle, `tokenFor()` and `seedUser()` helpers) exactly — including adding `Conversation` to the `beforeEach` `deleteMany` list.
+
+1. **`backend/tests/routes/me.routes.test.ts`** — add a `describe("GET /api/v1/me/workspace (agent-workspace Story 20)")` block to the existing file rather than creating a new one; the harness is already there. Cases:
+   - **401** with no `Authorization` header.
+   - **403** for role `customer`.
+   - **403** for an agent whose `isActive` is `false` but whose token is still valid — this is the check `requireRole` alone would miss.
+   - **Empty board:** an agent with no assignments gets `200` and all three columns present with `items: []` and `total: 0`. Assert the keys `breached`, `at_risk`, `on_track` all exist.
+   - **Isolation:** seed two agents with one assigned ticket each; each caller sees only their own.
+   - **Mixing:** seed one assigned ticket and one assigned `with_agent` conversation, both with `sla` targets already in the past, and assert **both** appear in `columns.breached.items` with the right `type` discriminators.
+   - **Grouping:** seed three tickets with `sla.responseTargetAt` set to (a) 1 hour ago, (b) 5 minutes from now, (c) 6 hours from now, and assert they land in `breached` / `at_risk` / `on_track` respectively — this pins the endpoint to `computeSlaStatus`'s 15-minute `AT_RISK_THRESHOLD_MS` without restating the number in the test.
+   - **Sorting:** two breached tickets, targets 3 hours and 20 minutes ago — assert the 3-hours-ago one is `items[0]`.
+   - **Null-target ordering:** a ticket with no `sla` targets sorts **last** in `on_track`, behind one with a distant target.
+   - **Chat SLA shape:** an assigned conversation's item has `resolutionTargetAt: null` and a non-null `responseTargetAt`, and its `urgencyAt` equals its `responseTargetAt`.
+   - **Exclusions:** a `closed` ticket assigned to the caller, a `resolved` conversation assigned to the caller, and an unclaimed `escalated` conversation (`assignedAgent: null`) all appear in **no** column. The unclaimed case specifically guards against copying `conversation.routes.ts:102-108`'s union filter.
+   - **Cap:** seed 27 breached tickets; assert `columns.breached.items.length === 25` and `columns.breached.total === 27`.
+2. **`backend/tests/services/sla.service.test.ts`** — read it first and **add nothing** unless a gap appears. `computeSlaStatus` is unchanged by this story; its behaviour is already covered there, and the grouping test above is what binds this endpoint to it.
+3. **`backend/tests/constants/permissions.test.ts`** — **no change.** This story adds no permission key (Backend Task 1). If you find yourself editing this file, revisit that decision instead.
+4. **Frontend — manual/Playwright smoke.** No test runner exists in `frontend/` yet, so this stays manual, driven with Playwright rather than guessed from a screenshot:
+   - Log in as an agent seeded with at least one item in each of the three states; visit `/dashboard`; confirm three columns, correct grouping, correct within-column order, and that a card click lands on the right detail page.
+   - Log in as an agent with nothing assigned; confirm three empty columns plus the empty-board line, and that the tile grid still renders below.
+   - Log in as an **admin**; confirm `/dashboard` is unchanged from today (no board).
+   - Switch to Arabic; confirm the columns mirror, the SLA delta and priority chip sit on the correct sides, and no key renders as its raw name.
+   - Toggle light/dark; confirm the three accent colors resolve in both themes.
 
 ---
 
 ## Verification Steps
 
-1. **Backend builds:** `cd backend && npm run build`.
-2. **Backend tests:** `cd backend && npm test` — new `me.workspace.test.ts` + updated `permissions.test.ts` pass.
-3. **Frontend builds:** `cd frontend && npm run build` — no TypeScript errors on the new page + row components.
-4. **Manual — happy path:** log in as an agent seeded with two assigned tickets (one `open`, one `pending`) and one `escalated` conversation. Visit `/dashboard`. Confirm both sections list the expected rows, sorted oldest-first, each row navigates to the correct detail page.
-5. **Manual — empty state:** log in as an agent with no assignments. Both sections render their empty-state message.
-6. **Manual — RTL:** switch to Arabic; verify layout and translations.
-7. **Regression:** run the full backend suite (`cd backend && npm test`) — no existing route/test regressions. Visit `/tickets` and `/chats` — unchanged.
+1. **Backend typecheck:** `cd backend && npm run typecheck`.
+2. **Backend build:** `cd backend && npm run build`.
+3. **Backend tests:** `cd backend && npm test` — the new `GET /api/v1/me/workspace` block passes and the whole existing suite stays green (this story touches no shared service, so any failure elsewhere is a real regression, not expected churn).
+4. **Frontend build:** `cd frontend && npm run build` — no TypeScript errors in `dashboard/page.tsx`, `TriageBoard.tsx`, `TriageCard.tsx`, or `lib/utils.ts`.
+5. **Frontend lint:** `cd frontend && npm run lint`.
+6. **i18n parity check:** confirm every `Dashboard.triage.*` key added to `frontend/messages/en.json` exists in `frontend/messages/ar.json` with a real Arabic string — no English fallbacks, no missing keys.
+7. **Manual — happy path:** with `npm run seed:sla-defaults` applied so `SlaTarget` rows exist, seed an agent with one breached ticket, one at-risk ticket, one on-track ticket and one claimed live chat. Visit `/dashboard`. Confirm the columns, ordering, card anatomy (reference/priority/title/SLA delta/avatar) and that every card navigates correctly.
+8. **Manual — empty path and admin path:** as described in Test Plan §4.
+9. **Manual — RTL and themes:** as described in Test Plan §4, with Playwright screenshots in `ar`/`en` × light/dark.
+10. **Regression:** `/tickets`, `/chats` and the admin/sub-admin `/dashboard` are visually and functionally unchanged.
 
 ---
 
 ## Done Criteria
 
-- [ ] Dashboard clearly separates and labels **Live chats** vs **Tickets** in two distinct `Card` sections with i18n headers.
-- [ ] Items are sorted so the most time-sensitive surface first (oldest-first `createdAt` proxy today; `TODO(story-25-sla)` recorded in code for real SLA-based sort).
-- [ ] Each row is a link that opens the item's existing detail page (`/tickets/[id]`, `/chats/[id]`).
-- [ ] New backend endpoint `GET /api/me/workspace` returns `{ tickets, chats }` scoped to the caller and gated by `requireAuth` + `requireRole("agent","admin")` + `requirePermission("workspace:view")`.
-- [ ] `workspace:view` permission added and granted to `agent`, `admin`, `subadmin` (not `customer`).
-- [ ] i18n keys added to both `en.json` and `ar.json` under `dashboard.workspace.*`.
-- [ ] Empty-state and truncation ("View all") behaviours implemented.
-- [ ] Tests listed in **Test Plan** pass locally.
-- [ ] No existing routes/UI regressed (ticket queue and chat list unchanged).
+- [x] `/dashboard` renders a **Triage Board** for role `agent`: three columns — Breached / At risk / On track — driven by real SLA status from `computeSlaStatus()`, never by a `createdAt` proxy. No `TODO(story-25-sla)` marker exists anywhere in the change.
+- [x] Tickets and live chats are **mixed within each column**, distinguished by a type icon/label, not split into separate lists or sections.
+- [x] Cards inside a column are ordered most-urgent-first (earliest SLA target ascending; most-overdue first in Breached; no-target items last).
+- [x] Each card shows: ticket reference or chat label, priority chip (tickets), subject (tickets) or customer name (chats), a color-coded SLA countdown/overdue indicator, and the assignee avatar.
+- [x] Every card opens its item's existing detail page (`/tickets/[id]`, `/chats/[id]`) from anywhere on the card.
+- [x] All three columns always render, with header, count and an empty state — a column never disappears.
+- [x] The board refreshes automatically on a fixed interval (`POLL_INTERVAL_MS`, matching `NotificationBell.tsx`'s 60s) while the tab is visible, plus immediately on regaining tab focus — no live per-second countdown, no socket/WebSocket push.
+- [x] `GET /api/v1/me/workspace` returns `{ columns: { breached, at_risk, on_track }, generatedAt }` scoped to the caller, gated by `requireAuth` + `requireRole("agent","admin","subadmin")` + an explicit `isActiveAccount()` check, with `slaStatus` computed **server-side only**.
+- [x] **No new permission key** was added, and neither `backend/src/constants/permissions.ts` nor `frontend/lib/permissions.ts` was modified.
+- [x] The existing dashboard tile grid still renders, unchanged, for every staff role; admin/sub-admin see no board.
+- [x] Colors come only from `--destructive` / `--warning` / `--success` (and their `-foreground` pairs) and the existing priority-badge classes — no new tokens, no hex values in components.
+- [ ] `Dashboard.triage.*` keys exist in **both** `en.json` and `ar.json`; the board is verified in Arabic RTL and in both themes. *(Keys: done — all 19 present in both files with real Arabic values, parity-checked. Visual RTL/light-dark verification: not run, still outstanding.)*
+- [x] Tests in **Test Plan** pass; `backend/` typechecks, builds and tests green; `frontend/` builds and lints clean. *(`frontend`'s `npm run lint` is a pre-existing broken script — `next lint` was removed in Next 16 and there is no ESLint config in `frontend/`; `npx tsc --noEmit` and `npm run build` are both clean.)*
+- [x] `/tickets`, `/chats` and the SLA services are untouched — no regressions.
 
-**STOP HERE. Report to the user and wait for confirmation before proceeding to Story 02 (Agent availability toggle).**
+**STOP HERE. Report to the user and wait for confirmation before proceeding to Story 36 (Tasks and reminders).**

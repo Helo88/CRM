@@ -5,6 +5,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
 import { Ticket } from "../../src/models/Ticket";
+import { Conversation } from "../../src/models/Conversation";
 import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
 
@@ -24,6 +25,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await User.deleteMany({});
   await Ticket.deleteMany({});
+  await Conversation.deleteMany({});
   await Notification.deleteMany({});
   vi.restoreAllMocks();
 });
@@ -468,5 +470,228 @@ describe("PATCH /api/v1/me/notifications/:id/read (Story 54)", () => {
       .patch(`/api/v1/me/notifications/${new mongoose.Types.ObjectId()}/read`)
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/v1/me/workspace (agent-workspace Story 35)", () => {
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+
+  async function seedAssignedTicket(opts: {
+    customer: mongoose.Types.ObjectId;
+    agent?: mongoose.Types.ObjectId | null;
+    status?: string;
+    subject?: string;
+    priority?: string;
+    sla?: { responseTargetAt?: Date; resolutionTargetAt?: Date };
+  }) {
+    return Ticket.create({
+      subject: opts.subject ?? "s",
+      description: "d",
+      customer: opts.customer,
+      assignedAgent: opts.agent ?? null,
+      status: opts.status ?? "new",
+      priority: opts.priority ?? "medium",
+      ...(opts.sla ? { sla: opts.sla } : {}),
+    });
+  }
+
+  async function seedConversation(opts: {
+    customer: mongoose.Types.ObjectId;
+    agent?: mongoose.Types.ObjectId | null;
+    status?: string;
+    sla?: { responseTargetAt?: Date };
+  }) {
+    return Conversation.create({
+      customer: opts.customer,
+      assignedAgent: opts.agent ?? null,
+      status: opts.status ?? "with_agent",
+      ...(opts.sla ? { sla: opts.sla } : {}),
+    });
+  }
+
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/api/v1/me/workspace");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const { token } = await seedUser("customer@example.com");
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a deactivated agent whose token is still valid", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent", isActive: false });
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns all three columns, empty, for an agent with nothing assigned", async () => {
+    const { token } = await seedUser("agent@example.com", { role: "agent" });
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.columns).sort()).toEqual(["at_risk", "breached", "on_track"]);
+    for (const key of ["breached", "at_risk", "on_track"]) {
+      expect(res.body.columns[key].items).toEqual([]);
+      expect(res.body.columns[key].total).toBe(0);
+    }
+    expect(typeof res.body.generatedAt).toBe("string");
+  });
+
+  it("never returns another agent's assignments", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const { user: otherAgent } = await seedUser("other@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const mine = await seedAssignedTicket({ customer: customer._id, agent: user._id });
+    await seedAssignedTicket({ customer: customer._id, agent: otherAgent._id });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const all = [
+      ...res.body.columns.breached.items,
+      ...res.body.columns.at_risk.items,
+      ...res.body.columns.on_track.items,
+    ];
+    expect(all).toHaveLength(1);
+    expect(all[0].id).toBe(mine.id);
+  });
+
+  it("mixes tickets and live chats in the same column", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const past = new Date(Date.now() - HOUR);
+    const ticket = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: past },
+    });
+    const conversation = await seedConversation({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: past },
+    });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const breached = res.body.columns.breached.items;
+    expect(breached).toHaveLength(2);
+    expect(breached.map((i: { type: string }) => i.type).sort()).toEqual(["chat", "ticket"]);
+    const ticketItem = breached.find((i: { type: string }) => i.type === "ticket");
+    const chatItem = breached.find((i: { type: string }) => i.type === "chat");
+    expect(ticketItem.id).toBe(ticket.id);
+    expect(ticketItem.reference).toBe(`TCK-${ticket.ticketNumber}`);
+    expect(chatItem.id).toBe(conversation.id);
+    expect(chatItem.reference).toBeNull();
+  });
+
+  it("groups by the SLA status computeSlaStatus derives", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const breachedTicket = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() - HOUR) },
+    });
+    const atRiskTicket = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() + 5 * MINUTE) },
+    });
+    const onTrackTicket = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() + 6 * HOUR) },
+    });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.columns.breached.items.map((i: { id: string }) => i.id)).toEqual([breachedTicket.id]);
+    expect(res.body.columns.at_risk.items.map((i: { id: string }) => i.id)).toEqual([atRiskTicket.id]);
+    expect(res.body.columns.on_track.items.map((i: { id: string }) => i.id)).toEqual([onTrackTicket.id]);
+  });
+
+  it("sorts the most-overdue item first inside a column", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const lessOverdue = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() - 20 * MINUTE) },
+    });
+    const mostOverdue = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() - 3 * HOUR) },
+    });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.columns.breached.items.map((i: { id: string }) => i.id)).toEqual([mostOverdue.id, lessOverdue.id]);
+  });
+
+  it("sorts an item with no SLA target last inside its column", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const noTarget = await seedAssignedTicket({ customer: customer._id, agent: user._id });
+    const distantTarget = await seedAssignedTicket({
+      customer: customer._id,
+      agent: user._id,
+      sla: { responseTargetAt: new Date(Date.now() + 6 * HOUR) },
+    });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const onTrack = res.body.columns.on_track.items;
+    expect(onTrack.map((i: { id: string }) => i.id)).toEqual([distantTarget.id, noTarget.id]);
+    expect(onTrack[1].urgencyAt).toBeNull();
+  });
+
+  it("emits a chat item with resolutionTargetAt null and urgencyAt equal to its response target", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    const responseTargetAt = new Date(Date.now() + 6 * HOUR);
+    await seedConversation({ customer: customer._id, agent: user._id, sla: { responseTargetAt } });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const item = res.body.columns.on_track.items[0];
+    expect(item.type).toBe("chat");
+    expect(item.resolutionTargetAt).toBeNull();
+    expect(item.responseTargetAt).toBe(responseTargetAt.toISOString());
+    expect(item.urgencyAt).toBe(responseTargetAt.toISOString());
+    expect(item.priority).toBeNull();
+    expect(item.customer.name).toBe("Test User");
+  });
+
+  it("excludes closed tickets, resolved chats and unclaimed escalated chats", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    await seedAssignedTicket({ customer: customer._id, agent: user._id, status: "closed" });
+    await seedConversation({ customer: customer._id, agent: user._id, status: "resolved" });
+    await seedConversation({ customer: customer._id, agent: null, status: "escalated" });
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.columns.breached.total).toBe(0);
+    expect(res.body.columns.at_risk.total).toBe(0);
+    expect(res.body.columns.on_track.total).toBe(0);
+  });
+
+  it("caps a column at 25 items while reporting the true total", async () => {
+    const { token, user } = await seedUser("agent@example.com", { role: "agent" });
+    const customer = (await seedUser("customer@example.com")).user;
+    for (let i = 0; i < 27; i++) {
+      await seedAssignedTicket({
+        customer: customer._id,
+        agent: user._id,
+        sla: { responseTargetAt: new Date(Date.now() - (i + 1) * MINUTE) },
+      });
+    }
+
+    const res = await request(app).get("/api/v1/me/workspace").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.columns.breached.items).toHaveLength(25);
+    expect(res.body.columns.breached.total).toBe(27);
   });
 });

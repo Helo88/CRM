@@ -376,7 +376,28 @@
     "reportsTileTitle": "التقارير",
     "reportsTileBody": "تقارير التذاكر واتفاقية مستوى الخدمة ورضا العملاء.",
     "comingLater": "قريبًا",
-    "noAccessNote": "بدون صلاحية"
+    "noAccessNote": "بدون صلاحية",
+    "triage": {
+      "heading": "لوحة الأولويات",
+      "subheading": "التذاكر والمحادثات المسندة إليك، الأكثر إلحاحًا أولًا.",
+      "columnBreached": "تجاوزت المهلة",
+      "columnAtRisk": "على وشك التجاوز",
+      "columnOnTrack": "ضمن المهلة",
+      "emptyColumn": "لا يوجد شيء هنا.",
+      "emptyBoard": "لا توجد لديك تذاكر أو محادثات مفتوحة مسندة إليك.",
+      "chatLabel": "محادثة مباشرة",
+      "ticketLabel": "تذكرة",
+      "overdueBy": "متأخرة بمقدار {delta}",
+      "timeLeft": "متبقٍ {delta}",
+      "noTarget": "لا يوجد هدف زمني",
+      "unknownCustomer": "عميل غير معروف",
+      "moreItems": "+{count} أخرى",
+      "viewAllTickets": "كل التذاكر",
+      "viewAllChats": "كل المحادثات",
+      "assignedTo": "مسندة إلى {name}",
+      "unavailable": "تعذّر تحميل لوحتك. حاول التحديث.",
+      "sectionsHeading": "الأقسام"
+    }
   },
   "AdminUsersList": {
     "heading": "حسابات الفريق",

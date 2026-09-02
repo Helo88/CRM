@@ -9,6 +9,8 @@ import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { cn } from "@/lib/utils";
+import { fetchWorkspace } from "@/app/actions/workspace";
+import { TriageBoard } from "./TriageBoard";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Dashboard");
@@ -163,6 +165,20 @@ export default async function DashboardPage({
   const canViewCustomers = role === "admin" || permissions.includes("customers:manage");
   const canViewAccounts = role === "admin" || permissions.includes("staff:view_list");
 
+  // agent-workspace Story 35: the triage board is "my assigned queue", so it
+  // renders for role `agent` only — admins/sub-admins are never auto-assigned
+  // tickets (assignment.service.ts picks role: "agent") and don't claim chats,
+  // so their board would be permanently empty. Their dashboard is exactly what
+  // it was before this story: the tile grid, nothing else. Cross-agent
+  // oversight is a separate story.
+  //
+  // fetchWorkspace() returns null (never throws) on any failure — the board is
+  // then skipped and the page renders the tile grid plus a one-line notice.
+  // Deliberately no redirect here: the page's session-refresh/deactivation
+  // redirects above are driven by the /me/status call, not by this one.
+  const isAgent = role === "agent";
+  const workspace = isAgent ? await fetchWorkspace() : null;
+
   return (
     <div className="flex min-h-[calc(100vh-57px)]">
       <StaffSidebar active="dashboard" />
@@ -173,6 +189,11 @@ export default async function DashboardPage({
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("subheading")}</p>
         </div>
+
+        {isAgent && workspace ? <TriageBoard initialColumns={workspace.columns} /> : null}
+        {isAgent && !workspace ? <p className="mb-9 text-sm text-muted-foreground">{t("triage.unavailable")}</p> : null}
+
+        {isAgent ? <h2 className="mb-3 text-lg font-bold tracking-tight">{t("triage.sectionsHeading")}</h2> : null}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <DashboardTile
