@@ -6,9 +6,15 @@ import { StaffSidebar } from "@/components/StaffSidebar";
 import { API_URL, REFRESH_COOKIE, SESSION_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { AgentChatPanel, type AgentChatMessage } from "./AgentChatPanel";
+import { CustomerChatTranscript } from "./CustomerChatTranscript";
 
+// customer-portal Story 37: a customer landing here now too needs a title
+// that isn't staff-voiced, same reasoning as /chats/page.tsx's generateMetadata.
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("AgentChats");
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const isCustomer = token ? peekJwtPayload(token).role === "customer" : false;
+  const t = await getTranslations(isCustomer ? "MyChats" : "AgentChats");
   return { title: t("detailMetaTitle"), robots: { index: false, follow: false } };
 }
 
@@ -59,6 +65,24 @@ export default async function ChatDetailPage({
     redirect("/chats");
   }
   const data: { conversation: ConversationDetail; messages: AgentChatMessage[] } = await res.json();
+
+  if (role === "customer") {
+    // customer-portal Story 37: a still-active conversation belongs on the
+    // real-time panel, not a read-only history page — only a resolved one
+    // renders here.
+    if (data.conversation.status !== "resolved") {
+      redirect("/chat");
+    }
+    const t = await getTranslations("MyChats");
+    return (
+      <main className="min-h-[calc(100vh-57px)] p-4 md:p-8">
+        <div className="mx-auto w-full max-w-3xl">
+          <h1 className="mb-6 text-xl font-bold tracking-tight md:text-2xl">{t("detailHeading")}</h1>
+          <CustomerChatTranscript messages={data.messages} currentUserId={currentUserId} />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-57px)]">

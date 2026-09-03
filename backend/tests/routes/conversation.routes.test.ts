@@ -103,10 +103,14 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 for a customer", async () => {
+  // customer-portal Story 37: a customer now gets their own scoped list here
+  // instead of a 403 — see the customer-branch tests at the end of this
+  // describe block for the actual scoping behaviour.
+  it("returns 200 with an empty list for a customer with no conversations", async () => {
     const { token } = await seedUser();
     const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${token}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.conversations).toEqual([]);
   });
 
   it("returns 403 for an agent without chats:manage", async () => {
@@ -158,6 +162,25 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.body.conversations).toHaveLength(1);
     expect(res.body.conversations[0].slaStatus).toBe("on_track");
     expect(res.body.conversations[0].responseTargetAt).toBeNull();
+  });
+
+  // customer-portal Story 37: unlike the staff branches above, a customer's
+  // own list has no status restriction — ai_handling/resolved conversations
+  // must show up too, not just escalated/with_agent.
+  it("scopes a customer's list to their own conversations, any status, and excludes other customers'", async () => {
+    const { user: customer, token } = await seedUser();
+    const { user: otherCustomer } = await seedUser();
+    const mineActive = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    const mineResolved = await Conversation.create({ customer: customer._id, status: "resolved" });
+    await Conversation.create({ customer: otherCustomer._id, status: "with_agent" });
+
+    const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversations).toHaveLength(2);
+    const ids = res.body.conversations.map((c: { _id: string }) => c._id);
+    expect(ids).toContain(mineActive.id);
+    expect(ids).toContain(mineResolved.id);
   });
 });
 

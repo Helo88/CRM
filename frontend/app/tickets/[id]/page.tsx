@@ -12,6 +12,7 @@ import { TicketDetailSidebar } from "./TicketDetailSidebar";
 import { TicketMessageThread } from "./TicketMessageThread";
 import { TicketReplyComposer } from "./TicketReplyComposer";
 import { TicketSummaryPanel } from "./TicketSummaryPanel";
+import { ReopenTicketButton } from "./ReopenTicketButton";
 import { getTicketHistory } from "./actions";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -270,6 +271,9 @@ export default async function TicketDetailPage({
                   <TicketMessageThread messages={messages} ticketId={ticket.id} staffViewer={isStaffViewer} />
                   {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
                   {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
+                  {/* customer-portal Story 37: reopen affordance — only the
+                      ticket's own customer, only when closed. */}
+                  {!isStaffViewer && isLocked && <ReopenTicketButton ticketId={ticket.id} />}
                   {/* Story 11: a closed ticket is read-only — the composer never
                       renders, regardless of canReply, until it's reopened. */}
                   {isLocked && isStaffViewer && (

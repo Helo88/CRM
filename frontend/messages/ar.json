@@ -1000,6 +1000,9 @@
     "unassignedOption": "غير مسندة",
     "agentOfflineHint": "غير متصل",
     "ticketClosedReadOnly": "هذه التذكرة مغلقة — أعد فتحها للرد.",
+    "reopenPrompt": "لا تزال المشكلة قائمة؟ يمكنك إعادة فتح هذه التذكرة بدلاً من إنشاء تذكرة جديدة.",
+    "reopenTicket": "إعادة فتح التذكرة",
+    "reopenPending": "جارٍ إعادة الفتح…",
     "loading": "جارٍ التحميل…",
     "escalateButton": "⚠ تصعيد التذكرة",
     "escalateDialogTitle": "تصعيد هذه التذكرة",
@@ -1143,6 +1146,28 @@
       "retry": "إعادة المحاولة"
     }
   },
+  "MyChats": {
+    "metaTitle": "المحادثات",
+    "detailMetaTitle": "محادثة",
+    "heading": "محادثاتي",
+    "empty": "لم تبدأ أي محادثة مباشرة بعد.",
+    "emptyCta": "ابدأ محادثة مباشرة",
+    "columnStatus": "الحالة",
+    "columnHandledBy": "يتولاها",
+    "columnUpdated": "آخر تحديث",
+    "viewDetails": "عرض التفاصيل",
+    "statusAiHandling": "الذكاء الاصطناعي يتولى الرد",
+    "statusEscalated": "تم التصعيد",
+    "statusWithAgent": "مع موظف",
+    "statusResolved": "تم الحل",
+    "detailHeading": "محادثة",
+    "threadEmpty": "لا توجد رسائل في هذه المحادثة.",
+    "aiAgentLabel": "الوكيل الذكي",
+    "customerLabel": "العميل",
+    "youLabel": "أنت",
+    "agentLabel": "موظف الدعم",
+    "systemLabel": "النظام"
+  },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",
     "previous": "السابق",
@@ -1213,7 +1238,12 @@
     "unassignedOption": "غير مسندة",
     "agentOfflineHint": "غير متصل",
     "loading": "جارٍ التحميل…",
-    "noAssignableAgents": "لا يوجد موظفون متاحون"
+    "noAssignableAgents": "لا يوجد موظفون متاحون",
+    "openTicketsStat": "التذاكر المفتوحة",
+    "activeChatsStat": "المحادثات النشطة",
+    "resolvedRecentlyStat": "تم حلها (٣٠ يومًا)",
+    "recentChatsHeading": "المحادثات الأخيرة",
+    "viewAllChats": "عرض الكل"
   },
   "NotificationsPage": {
     "metaTitle": "الإشعارات",

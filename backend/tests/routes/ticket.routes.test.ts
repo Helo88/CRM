@@ -1507,6 +1507,59 @@ describe("PATCH /api/v1/tickets/:id/status (Story 11)", () => {
     expect((await Ticket.findById(ticket.id))!.status).toBe("in_progress");
   });
 
+  // customer-portal Story 37: a customer's one self-service transition —
+  // reopening their own closed ticket. No permission grant involved at all.
+  it("lets a customer reopen their own closed ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await seedTicketFor(customer.id, { status: "closed" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(200);
+    expect((await Ticket.findById(ticket.id))!.status).toBe("in_progress");
+  });
+
+  it("returns 403 when a customer tries to reopen a ticket that isn't theirs", async () => {
+    const { user: owner } = await seedUser({ role: "customer" });
+    const ticket = await seedTicketFor(owner.id, { status: "closed" });
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(403);
+    expect((await Ticket.findById(ticket.id))!.status).toBe("closed");
+  });
+
+  it("returns 403 when a customer tries any transition other than reopening a closed ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await seedTicketFor(customer.id, { status: "new" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "in_progress" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 when a customer tries to close their own ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await seedTicketFor(customer.id, { status: "new" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(403);
+  });
+
   it("returns 400 for an illegal transition (closed -> answered)", async () => {
     const ticket = await seedTicket({ status: "closed" });
     const { token } = await seedUser({

@@ -8,8 +8,23 @@ import { createConversationSchema } from "../validation/conversation.schema";
 import { hasPermission } from "../services/permissions";
 import { resolveConversationSlaTargets, computeSlaStatus } from "../services/sla.service";
 import { summarizeConversation, summaryOutcomeStatus } from "../services/summary.service";
+import type { PermissionKey } from "../constants/permissions";
 
 const router = express.Router();
+
+// customer-portal Story 37: same composer as ticket.routes.ts's
+// customerOrPermitted — a customer needs no permission concept at all
+// (self-service, scoped to their own data inside the handler), while every
+// other role goes through the real requirePermission middleware.
+function customerOrPermitted(key: PermissionKey) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.user!.role === "customer") {
+      next();
+      return;
+    }
+    requirePermission(key)(req, res, next);
+  };
+}
 
 // Shared with chat.socket.ts's isAuthorizedOnConversation (Story 18): the
 // conversation's own customer, its assignedAgent, or any admin — plus a
@@ -94,18 +109,23 @@ router.post(
 //
 // Not paginated yet (platform Story 59 covers that consistently once it's
 // this route's turn). Story 19 (close a live chat) intentionally does NOT
-// widen this filter to include "resolved" — a closed conversation drops out
-// of this list on purpose; the agent who closed it still has the URL, and
-// GET /:id stays readable regardless of status. A polished "closed chats"
-// history view is separate, later scope, not a gap to silently "fix" here.
-router.get("/", requireAuth, requirePermission("chats:manage"), async (req: Request, res: Response) => {
+// widen the STAFF filter to include "resolved" — a closed conversation
+// drops out of the staff list on purpose; the agent who closed it still has
+// the URL, and GET /:id stays readable regardless of status. customer-portal
+// Story 37 is the "closed chats" history view flagged as separate, later
+// scope back then — it's the customer branch below, deliberately WITHOUT
+// that status restriction, since a customer's own history should show
+// resolved conversations too.
+router.get("/", requireAuth, customerOrPermitted("chats:manage"), async (req: Request, res: Response) => {
   const filter =
-    req.user!.role === "admin" || req.user!.role === "subadmin"
-      ? { status: { $in: ["escalated", "with_agent"] } }
-      : {
-          status: { $in: ["escalated", "with_agent"] },
-          $or: [{ assignedAgent: new Types.ObjectId(req.user!.id) }, { assignedAgent: null }],
-        };
+    req.user!.role === "customer"
+      ? { customer: new Types.ObjectId(req.user!.id) }
+      : req.user!.role === "admin" || req.user!.role === "subadmin"
+        ? { status: { $in: ["escalated", "with_agent"] } }
+        : {
+            status: { $in: ["escalated", "with_agent"] },
+            $or: [{ assignedAgent: new Types.ObjectId(req.user!.id) }, { assignedAgent: null }],
+          };
   // Populated so the staff list can show who the agent is actually talking
   // to, not just a status/timestamp row. assignedAgent is now who has
   // actively claimed the chat (conversation:claim), not an auto-picked

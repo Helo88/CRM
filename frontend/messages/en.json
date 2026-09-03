@@ -1000,6 +1000,9 @@
     "unassignedOption": "Unassigned",
     "agentOfflineHint": "Offline",
     "ticketClosedReadOnly": "This ticket is closed — reopen it to reply.",
+    "reopenPrompt": "Still happening? You can reopen this ticket instead of starting a new one.",
+    "reopenTicket": "Reopen ticket",
+    "reopenPending": "Reopening…",
     "loading": "Loading…",
     "escalateButton": "⚠ Escalate ticket",
     "escalateDialogTitle": "Escalate this ticket",
@@ -1143,6 +1146,28 @@
       "retry": "Retry"
     }
   },
+  "MyChats": {
+    "metaTitle": "Chats",
+    "detailMetaTitle": "Chat",
+    "heading": "My chats",
+    "empty": "You haven't started a live chat yet.",
+    "emptyCta": "Start a live chat",
+    "columnStatus": "Status",
+    "columnHandledBy": "Handled by",
+    "columnUpdated": "Updated",
+    "viewDetails": "View details",
+    "statusAiHandling": "AI handling",
+    "statusEscalated": "Escalated",
+    "statusWithAgent": "With agent",
+    "statusResolved": "Resolved",
+    "detailHeading": "Chat",
+    "threadEmpty": "No messages in this chat.",
+    "aiAgentLabel": "AI Agent",
+    "customerLabel": "Customer",
+    "youLabel": "You",
+    "agentLabel": "Agent",
+    "systemLabel": "System"
+  },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",
     "previous": "Previous",
@@ -1213,7 +1238,12 @@
     "unassignedOption": "Unassigned",
     "agentOfflineHint": "Offline",
     "loading": "Loading…",
-    "noAssignableAgents": "No agents available"
+    "noAssignableAgents": "No agents available",
+    "openTicketsStat": "Open tickets",
+    "activeChatsStat": "Active chats",
+    "resolvedRecentlyStat": "Resolved (30d)",
+    "recentChatsHeading": "Recent chats",
+    "viewAllChats": "View all"
   },
   "NotificationsPage": {
     "metaTitle": "Notifications",

@@ -36,6 +36,32 @@ router.get("/status", requireAuth, async (req: Request, res: Response) => {
     .json({ role: user.role, isActive: user.isActive, permissions: user.permissions ?? [], isOnline: user.isOnline });
 });
 
+// GET /api/v1/me/support-summary — customer-portal Story 37: the "My
+// Support" stat strip's data source (frontend/app/tickets/page.tsx's
+// customer branch, via CustomerSupportSummary). Self-scoped, so
+// requireRole("customer") + no permission key, same convention as
+// /workspace below (its agent-facing equivalent) — just three counts, no
+// item lists.
+const RESOLVED_RECENTLY_WINDOW_DAYS = 30;
+
+router.get("/support-summary", requireAuth, requireRole("customer"), async (req: Request, res: Response) => {
+  const customerId = new Types.ObjectId(req.user!.id);
+  const since = new Date(Date.now() - RESOLVED_RECENTLY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const [openTickets, activeChats, resolvedTicketsRecently, resolvedChatsRecently] = await Promise.all([
+    Ticket.countDocuments({ customer: customerId, status: { $ne: "closed" } }),
+    Conversation.countDocuments({ customer: customerId, status: { $ne: "resolved" } }),
+    Ticket.countDocuments({ customer: customerId, status: "closed", updatedAt: { $gte: since } }),
+    Conversation.countDocuments({ customer: customerId, status: "resolved", updatedAt: { $gte: since } }),
+  ]);
+
+  res.status(200).json({
+    openTickets,
+    activeChats,
+    resolvedRecently: resolvedTicketsRecently + resolvedChatsRecently,
+  });
+});
+
 // PATCH /api/v1/me/availability — agent self-flip of isOnline (Story 21,
 // scoped down to just the flag + a minimal toggle, not the full dashboard —
 // see .squad/stories/agent-workspace/agent-availability-toggle/intake.md).

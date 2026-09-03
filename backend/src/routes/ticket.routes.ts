@@ -861,16 +861,20 @@ router.patch(
 // change_status). Uses callerHasPermission, never a bare hasPermission call,
 // so admin's implicit pass still works — admin holds no stored permission
 // grants at all (see the customerOrPermitted comment above for the same
-// warning already written down for this file). A customer caller is
-// rejected here too: customerOrPermitted isn't used because a customer has
-// no legitimate reason to reach this route at all (unlike POST / above),
-// and callerHasPermission already returns false for a role with neither key
-// stored — no separate customer branch needed.
+// warning already written down for this file). customerOrPermitted itself
+// isn't used here (unlike POST / above) — a customer's allowed case is far
+// narrower than "any request," so it's handled by an explicit branch inside
+// the handler below instead of at the middleware level.
 //
 // TODO: replies (POST /:id/messages below) and reassignment (PATCH /:id
 // above) still succeed on a closed ticket — this story doesn't add that
 // guard (closed-ticket lockdown is enforced in the frontend for now; see
 // ticket-management/update-ticket-status's plan for the scope decision).
+//
+// customer-portal Story 37: a customer caller IS now allowed here, but only
+// for the one self-service transition "reopen my own closed ticket"
+// (closed -> in_progress) — every other transition stays staff-only, gated
+// by the same permission checks below.
 router.patch(
   "/:id/status",
   requireAuth,
@@ -892,11 +896,25 @@ router.patch(
       return;
     }
 
-    const isCloseOrReopen = nextStatus === "closed" || ticket.status === "closed";
-    const requiredKey: PermissionKey = isCloseOrReopen ? "tickets:close_reopen" : "tickets:change_status";
-    if (!(await callerHasPermission(req, requiredKey))) {
-      res.status(403).json({ error: "You do not have permission to perform this action" });
-      return;
+    if (req.user!.role === "customer") {
+      if (String(ticket.customer) !== req.user!.id) {
+        res.status(403).json({ error: "You do not have permission to perform this action" });
+        return;
+      }
+      if (ticket.status !== "closed" || nextStatus !== "in_progress") {
+        res.status(403).json({ error: "Customers can only reopen a closed ticket" });
+        return;
+      }
+      // Falls through to applyStatusTransition below — closed -> in_progress
+      // is already a legal transition (ticketStatus.service.ts's
+      // ALLOWED_TRANSITIONS) — no staff permission check applies here.
+    } else {
+      const isCloseOrReopen = nextStatus === "closed" || ticket.status === "closed";
+      const requiredKey: PermissionKey = isCloseOrReopen ? "tickets:close_reopen" : "tickets:change_status";
+      if (!(await callerHasPermission(req, requiredKey))) {
+        res.status(403).json({ error: "You do not have permission to perform this action" });
+        return;
+      }
     }
 
     const wasClosed = ticket.status === "closed";
