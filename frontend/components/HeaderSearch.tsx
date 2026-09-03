@@ -16,6 +16,7 @@ const PAGE_SEARCH_TARGETS: Record<string, string> = {
   "/customers": "searchCustomersFor",
   "/admin/users": "searchAccountsFor",
   "/tickets": "searchTicketsFor",
+  "/admin/audit-logs": "searchAuditLogsFor",
 };
 
 // Real quick-nav-and-action search (not decorative) — jumps to pages

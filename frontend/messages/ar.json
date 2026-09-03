@@ -7,6 +7,7 @@
     "kbFaqs": "الأسئلة الشائعة",
     "kbArticles": "مقالات المساعدة",
     "helpCenter": "المساعدة",
+    "auditLog": "سجل التدقيق",
     "menu": "القائمة",
     "search": "بحث",
     "searchPlaceholderFull": "الانتقال إلى العملاء أو الحسابات…",
@@ -48,7 +49,8 @@
     "chats": "المحادثات",
     "searchCustomersFor": "البحث في العملاء عن ”{query}“",
     "searchAccountsFor": "البحث في الحسابات عن ”{query}“",
-    "searchTicketsFor": "البحث في التذاكر عن ”{query}“"
+    "searchTicketsFor": "البحث في التذاكر عن ”{query}“",
+    "searchAuditLogsFor": "البحث في سجل التدقيق عن ”{query}“"
   },
   "UserMenu": {
     "memberNumber": "عضو رقم {number}",
@@ -454,6 +456,33 @@
     "sortNameAsc": "الاسم (أ–ي)",
     "sortNameDesc": "الاسم (ي–أ)",
     "resetFilters": "إعادة ضبط الفلاتر"
+  },
+  "AuditLogList": {
+    "heading": "سجل التدقيق",
+    "empty": "لا توجد إدخالات في سجل التدقيق بعد.",
+    "noResults": "لا توجد إدخالات مطابقة لهذه الفلاتر.",
+    "today": "اليوم",
+    "yesterday": "أمس",
+    "unknownActor": "غير معروف ({email})",
+    "actionLoginSuccess": "قام {actor} بتسجيل الدخول",
+    "actionLoginFailedUnknownEmail": "محاولة تسجيل دخول فاشلة لـ {email}",
+    "actionLoginFailedWrongPassword": "أدخل {actor} كلمة مرور غير صحيحة",
+    "actionLoginFailedAccountDeactivated": "حاول {actor} تسجيل الدخول إلى حساب معطّل",
+    "actionPermissionsChanged": "قام {actor} بتحديث صلاحيات {target}",
+    "actionStaffActivated": "قام {actor} بتفعيل {target}",
+    "actionStaffDeactivated": "قام {actor} بتعطيل {target}",
+    "categoryAuth": "تسجيل الدخول",
+    "categoryPermissions": "الصلاحيات",
+    "categoryStaff": "حالة الموظف",
+    "filterCategory": "الإجراء",
+    "filterAll": "الكل",
+    "filterDateFrom": "من",
+    "filterDateTo": "إلى",
+    "filterDateRange": "النطاق الزمني",
+    "filterSearch": "بحث",
+    "searchingFor": "”{query}“",
+    "resetFilters": "إعادة ضبط الفلاتر",
+    "ipAddressLabel": "عنوان IP: {ip}"
   },
   "AdminTicketCategories": {
     "heading": "فئات التذاكر",

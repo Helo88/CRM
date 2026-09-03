@@ -7,6 +7,7 @@
     "kbFaqs": "FAQs",
     "kbArticles": "Help articles",
     "helpCenter": "Help",
+    "auditLog": "Audit log",
     "menu": "Menu",
     "search": "Search",
     "searchPlaceholderFull": "Jump to Customers, Accounts…",
@@ -48,7 +49,8 @@
     "chats": "Chats",
     "searchCustomersFor": "Search customers for “{query}”",
     "searchAccountsFor": "Search accounts for “{query}”",
-    "searchTicketsFor": "Search tickets for “{query}”"
+    "searchTicketsFor": "Search tickets for “{query}”",
+    "searchAuditLogsFor": "Search audit logs for “{query}”"
   },
   "UserMenu": {
     "memberNumber": "Member #{number}",
@@ -454,6 +456,33 @@
     "sortNameAsc": "Name (A–Z)",
     "sortNameDesc": "Name (Z–A)",
     "resetFilters": "Reset filters"
+  },
+  "AuditLogList": {
+    "heading": "Audit log",
+    "empty": "No audit log entries yet.",
+    "noResults": "No entries match these filters.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "unknownActor": "Unknown ({email})",
+    "actionLoginSuccess": "{actor} logged in",
+    "actionLoginFailedUnknownEmail": "Failed login attempt for {email}",
+    "actionLoginFailedWrongPassword": "{actor} entered an incorrect password",
+    "actionLoginFailedAccountDeactivated": "{actor} attempted to log in to a deactivated account",
+    "actionPermissionsChanged": "{actor} updated permissions for {target}",
+    "actionStaffActivated": "{actor} activated {target}",
+    "actionStaffDeactivated": "{actor} deactivated {target}",
+    "categoryAuth": "Login",
+    "categoryPermissions": "Permissions",
+    "categoryStaff": "Staff status",
+    "filterCategory": "Action",
+    "filterAll": "All",
+    "filterDateFrom": "From",
+    "filterDateTo": "To",
+    "filterDateRange": "Date range",
+    "filterSearch": "Search",
+    "searchingFor": "“{query}”",
+    "resetFilters": "Reset filters",
+    "ipAddressLabel": "IP: {ip}"
   },
   "AdminTicketCategories": {
     "heading": "Ticket categories",
