@@ -1003,6 +1003,7 @@
     "reopenPrompt": "لا تزال المشكلة قائمة؟ يمكنك إعادة فتح هذه التذكرة بدلاً من إنشاء تذكرة جديدة.",
     "reopenTicket": "إعادة فتح التذكرة",
     "reopenPending": "جارٍ إعادة الفتح…",
+    "rateThisTicket": "قيّم هذه التذكرة",
     "loading": "جارٍ التحميل…",
     "escalateButton": "⚠ تصعيد التذكرة",
     "escalateDialogTitle": "تصعيد هذه التذكرة",
@@ -1166,7 +1167,26 @@
     "customerLabel": "العميل",
     "youLabel": "أنت",
     "agentLabel": "موظف الدعم",
-    "systemLabel": "النظام"
+    "systemLabel": "النظام",
+    "rateThisChat": "قيّم هذه المحادثة"
+  },
+  "Feedback": {
+    "metaTitle": "قيّم تجربتك",
+    "heading": "قيّم تجربتك",
+    "ratingLabel": "التقييم",
+    "commentLabel": "تعليق (اختياري)",
+    "commentPlaceholder": "أخبرنا المزيد عن تجربتك…",
+    "submit": "إرسال التقييم",
+    "submitPending": "جارٍ الإرسال…",
+    "thanksHeading": "شكرًا لتقييمك!",
+    "notEligibleHeading": "لم يتم الحل بعد",
+    "notEligibleBody": "هذا العنصر لم يُغلق أو يُحل بعد، فلا يوجد شيء لتقييمه — تحقق مرة أخرى لاحقًا.",
+    "backToTickets": "العودة إلى تذاكري",
+    "backToChats": "العودة إلى محادثاتي",
+    "notFound": "لم نتمكن من العثور على ذلك.",
+    "errorGeneric": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    "errorAlreadySubmitted": "لقد أرسلت تقييمك لهذا العنصر بالفعل.",
+    "errorNotEligible": "لم يتم الحل بعد."
   },
   "Pagination": {
     "showing": "عرض {from}–{to} من {total}",

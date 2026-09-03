@@ -1003,6 +1003,7 @@
     "reopenPrompt": "Still happening? You can reopen this ticket instead of starting a new one.",
     "reopenTicket": "Reopen ticket",
     "reopenPending": "Reopening…",
+    "rateThisTicket": "Rate this ticket",
     "loading": "Loading…",
     "escalateButton": "⚠ Escalate ticket",
     "escalateDialogTitle": "Escalate this ticket",
@@ -1166,7 +1167,26 @@
     "customerLabel": "Customer",
     "youLabel": "You",
     "agentLabel": "Agent",
-    "systemLabel": "System"
+    "systemLabel": "System",
+    "rateThisChat": "Rate this chat"
+  },
+  "Feedback": {
+    "metaTitle": "Rate your experience",
+    "heading": "Rate your experience",
+    "ratingLabel": "Rating",
+    "commentLabel": "Comment (optional)",
+    "commentPlaceholder": "Tell us more about your experience…",
+    "submit": "Submit feedback",
+    "submitPending": "Submitting…",
+    "thanksHeading": "Thanks for your feedback!",
+    "notEligibleHeading": "Not resolved yet",
+    "notEligibleBody": "This isn't closed or resolved yet, so there's nothing to rate — check back once it's done.",
+    "backToTickets": "Back to my tickets",
+    "backToChats": "Back to my chats",
+    "notFound": "We couldn't find that.",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "errorAlreadySubmitted": "You've already submitted feedback for this.",
+    "errorNotEligible": "This isn't resolved yet."
   },
   "Pagination": {
     "showing": "Showing {from}–{to} of {total}",

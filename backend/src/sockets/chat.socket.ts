@@ -4,6 +4,8 @@ import type { JwtPayload } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
 import { Ticket } from "../models/Ticket";
+import { User } from "../models/User";
+import { sendEmail, renderEmailHtml } from "../services/email.service";
 import { objectIdSchema } from "../validation/common";
 import {
   conversationMessagePayloadSchema,
@@ -15,6 +17,10 @@ import {
 import { getAiReply, evaluateTicketSuggestion, evaluateKbSuggestion } from "../services/liveChatAi.service";
 import { hasPermission } from "../services/permissions";
 import { escalateConversation } from "../services/conversationEscalation.service";
+
+// customer-portal Story 39: same env-var fallback pattern as
+// ticket.routes.ts's CLIENT_ORIGIN.
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
@@ -517,6 +523,30 @@ export function registerChatHandlers(io: Server): void {
         conversationId,
         status: "resolved",
       });
+
+      // customer-portal Story 39: same "rate your experience" trigger as
+      // ticket.routes.ts's PATCH /:id/status, mirrored for the conversation
+      // side — best-effort, never blocks/fails the close itself (already
+      // broadcast above by this point regardless of email outcome).
+      try {
+        const feedbackCustomer = await User.findById(conversation.customer).select("name email");
+        if (feedbackCustomer) {
+          const feedbackUrl = `${CLIENT_ORIGIN}/feedback/conversation/${conversation.id}`;
+          await sendEmail({
+            to: feedbackCustomer.email,
+            subject: "Your chat is resolved",
+            text: `Hi ${feedbackCustomer.name},\n\nYour live chat has been resolved. We'd love to know how we did: ${feedbackUrl}`,
+            html: renderEmailHtml({
+              heading: "Your chat is resolved",
+              bodyHtml: `Hi ${feedbackCustomer.name},<br><br>Your live chat has been resolved. We'd love to know how we did.`,
+              ctaText: "Rate your experience",
+              ctaUrl: feedbackUrl,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error("[chat.socket] resolution email failed", err);
+      }
     });
 
     // A claim tied to a session that just vanished (crash, closed tab,

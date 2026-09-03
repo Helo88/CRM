@@ -952,6 +952,34 @@ router.patch(
       }
     }
 
+    // customer-portal Story 39: fire the "rate your experience" email on the
+    // transition INTO closed — never re-sent on a same-state closed ->
+    // closed PATCH (wasClosed already true in that case) or any other
+    // transition. Best-effort, same reasoning as the reply email elsewhere
+    // in this file — an SMTP hiccup must never fail or roll back the status
+    // change itself.
+    if (!wasClosed && ticket.status === "closed") {
+      try {
+        const feedbackCustomer = await User.findById(ticket.customer).select("name email");
+        if (feedbackCustomer) {
+          const feedbackUrl = `${CLIENT_ORIGIN}/feedback/ticket/${ticket.id}`;
+          await sendEmail({
+            to: feedbackCustomer.email,
+            subject: `Your ticket is resolved — #${ticket.id}`,
+            text: `Hi ${feedbackCustomer.name},\n\nYour ticket "${ticket.subject}" has been closed. We'd love to know how we did: ${feedbackUrl}`,
+            html: renderEmailHtml({
+              heading: "Your ticket is resolved",
+              bodyHtml: `Hi ${feedbackCustomer.name},<br><br>Your ticket "${ticket.subject}" has been closed. We'd love to know how we did.`,
+              ctaText: "Rate your experience",
+              ctaUrl: feedbackUrl,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error("[tickets] resolution email failed", err);
+      }
+    }
+
     const populated = await ticket.populate<{
       customer: { _id: Types.ObjectId; name: string; email: string };
       assignedAgent: { _id: Types.ObjectId; name: string } | null;

@@ -7,6 +7,7 @@ import { API_URL, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { StaffSidebar } from "@/components/StaffSidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
 import { TicketMessageThread } from "./TicketMessageThread";
@@ -274,6 +275,14 @@ export default async function TicketDetailPage({
                   {/* customer-portal Story 37: reopen affordance — only the
                       ticket's own customer, only when closed. */}
                   {!isStaffViewer && isLocked && <ReopenTicketButton ticketId={ticket.id} />}
+                  {/* customer-portal Story 39: coexists with the reopen
+                      button above — reopening and rating are independent
+                      actions on a closed ticket. */}
+                  {!isStaffViewer && isLocked && (
+                    <Button asChild variant="link" size="sm" className="self-start px-0">
+                      <Link href={`/feedback/ticket/${ticket.id}`}>{t("rateThisTicket")}</Link>
+                    </Button>
+                  )}
                   {/* Story 11: a closed ticket is read-only — the composer never
                       renders, regardless of canReply, until it's reopened. */}
                   {isLocked && isStaffViewer && (

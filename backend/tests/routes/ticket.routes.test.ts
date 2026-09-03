@@ -1560,6 +1560,44 @@ describe("PATCH /api/v1/tickets/:id/status (Story 11)", () => {
     expect(res.status).toBe(403);
   });
 
+  // customer-portal Story 39: closing a ticket triggers the "rate your
+  // experience" email.
+  it("sends a resolution email when a ticket transitions into closed", async () => {
+    const sendEmailMock = vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const ticket = await seedTicket({ status: "in_progress" });
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(200);
+    expect(sendEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ html: expect.stringContaining(`/feedback/ticket/${ticket.id}`) })
+    );
+  });
+
+  it("does not re-send the resolution email for a same-state closed -> closed PATCH", async () => {
+    const sendEmailMock = vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const ticket = await seedTicket({ status: "closed" });
+    const { token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:change_status", "tickets:close_reopen"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}/status`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ status: "closed" });
+
+    expect(res.status).toBe(200);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 for an illegal transition (closed -> answered)", async () => {
     const ticket = await seedTicket({ status: "closed" });
     const { token } = await seedUser({
