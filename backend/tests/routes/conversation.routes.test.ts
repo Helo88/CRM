@@ -6,6 +6,8 @@ import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
 import { Conversation } from "../../src/models/Conversation";
 import { Message } from "../../src/models/Message";
+import { SlaTarget } from "../../src/models/SlaTarget";
+import * as summaryService from "../../src/services/summary.service";
 
 const app = createApp();
 let mongod: MongoMemoryServer;
@@ -13,6 +15,11 @@ let mongod: MongoMemoryServer;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri("conversation-routes-test"));
+  // sla-automation Story 26: Conversation.create now resolves SLA targets on
+  // every creation, which requires the mandatory default SlaTarget row to
+  // exist. Seeded once here (not cleared by beforeEach below) so every
+  // existing conversation-creation test keeps working unmodified.
+  await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
 });
 
 afterAll(async () => {
@@ -71,6 +78,16 @@ describe("POST /api/v1/conversations (Story 14)", () => {
     expect(await Conversation.countDocuments()).toBe(1);
   });
 
+  it("populates sla.responseTargetAt on creation (Story 26)", async () => {
+    const { token } = await seedUser();
+    const res = await request(app).post("/api/v1/conversations").set("Authorization", `Bearer ${token}`).send({});
+
+    expect(res.status).toBe(201);
+    const stored = await Conversation.findById(res.body.conversation._id);
+    expect(stored!.sla.responseTargetAt).toBeInstanceOf(Date);
+    expect(stored!.sla.responseTargetAt!.getTime()).toBeGreaterThan(Date.now());
+  });
+
   it("returns 404 for POST /:id/escalate — escalation is socket-only (Story 16)", async () => {
     const { token } = await seedUser();
     const res = await request(app)
@@ -98,18 +115,21 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("scopes an agent's list to their own assigned escalated/with_agent conversations", async () => {
+  it("scopes an agent's list to conversations they're handling plus unclaimed ones — never another agent's claimed chat", async () => {
     const { user: customer } = await seedUser();
     const { user: agent, token: agentToken } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
     const { user: otherAgent } = await seedUser({ role: "agent", permissions: ["chats:manage"] });
     const mine = await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "with_agent" });
+    const unclaimed = await Conversation.create({ customer: customer._id, assignedAgent: null, status: "escalated" });
     await Conversation.create({ customer: customer._id, assignedAgent: otherAgent._id, status: "with_agent" });
     await Conversation.create({ customer: customer._id, assignedAgent: agent._id, status: "resolved" });
 
     const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${agentToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.conversations).toHaveLength(1);
-    expect(res.body.conversations[0]._id).toBe(mine.id);
+    expect(res.body.conversations).toHaveLength(2);
+    const ids = res.body.conversations.map((c: { _id: string }) => c._id);
+    expect(ids).toContain(mine.id);
+    expect(ids).toContain(unclaimed.id);
   });
 
   it("returns every active conversation for an admin, regardless of assignment", async () => {
@@ -124,6 +144,20 @@ describe("GET /api/v1/conversations (Story 18)", () => {
     const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
     expect(res.body.conversations).toHaveLength(2);
+  });
+
+  it("exposes slaStatus/responseTargetAt per row, 'on_track' for a legacy conversation with no sla (Story 26)", async () => {
+    const { user: customer } = await seedUser();
+    const { token: adminToken } = await seedUser({ role: "admin" });
+    const conversation = await Conversation.create({ customer: customer._id, status: "escalated" });
+    expect(conversation.sla?.responseTargetAt).toBeUndefined();
+
+    const res = await request(app).get("/api/v1/conversations").set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversations).toHaveLength(1);
+    expect(res.body.conversations[0].slaStatus).toBe("on_track");
+    expect(res.body.conversations[0].responseTargetAt).toBeNull();
   });
 });
 
@@ -175,6 +209,20 @@ describe("GET /api/v1/conversations/:id (Story 18)", () => {
       .get(`/api/v1/conversations/${conversation.id}`)
       .set("Authorization", `Bearer ${customerToken}`);
     expect(res.status).toBe(200);
+  });
+
+  it("exposes slaStatus/responseTargetAt, 'on_track' for a legacy conversation with no sla (Story 26)", async () => {
+    const { user: customer, token: customerToken } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "ai_handling" });
+    expect(conversation.sla?.responseTargetAt).toBeUndefined();
+
+    const res = await request(app)
+      .get(`/api/v1/conversations/${conversation.id}`)
+      .set("Authorization", `Bearer ${customerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversation.slaStatus).toBe("on_track");
+    expect(res.body.conversation.responseTargetAt).toBeNull();
   });
 
   it("lets an admin view any conversation regardless of assignment", async () => {
@@ -237,5 +285,122 @@ describe("GET /api/v1/conversations/:id (Story 18)", () => {
       expect(res.status).toBe(200);
       expect(res.body.conversation.status).toBe("resolved");
     }
+  });
+});
+
+// ai-features Story 32: same 401/403/404/409/503/200 contract as
+// ticket.routes.test.ts's POST /:id/summarize block — summarizeConversation
+// is stubbed at the module level; summary.service.test.ts covers its own logic.
+describe("POST /api/v1/conversations/:id/summarize (ai-features Story 32)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 401 without a token", async () => {
+    const conversation = await Conversation.create({ customer: new mongoose.Types.ObjectId() });
+    const res = await request(app).post(`/api/v1/conversations/${conversation.id}/summarize`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for an agent without ai:summarize", async () => {
+    const { user: customer } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for the conversation's own customer — agent-only feature", async () => {
+    const { user: customer, token } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a missing conversation", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${new mongoose.Types.ObjectId()}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post("/api/v1/conversations/not-an-object-id/summarize")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when the service reports not_enough_messages", async () => {
+    const { user: customer } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeConversation").mockResolvedValue({
+      ok: false,
+      reason: "not_enough_messages",
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_enough_messages");
+  });
+
+  it("returns 404 when the service reports not_found", async () => {
+    const { user: customer } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeConversation").mockResolvedValue({ ok: false, reason: "not_found" });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("not_found");
+  });
+
+  it("returns 503 when the service reports ai_unavailable", async () => {
+    const { user: customer } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeConversation").mockResolvedValue({ ok: false, reason: "ai_unavailable" });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe("ai_unavailable");
+  });
+
+  it("returns 200 with the summary on success", async () => {
+    const { user: customer } = await seedUser();
+    const conversation = await Conversation.create({ customer: customer._id, status: "with_agent" });
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeConversation").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/conversations/${conversation.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ summary: "Issue: ..." });
   });
 });

@@ -130,6 +130,73 @@ describe("tickets:escalate (Story 12)", () => {
   });
 });
 
+// Story 13 (view full ticket history): exporting the timeline is
+// sub-admin-tier, unlike viewing it (which has no permission gate at all —
+// same visibility rule as GET /:id).
+describe("tickets:export_history (Story 13)", () => {
+  it("is a recognized permission key", () => {
+    expect(PERMISSION_KEYS).toContain("tickets:export_history");
+  });
+
+  it("is sub-admin-only", () => {
+    expect(SUBADMIN_ONLY_PERMISSIONS.has("tickets:export_history")).toBe(true);
+  });
+
+  it("is not granted by default to a freshly-created agent", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).not.toContain("tickets:export_history");
+  });
+});
+
+// sla-automation Story 25: admin-configurable per-priority/category SLA
+// duration rows — sub-admin-tier, same reasoning as tickets:categories_*
+// above, never a default agent action.
+describe("sla:targets_view / sla:targets_edit (Story 25)", () => {
+  const SLA_TARGET_KEYS = ["sla:targets_view", "sla:targets_edit"] as const;
+
+  it("are all recognized permission keys", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(PERMISSION_KEYS).toContain(key);
+    }
+  });
+
+  it("are all sub-admin-tier (never assignable to an agent)", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(SUBADMIN_ONLY_PERMISSIONS.has(key)).toBe(true);
+    }
+  });
+
+  it("are not granted by default to a freshly-created agent or sub-admin", () => {
+    for (const key of SLA_TARGET_KEYS) {
+      expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).not.toContain(key);
+      expect(DEFAULT_PERMISSIONS_BY_ROLE.subadmin).not.toContain(key);
+    }
+  });
+});
+
+// ai-features Story 32: AI summary of a ticket/chat thread — a day-to-day
+// agent action, same tier as tickets:reply/categorize above, never
+// sub-admin-only. Unlike those, it's NOT in DEFAULT_PERMISSIONS_BY_ROLE.subadmin
+// either (that list is deliberately empty by design — see the comment on
+// its declaration in permissions.ts) so a fresh sub-admin needs it granted
+// manually like every other sub-admin permission.
+describe("ai:summarize (Story 32)", () => {
+  it("is a recognized permission key", () => {
+    expect(PERMISSION_KEYS).toContain("ai:summarize");
+  });
+
+  it("is not sub-admin-only", () => {
+    expect(SUBADMIN_ONLY_PERMISSIONS.has("ai:summarize")).toBe(false);
+  });
+
+  it("is granted by default to a freshly-created agent", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.agent).toContain("ai:summarize");
+  });
+
+  it("is not granted by default to a freshly-created sub-admin (that default list is deliberately empty)", () => {
+    expect(DEFAULT_PERMISSIONS_BY_ROLE.subadmin).not.toContain("ai:summarize");
+  });
+});
+
 describe("permissionKeysAllowedForRole", () => {
   it("returns every permission key for subadmin", () => {
     expect(permissionKeysAllowedForRole("subadmin")).toEqual(PERMISSION_KEYS);

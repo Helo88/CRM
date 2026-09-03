@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { MessageCircle, Ticket } from "lucide-react";
+import { MessageCircle, Ticket, BookOpen } from "lucide-react";
 import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -52,7 +52,7 @@ export default async function SupportPage({
           <p className="text-balance text-muted-foreground">{t("intro")}</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader>
               <MessageCircle className="size-6 text-primary" aria-hidden="true" />
@@ -75,6 +75,21 @@ export default async function SupportPage({
             <CardContent>
               <Button asChild className="w-full">
                 <Link href="/tickets/new">{t("ticket.cta")}</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* knowledge-base Story 31: self-serve help, satisfying its
+              "accessible directly from the portal home screen" criterion. */}
+          <Card>
+            <CardHeader>
+              <BookOpen className="size-6 text-primary" aria-hidden="true" />
+              <CardTitle>{t("help.title")}</CardTitle>
+              <CardDescription>{t("help.description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="w-full" variant="outline">
+                <Link href="/help">{t("help.cta")}</Link>
               </Button>
             </CardContent>
           </Card>

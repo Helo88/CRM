@@ -3,25 +3,33 @@ import jwt from "jsonwebtoken";
 import type { JwtPayload } from "../middleware/auth";
 import { Conversation } from "../models/Conversation";
 import { Message } from "../models/Message";
+import { Ticket } from "../models/Ticket";
 import { objectIdSchema } from "../validation/common";
 import {
   conversationMessagePayloadSchema,
   conversationEscalatePayloadSchema,
   conversationClosePayloadSchema,
   conversationAiSuggestionDeclinedPayloadSchema,
+  conversationClaimPayloadSchema,
 } from "../validation/conversation.schema";
-import { getAiReply, evaluateTicketSuggestion } from "../services/liveChatAi.service";
-import { pickAndClaimAgentForConversation } from "../services/assignment.service";
+import { getAiReply, evaluateTicketSuggestion, evaluateKbSuggestion } from "../services/liveChatAi.service";
 import { hasPermission } from "../services/permissions";
+import { escalateConversation } from "../services/conversationEscalation.service";
 
 const AI_FALLBACK_TEXT =
   "I'm having trouble answering right now — you can try again or ask to speak with a human agent.";
+
+// The escalation ack message text/reasoning (why it's "system" not "ai", why
+// it doesn't claim an agent has "joined") now lives in
+// conversationEscalation.service.ts alongside ESCALATION_ACK_TEXT itself —
+// see that file (sla-automation Story 28 extracted the escalation body out
+// of this handler so the SLA monitor can call it without a socket).
 
 /**
  * Socket.io wiring for the live-chat feature (Stories 14, 18: real-time messaging).
  * This is intentionally a thin skeleton — connection/room handling only. The actual
  * message-handling logic (persisting to Message, invoking the AI agent on the
- * customer's first message, escalation, auto-assignment) belongs to each story's
+ * customer's first message, escalation, claiming) belongs to each story's
  * implementation and should live in src/services/ + be called from here, not
  * written inline in these handlers.
  */
@@ -34,24 +42,76 @@ interface ConversationMessagePayload {
 
 const conversationIdSchema = objectIdSchema("Invalid conversation id");
 
-// Whether `user` may act on `conversation` — the conversation's own customer,
-// its assignedAgent, (Story 18) any admin regardless of assignment so an
-// admin can take over/respond to any live chat per that story's acceptance
-// criteria, or a sub-admin holding chats:manage (same any-conversation scope
-// as admin — mirrors conversation.routes.ts's callerAuthorizedOnConversation,
-// duplicated rather than imported so this module stays independent of the
-// REST route file, same reasoning that file gives for not importing this
-// one). Async because of that live permission lookup — a stale JWT-carried
-// permissions snapshot must never gate a live socket action (same rule
-// requirePermission enforces for REST; socket.data.user deliberately carries
-// only { id, role }, never permissions, to make that mistake impossible).
+// Whether `user` may VIEW `conversation` (join its room to read the
+// transcript and receive live updates) or close it — the conversation's own
+// customer, its current claimant (assignedAgent), any admin, or a sub-admin
+// holding chats:manage (mirrors conversation.routes.ts's
+// callerAuthorizedOnConversation, duplicated rather than imported so this
+// module stays independent of the REST route file). This is deliberately
+// broader than "may send a message" — see isClaimant below, which gates
+// conversation:message — so an admin/subadmin/agent with chats:manage can
+// still watch a chat they haven't claimed. Async because of the live
+// permission lookup — a stale JWT-carried permissions snapshot must never
+// gate a live socket action (socket.data.user deliberately carries only
+// { id, role, name }, never permissions).
 async function isAuthorizedOnConversation(
   user: { id: string; role: string },
   conversation: { customer: unknown; assignedAgent: unknown }
 ): Promise<boolean> {
   if (user.role === "admin") return true;
   if (user.role === "subadmin") return hasPermission(user.id, "chats:manage");
-  return user.id === String(conversation.customer) || user.id === String(conversation.assignedAgent);
+  if (user.role === "agent") {
+    // An agent holding chats:manage can view ANY conversation, not just one
+    // already assigned to them — they need to be able to see (and then
+    // claim, via conversation:claim) an unclaimed escalated chat. Without
+    // this, a plain agent could never even open a chat they haven't claimed
+    // yet to decide whether to claim it.
+    return user.id === String(conversation.assignedAgent) || hasPermission(user.id, "chats:manage");
+  }
+  return user.id === String(conversation.customer);
+}
+
+// Whether `user` currently holds the exclusive claim on `conversation` — the
+// only people allowed to actually send a staff reply (conversation:message
+// below). Unlike isAuthorizedOnConversation, this has no admin/subadmin
+// bypass: per this feature's design, EVERY staff role (agent, subadmin,
+// admin) must click "Join chat" before replying, with no exceptions — a
+// deliberate change from this conversation's earlier "any admin can jump
+// into any chat" behavior.
+function isClaimant(user: { id: string }, conversation: { assignedAgent: unknown }): boolean {
+  return conversation.assignedAgent != null && user.id === String(conversation.assignedAgent);
+}
+
+// Whether `user` is eligible to claim a conversation at all (conversation:claim
+// below) — admin always, agent/subadmin only when holding chats:manage (the
+// same permission scope the old auto-assign picker used to require).
+async function canClaimConversation(user: { id: string; role: string }): Promise<boolean> {
+  if (user.role === "admin") return true;
+  if (user.role === "agent" || user.role === "subadmin") return hasPermission(user.id, "chats:manage");
+  return false;
+}
+
+// Most conversations never have a ticket opened from them (Story 62's "open
+// a ticket" suggestion is declinable) — this records a join/leave event on
+// whichever ticket(s), if any, have `sourceConversation` pointing at this
+// conversation. updateMany rather than findOne+update: there's no unique
+// index on sourceConversation, so if more than one ticket somehow points at
+// the same conversation, every one of them gets the event. Best-effort, same
+// reasoning as notification.service.ts's helpers: a DB hiccup here must
+// never break the claim/release flow it rides along on.
+async function recordChatPresenceEventOnTicket(
+  conversationId: string,
+  event: "joined" | "left",
+  userId: string
+): Promise<void> {
+  try {
+    await Ticket.updateMany(
+      { sourceConversation: conversationId },
+      { $push: { chatPresenceHistory: { event, user: userId, at: new Date() } } }
+    );
+  } catch (err) {
+    console.error("[chat.socket] failed to record chat presence on ticket history:", (err as Error).message);
+  }
 }
 
 export function registerChatHandlers(io: Server): void {
@@ -77,7 +137,12 @@ export function registerChatHandlers(io: Server): void {
 
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-      socket.data.user = { id: payload.sub, role: payload.role };
+      // name rides along from the already-verified JWT (same claim
+      // req.user.name already carries over REST) so the claim broadcast
+      // below can show a real name with zero extra DB lookups. Still never
+      // carries permissions — see isAuthorizedOnConversation's comment for
+      // why that stays true.
+      socket.data.user = { id: payload.sub, role: payload.role, name: payload.name };
       next();
     } catch {
       next(new Error("Unauthorized"));
@@ -86,6 +151,13 @@ export function registerChatHandlers(io: Server): void {
 
   io.on("connection", (socket: Socket) => {
     console.log(`[socket] client connected: ${socket.id}`);
+
+    // Every authenticated connection (not just chat-page ones) joins its own
+    // personal room, keyed by user id — this is what lets
+    // notification.service.ts push a real-time event to a specific user from
+    // outside the chat feature entirely (see ioRegistry.ts), without needing
+    // to know which conversation, if any, that user currently has open.
+    socket.join(`user:${socket.data.user.id}`);
 
     // Client joins the room for a specific conversation so messages only broadcast
     // to participants of that conversation.
@@ -128,9 +200,21 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      if (!(await isAuthorizedOnConversation(socket.data.user, conversation))) {
+      const isOwnCustomer = socket.data.user.id === String(conversation.customer);
+      // Replying is narrower than viewing: a staff member must hold the
+      // exclusive claim on this conversation (isClaimant), not merely be
+      // authorized to view it (isAuthorizedOnConversation, used by
+      // conversation:join/close below) — see isClaimant's own comment for
+      // why there is no admin/subadmin bypass here. A foreign customer (not
+      // this conversation's own) keeps the original error text so the
+      // existing "rejects a message from a foreign sender" behavior is
+      // unchanged.
+      if (!isOwnCustomer && !isClaimant(socket.data.user, conversation)) {
         socket.emit("conversation:error", {
-          error: "You do not have permission to send messages in this conversation",
+          error:
+            socket.data.user.role === "customer"
+              ? "You do not have permission to send messages in this conversation"
+              : "Join this chat before replying — it hasn't been claimed by you.",
         });
         return;
       }
@@ -140,11 +224,7 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      // Story 18: an admin replying (never the conversation's own customer,
-      // rarely its assignedAgent) also serializes as "agent" — Message has no
-      // separate "admin" sender type, and a UI-side distinction isn't part of
-      // this story (Story 24 covers internal team roles/notes).
-      const senderType = socket.data.user.id === String(conversation.customer) ? "customer" : "agent";
+      const senderType = isOwnCustomer ? "customer" : "agent";
 
       const message = await Message.create({
         parentType: "conversation",
@@ -156,22 +236,32 @@ export function registerChatHandlers(io: Server): void {
 
       io.to(`conversation:${conversationId}`).emit("conversation:message", message);
 
-      // Story 15: the AI agent answers every customer message while the
-      // conversation hasn't been escalated. Keying off `status` (rather than
-      // "no prior AI/agent message") means Story 16's escalation flips this
-      // off with no change here.
-      if (senderType === "customer" && conversation.status === "ai_handling") {
+      // Story 15: the AI agent answers every customer message up until a
+      // human actually claims the chat. This deliberately covers BOTH
+      // "ai_handling" and "escalated" — escalating (asking for a human) only
+      // flags the chat for pickup and shows the customer a "someone will
+      // join shortly" banner; it does not mean a human is present yet. Before
+      // this fix, the AI branch only ran in "ai_handling", so a customer who
+      // escalated and then kept typing while waiting got no reply at all
+      // until an agent clicked "Join chat" (status -> "with_agent", which is
+      // correctly excluded here since a human is actually handling by then).
+      if (
+        senderType === "customer" &&
+        (conversation.status === "ai_handling" || conversation.status === "escalated")
+      ) {
         const roomKey = `conversation:${conversationId}`;
         io.to(roomKey).emit("conversation:ai-typing", { conversationId });
 
         try {
-          // Story 62: the ticket-suggestion classifier runs alongside the
-          // normal reply, not instead of it -- each is independently
-          // safe/non-throwing (see liveChatAi.service.ts), so a Promise.all
-          // here never lets one call's failure affect the other.
-          const [reply, ticketSuggestion] = await Promise.all([
+          // Story 62's ticket-suggestion classifier and ai-features Story
+          // 34/35's KB-content suggestion both run alongside the normal
+          // reply, not instead of it -- each is independently safe/
+          // non-throwing (see liveChatAi.service.ts), so a Promise.all here
+          // never lets one call's failure affect the others.
+          const [reply, ticketSuggestion, kbSuggestion] = await Promise.all([
             getAiReply(conversationId),
             evaluateTicketSuggestion(conversationId, conversation.aiTicketSuggestionDeclined),
+            evaluateKbSuggestion(text),
           ]);
           const aiMessage = await Message.create({
             parentType: "conversation",
@@ -180,6 +270,7 @@ export function registerChatHandlers(io: Server): void {
             senderId: null,
             text: reply ?? AI_FALLBACK_TEXT,
             aiTicketSuggestion: ticketSuggestion,
+            aiKbSuggestion: kbSuggestion,
           });
           io.to(roomKey).emit("conversation:message", aiMessage);
         } catch (err) {
@@ -230,10 +321,10 @@ export function registerChatHandlers(io: Server): void {
 
     // Story 16: customer-triggered "talk to a human" — flips status to
     // "escalated", which is enough on its own to disable the Story 15 AI
-    // branch above (it only fires while status === "ai_handling"). Story 17
-    // (auto-assign an escalated chat) is the one that queries
-    // Conversation.find({ status: "escalated", assignedAgent: null }) and
-    // actually picks an agent — nothing here does that.
+    // branch above (it only fires while status === "ai_handling"). Chat
+    // assignment is no longer automatic (see conversation:claim below) — this
+    // handler's only job is to flip status, leave a durable acknowledgment,
+    // and tell every eligible staff member a chat needs picking up.
     socket.on("conversation:escalate", async (payload: { conversationId: string }) => {
       const parsed = conversationEscalatePayloadSchema.safeParse(payload);
       if (!parsed.success) {
@@ -261,47 +352,134 @@ export function registerChatHandlers(io: Server): void {
         return;
       }
 
-      // Idempotent: already-escalated / already-with-agent is a no-op
-      // success — re-emit directly to the caller so a reconnecting client
-      // can re-sync its UI state without erroring.
-      if (conversation.status === "escalated" || conversation.status === "with_agent") {
-        socket.emit("conversation:escalated", { conversationId, status: conversation.status });
+      // Determined before calling the service (which has its own, separate
+      // idempotency guard) purely to pick which socket event to emit below —
+      // a no-op re-emits directly to the caller only, so a reconnecting
+      // client can re-sync its UI state without erroring the whole room.
+      const wasAlreadyEscalated = conversation.status === "escalated" || conversation.status === "with_agent";
+
+      const { conversation: updated, ackMessage } = await escalateConversation({ conversation, reason: "manual" });
+
+      if (wasAlreadyEscalated) {
+        socket.emit("conversation:escalated", { conversationId, status: updated.status });
         return;
       }
-
-      conversation.status = "escalated";
-      await conversation.save();
 
       io.to(`conversation:${conversationId}`).emit("conversation:escalated", {
         conversationId,
         status: "escalated",
       });
 
-      // Story 17: immediately try to pick + claim an online agent. Never
-      // lets a failure here undo the escalation the customer already saw
-      // succeed above — only logged, never rethrown.
-      try {
-        const pickedAgentId = await pickAndClaimAgentForConversation(conversationId);
-        if (pickedAgentId) {
-          io.to(`conversation:${conversationId}`).emit("conversation:assigned", {
-            conversationId,
-            agentId: pickedAgentId.toString(),
-            status: "with_agent",
-          });
-        } else {
-          // No online agent: revert to ai_handling (guarded so a conversation
-          // already moved on — e.g. closed concurrently — is left alone) and
-          // tell only the escalating customer, so the Story 15 AI branch
-          // resumes on their next message.
-          await Conversation.findOneAndUpdate(
-            { _id: conversationId, status: "escalated" },
-            { $set: { status: "ai_handling" } }
-          );
-          socket.emit("conversation:no-agent-available", { conversationId });
-        }
-      } catch (err) {
-        console.error("[chat.socket] auto-assign on escalate failed:", (err as Error).message);
+      // ackMessage is null when the post-escalation ack/notify best-effort
+      // step failed (logged inside the service) — nothing to broadcast then.
+      if (ackMessage) {
+        io.to(`conversation:${conversationId}`).emit("conversation:message", ackMessage);
       }
+    });
+
+    // The "Join chat" button — a staff member (agent/subadmin holding
+    // chats:manage, or any admin) explicitly claims exclusive ownership of a
+    // conversation. Atomic on the { assignedAgent: null } guard: two staff
+    // members clicking Join on the same conversation at nearly the same
+    // moment can't both succeed — MongoDB's single-document update is the
+    // race-free boundary, no separate mutex needed (unlike the old
+    // load-balanced auto-pick, which had to serialize its own "who's least
+    // busy" read before writing). Until this succeeds, nobody but the
+    // conversation's own customer can send a message (see
+    // conversation:message above).
+    socket.on("conversation:claim", async (payload: { conversationId: string }) => {
+      const parsed = conversationClaimPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid claim payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        socket.emit("conversation:error", { error: "Conversation not found" });
+        return;
+      }
+
+      if (!(await canClaimConversation(socket.data.user))) {
+        socket.emit("conversation:error", { error: "You do not have permission to claim this conversation" });
+        return;
+      }
+
+      if (conversation.status === "resolved") {
+        socket.emit("conversation:error", { error: "This conversation is closed" });
+        return;
+      }
+
+      if (isClaimant(socket.data.user, conversation)) {
+        // Idempotent: already the claimant (e.g. a reconnecting tab) is a
+        // no-op success, re-synced directly to the caller.
+        socket.emit("conversation:claimed", {
+          conversationId,
+          agent: { id: socket.data.user.id, name: socket.data.user.name },
+        });
+        return;
+      }
+
+      const claimed = await Conversation.findOneAndUpdate(
+        { _id: conversationId, assignedAgent: null },
+        { $set: { assignedAgent: socket.data.user.id, status: "with_agent" } },
+        { new: true }
+      );
+      if (!claimed) {
+        socket.emit("conversation:error", {
+          error: "This chat is already being handled by another staff member.",
+        });
+        return;
+      }
+
+      // Ticket-history write is best-effort, same reasoning as
+      // notification.service.ts's helpers — never lets a DB hiccup here
+      // undo the claim that already succeeded above.
+      await recordChatPresenceEventOnTicket(conversationId, "joined", socket.data.user.id);
+
+      const agentInfo = { id: socket.data.user.id, name: socket.data.user.name };
+      io.to(`conversation:${conversationId}`).emit("conversation:claimed", { conversationId, agent: agentInfo });
+
+      // The customer-facing "a support agent has joined" hint now fires
+      // right here, at the moment of the real, authoritative claim — not on
+      // that person's first message (the old Story 18 heuristic, no longer
+      // needed now that claiming is an explicit, unambiguous action).
+      if (!claimed.agentJoinedAnnounced) {
+        await Conversation.updateOne({ _id: conversationId }, { $set: { agentJoinedAnnounced: true } });
+        io.to(`conversation:${conversationId}`).emit("conversation:assigned", {
+          conversationId,
+          agentId: socket.data.user.id,
+          status: "with_agent",
+        });
+      }
+    });
+
+    // The "Leave chat" button — releases the caller's own claim, reverting
+    // to "escalated" so it goes back into the pool anyone eligible can claim
+    // again. Only the current claimant can release their own claim (no
+    // admin override to force-release someone else's — not requested, and
+    // reassignment isn't this feature's concern).
+    socket.on("conversation:unclaim", async (payload: { conversationId: string }) => {
+      const parsed = conversationClaimPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        socket.emit("conversation:error", { error: parsed.error.issues[0]?.message ?? "Invalid unclaim payload" });
+        return;
+      }
+      const { conversationId } = parsed.data;
+
+      const released = await Conversation.findOneAndUpdate(
+        { _id: conversationId, assignedAgent: socket.data.user.id },
+        { $set: { assignedAgent: null, status: "escalated" } },
+        { new: true }
+      );
+      if (!released) {
+        socket.emit("conversation:error", { error: "You are not currently handling this conversation" });
+        return;
+      }
+
+      await recordChatPresenceEventOnTicket(conversationId, "left", socket.data.user.id);
+      io.to(`conversation:${conversationId}`).emit("conversation:unclaimed", { conversationId });
     });
 
     // Story 19: widened from customer-only (Story 17's minimal version) to
@@ -341,8 +519,38 @@ export function registerChatHandlers(io: Server): void {
       });
     });
 
-    socket.on("disconnect", () => {
+    // A claim tied to a session that just vanished (crash, closed tab,
+    // network drop) must not stay locked forever with no one able to reply
+    // — so a disconnect auto-releases any conversation this socket's user
+    // was the claimant of, same effect as clicking "Leave chat" themselves.
+    // `disconnecting` fires WHILE the socket is still a member of its rooms;
+    // `disconnect` fires AFTER Socket.io has removed it from all of them —
+    // capturing the room list in the first and acting in the second is what
+    // lets a single find-by-room-prefix work without extra bookkeeping.
+    let conversationRoomsAtDisconnect: string[] = [];
+    socket.on("disconnecting", () => {
+      conversationRoomsAtDisconnect = [...socket.rooms].filter((room) => room.startsWith("conversation:"));
+    });
+
+    socket.on("disconnect", async () => {
       console.log(`[socket] client disconnected: ${socket.id}`);
+      if (!socket.data.user || socket.data.user.role === "customer") return;
+      for (const room of conversationRoomsAtDisconnect) {
+        const conversationId = room.slice("conversation:".length);
+        try {
+          const released = await Conversation.findOneAndUpdate(
+            { _id: conversationId, assignedAgent: socket.data.user.id },
+            { $set: { assignedAgent: null, status: "escalated" } },
+            { new: true }
+          );
+          if (released) {
+            await recordChatPresenceEventOnTicket(conversationId, "left", socket.data.user.id);
+            io.to(room).emit("conversation:unclaimed", { conversationId });
+          }
+        } catch (err) {
+          console.error("[chat.socket] failed to auto-release claim on disconnect:", (err as Error).message);
+        }
+      }
     });
   });
 }

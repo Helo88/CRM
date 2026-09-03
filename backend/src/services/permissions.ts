@@ -35,3 +35,15 @@ export async function isActiveAccount(userId: string): Promise<boolean> {
   const doc = await User.findById(userId).select("isActive").lean();
   return Boolean(doc?.isActive);
 }
+
+// Same live-DB, no-cache, isActive-re-checking contract as hasPermission —
+// for the handful of actions legitimately reachable by more than one key
+// (knowledge-base Story 29: the AI draft-translate assist is useful to both
+// a create-only and an edit-only FAQ/article author). Callers still
+// short-circuit `admin` themselves via isActiveAccount, exactly like
+// requirePermission does.
+export async function hasAnyPermission(userId: string, keys: PermissionKey[]): Promise<boolean> {
+  const doc = await User.findById(userId).select("permissions isActive").lean();
+  if (!doc?.isActive) return false;
+  return keys.some((key) => Boolean(doc.permissions?.includes(key)));
+}

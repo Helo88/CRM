@@ -1,10 +1,14 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
 import { Types } from "mongoose";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 import { User } from "../models/User";
+import { Ticket } from "../models/Ticket";
+import { Conversation } from "../models/Conversation";
 import { Notification } from "../models/Notification";
 import { sendEmail, renderEmailHtml } from "../services/email.service";
+import { isActiveAccount } from "../services/permissions";
+import { computeSlaStatus, type SlaStatus } from "../services/sla.service";
 import { contactBodySchema, availabilityBodySchema, notificationHistoryQuerySchema } from "../validation/me.schema";
 
 const router = express.Router();
@@ -66,23 +70,207 @@ router.patch("/availability", requireAuth, async (req: Request, res: Response) =
   res.status(200).json({ isOnline: user.isOnline });
 });
 
+// agent-workspace Story 35: the Triage Board's data source — the caller's
+// own assigned open tickets AND live chats, merged and grouped by the SLA
+// status sla.service.ts derives, so the frontend's three columns are a
+// straight read of `columns`, not a client-side re-derivation of the
+// at-risk threshold.
+//
+// Self-scoped ("my assignments"), so requireAuth + requireRole only, no
+// permission key — same convention as /status, /availability and /contact
+// above, and the documented dashboard exception to the project's
+// every-route-needs-a-permission rule. Because requireRole alone does NOT
+// re-check isActive (see middleware/auth.ts's requireAuth doc comment), the
+// deactivation check is done explicitly in the handler below.
+const OPEN_TICKET_STATUSES = ["new", "in_progress", "answered", "escalated"] as const;
+// A claimed, still-open chat is always "with_agent" — conversation:claim
+// sets assignedAgent + "with_agent" atomically and conversation:unclaim
+// reverts both (sockets/chat.socket.ts). "escalated"/"ai_handling" chats
+// are by construction unassigned; "resolved" is done. Deliberately NOT the
+// union filter conversation.routes.ts's staff list uses — the board shows
+// only work this agent has actually claimed.
+const OPEN_CHAT_STATUSES = ["with_agent"] as const;
+
+// Safety bound on a pathological assignment count, not a product cap (and
+// not the paging story): an agent's open assigned workload is tens of items,
+// and COLUMN_CAP below is what the UI actually enforces.
+const FETCH_CAP = 200;
+const COLUMN_CAP = 25;
+
+interface WorkspaceItem {
+  id: string;
+  type: "ticket" | "chat";
+  // "TCK-1234" for tickets (same format as ticket.routes.ts's
+  // toTicketListItem), null for chats — a conversation has no reference
+  // number, so the card falls back to its customer name.
+  reference: string | null;
+  title: string | null;
+  priority: "low" | "medium" | "high" | "urgent" | null; // chats carry no priority
+  status: string;
+  customer: { id: string; name: string } | null;
+  assignedAgent: { id: string; name: string } | null;
+  slaStatus: SlaStatus;
+  // The single timestamp the column sorts on and the card counts down to:
+  // the earliest DEFINED target on the item. Null when the item predates
+  // sla-automation; those sort last.
+  urgencyAt: string | null;
+  responseTargetAt: string | null;
+  resolutionTargetAt: string | null; // always null for chats
+  createdAt: string;
+  updatedAt: string;
+}
+
+// The earliest DEFINED target. Mirrors slaMonitor.service.ts's
+// `activeTarget` rule (responseTargetAt, when present, is always the nearer
+// deadline — resolutionMinutes >= responseMinutes is enforced at the
+// SlaTarget level), generalised so a ticket missing one of the two still
+// sorts correctly.
+function earliestTarget(...targets: Array<Date | undefined | null>): Date | null {
+  const defined = targets.filter((d): d is Date => Boolean(d));
+  if (defined.length === 0) return null;
+  return defined.reduce((a, b) => (a.getTime() < b.getTime() ? a : b));
+}
+
+// Ascending by urgency, nulls (no SLA target at all) last, ties broken by
+// createdAt so the order is deterministic across requests.
+function byUrgency(a: WorkspaceItem, b: WorkspaceItem): number {
+  if (a.urgencyAt !== b.urgencyAt) {
+    if (a.urgencyAt === null) return 1;
+    if (b.urgencyAt === null) return -1;
+    const delta = a.urgencyAt.localeCompare(b.urgencyAt);
+    if (delta !== 0) return delta;
+  }
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
+router.get(
+  "/workspace",
+  requireAuth,
+  requireRole("agent", "admin", "subadmin"),
+  async (req: Request, res: Response) => {
+    if (!(await isActiveAccount(req.user!.id))) {
+      res.status(403).json({ error: "You do not have permission to perform this action" });
+      return;
+    }
+
+    const agentId = new Types.ObjectId(req.user!.id);
+    // One `now` for the whole request: two rows evaluated microseconds apart
+    // must never land in different columns from the same snapshot.
+    const now = new Date();
+
+    const [tickets, conversations] = await Promise.all([
+      Ticket.find({ assignedAgent: agentId, status: { $in: [...OPEN_TICKET_STATUSES] } })
+        .select("ticketNumber subject status priority customer assignedAgent sla createdAt updatedAt")
+        .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
+        .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name")
+        .limit(FETCH_CAP)
+        .lean(),
+      Conversation.find({ assignedAgent: agentId, status: { $in: [...OPEN_CHAT_STATUSES] } })
+        .select("status customer assignedAgent sla createdAt updatedAt")
+        .populate<{ customer: { _id: Types.ObjectId; name: string } | null }>("customer", "name")
+        .populate<{ assignedAgent: { _id: Types.ObjectId; name: string } | null }>("assignedAgent", "name")
+        .limit(FETCH_CAP)
+        .lean(),
+    ]);
+
+    const ticketItems: WorkspaceItem[] = tickets.map((ticket) => {
+      const urgencyAt = earliestTarget(ticket.sla?.responseTargetAt, ticket.sla?.resolutionTargetAt);
+      return {
+        id: ticket._id.toString(),
+        type: "ticket",
+        reference: `TCK-${ticket.ticketNumber}`,
+        title: ticket.subject,
+        priority: ticket.priority,
+        status: ticket.status,
+        customer: ticket.customer ? { id: ticket.customer._id.toString(), name: ticket.customer.name } : null,
+        assignedAgent: ticket.assignedAgent
+          ? { id: ticket.assignedAgent._id.toString(), name: ticket.assignedAgent.name }
+          : null,
+        slaStatus: computeSlaStatus({
+          responseTargetAt: ticket.sla?.responseTargetAt,
+          resolutionTargetAt: ticket.sla?.resolutionTargetAt,
+          currentStatus: ticket.status,
+          now,
+        }),
+        urgencyAt: urgencyAt ? urgencyAt.toISOString() : null,
+        responseTargetAt: ticket.sla?.responseTargetAt ? ticket.sla.responseTargetAt.toISOString() : null,
+        resolutionTargetAt: ticket.sla?.resolutionTargetAt ? ticket.sla.resolutionTargetAt.toISOString() : null,
+        createdAt: ticket.createdAt.toISOString(),
+        updatedAt: ticket.updatedAt.toISOString(),
+      };
+    });
+
+    // No resolutionTargetAt and no currentStatus passed — a conversation's
+    // SLA sub-document has a response target only (models/Conversation.ts),
+    // exactly as conversation.routes.ts's list mapping does it.
+    const chatItems: WorkspaceItem[] = conversations.map((conversation) => {
+      const urgencyAt = earliestTarget(conversation.sla?.responseTargetAt);
+      return {
+        id: conversation._id.toString(),
+        type: "chat",
+        reference: null,
+        title: null,
+        priority: null,
+        status: conversation.status,
+        customer: conversation.customer
+          ? { id: conversation.customer._id.toString(), name: conversation.customer.name }
+          : null,
+        assignedAgent: conversation.assignedAgent
+          ? { id: conversation.assignedAgent._id.toString(), name: conversation.assignedAgent.name }
+          : null,
+        slaStatus: computeSlaStatus({ responseTargetAt: conversation.sla?.responseTargetAt, now }),
+        urgencyAt: urgencyAt ? urgencyAt.toISOString() : null,
+        responseTargetAt: conversation.sla?.responseTargetAt
+          ? conversation.sla.responseTargetAt.toISOString()
+          : null,
+        resolutionTargetAt: null,
+        createdAt: conversation.createdAt.toISOString(),
+        updatedAt: conversation.updatedAt.toISOString(),
+      };
+    });
+
+    const merged = [...ticketItems, ...chatItems];
+    const breached = merged.filter((item) => item.slaStatus === "breached").sort(byUrgency);
+    const atRisk = merged.filter((item) => item.slaStatus === "at_risk").sort(byUrgency);
+    const onTrack = merged.filter((item) => item.slaStatus === "on_track").sort(byUrgency);
+
+    // All three keys are always present, even when every items array is
+    // empty — the frontend must never have to invent a missing column.
+    res.status(200).json({
+      columns: {
+        breached: { items: breached.slice(0, COLUMN_CAP), total: breached.length },
+        at_risk: { items: atRisk.slice(0, COLUMN_CAP), total: atRisk.length },
+        on_track: { items: onTrack.slice(0, COLUMN_CAP), total: onTrack.length },
+      },
+      generatedAt: now.toISOString(),
+    });
+  }
+);
+
+// live-chat: a notification now carries exactly one of ticketId/
+// conversationId (never both — see notification.service.ts's two creation
+// helpers), so `ticket`/`conversation` in the response are each nullable,
+// and the caller picks whichever is non-null to build its link. Unlike
+// ticket (reference + subject), a conversation has no equivalent
+// human-readable label to surface here — the frontend renders a generic
+// "Live chat" subtext for those instead.
 function toNotificationItem(n: {
   _id: Types.ObjectId;
   type: string;
   read: boolean;
   createdAt: Date;
   ticketId: { _id: Types.ObjectId; ticketNumber: number; subject: string } | null;
+  conversationId: { _id: Types.ObjectId } | null;
 }) {
   return {
     id: n._id.toString(),
     type: n.type,
     read: n.read,
     createdAt: n.createdAt,
-    ticket: {
-      id: n.ticketId!._id.toString(),
-      reference: `TCK-${n.ticketId!.ticketNumber}`,
-      subject: n.ticketId!.subject,
-    },
+    ticket: n.ticketId
+      ? { id: n.ticketId._id.toString(), reference: `TCK-${n.ticketId.ticketNumber}`, subject: n.ticketId.subject }
+      : null,
+    conversation: n.conversationId ? { id: n.conversationId._id.toString() } : null,
   };
 }
 
@@ -114,13 +302,14 @@ router.get("/notifications", requireAuth, async (req: Request, res: Response) =>
         "ticketId",
         "ticketNumber subject"
       )
+      .populate<{ conversationId: { _id: Types.ObjectId } | null }>("conversationId", "_id")
       .lean();
 
-    // A notification whose ticket was hard-deleted (never happens today —
-    // tickets are never hard-deleted — but populate() nulling a dangling
-    // ref is cheaper to guard than to assume away) is dropped rather than
-    // shown with a broken link.
-    res.status(200).json(notifications.filter((n) => n.ticketId).map(toNotificationItem));
+    // A notification whose ticket/conversation was hard-deleted (never
+    // happens today for tickets; conversations are never hard-deleted
+    // either — but populate() nulling a dangling ref is cheaper to guard
+    // than to assume away) is dropped rather than shown with a broken link.
+    res.status(200).json(notifications.filter((n) => n.ticketId || n.conversationId).map(toNotificationItem));
     return;
   }
 
@@ -148,12 +337,13 @@ router.get("/notifications", requireAuth, async (req: Request, res: Response) =>
         "ticketId",
         "ticketNumber subject"
       )
+      .populate<{ conversationId: { _id: Types.ObjectId } | null }>("conversationId", "_id")
       .lean(),
     Notification.countDocuments(filter),
   ]);
 
   res.status(200).json({
-    notifications: notifications.filter((n) => n.ticketId).map(toNotificationItem),
+    notifications: notifications.filter((n) => n.ticketId || n.conversationId).map(toNotificationItem),
     total,
     page,
     limit,

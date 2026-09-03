@@ -15,6 +15,7 @@ export async function generateMetadata(): Promise<Metadata> {
 interface ConversationDetail {
   _id: string;
   status: "ai_handling" | "escalated" | "with_agent" | "resolved";
+  assignedAgent: { _id: string; name: string } | null;
 }
 
 export default async function ChatDetailPage({
@@ -37,7 +38,9 @@ export default async function ChatDetailPage({
     redirect("/");
   }
 
-  const { id: currentUserId } = peekJwtPayload(token);
+  const { id: currentUserId, role, permissions: viewerPermissions = [] } = peekJwtPayload(token);
+  // ai-features Story 32: agent-only, same shape as tickets/[id]/page.tsx's canSummarize.
+  const canSummarize = role === "admin" || viewerPermissions.includes("ai:summarize");
 
   const res = await fetch(`${API_URL}/api/v1/conversations/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -65,8 +68,14 @@ export default async function ChatDetailPage({
           conversationId={data.conversation._id}
           initialStatus={data.conversation.status}
           initialMessages={data.messages}
+          initialClaimant={
+            data.conversation.assignedAgent
+              ? { id: data.conversation.assignedAgent._id, name: data.conversation.assignedAgent.name }
+              : null
+          }
           token={token}
           currentUserId={currentUserId}
+          canSummarize={canSummarize}
         />
       </main>
     </div>

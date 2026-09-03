@@ -17,8 +17,8 @@ import {
 import { renameTicketCategoryAction } from "./actions";
 
 // Rename needs a text input, not a static confirm — ConfirmActionButton
-// (this route's copy of admin/users' pattern) only supports a fixed
-// confirm/cancel choice, so this is a small dedicated dialog instead.
+// only supports a fixed confirm/cancel choice, so this is a small dedicated
+// dialog instead.
 export function RenameCategoryDialog({ categoryId, currentName }: { categoryId: string; currentName: string }) {
   const t = useTranslations("AdminTicketCategories");
   const [open, setOpen] = useState(false);

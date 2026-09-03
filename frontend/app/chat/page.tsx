@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth";
 import { peekJwtPayload } from "@/lib/jwt";
+import { LOCALE_COOKIE, DEFAULT_LOCALE, type Locale } from "@/lib/locale";
 import { LiveChatPanel } from "./LiveChatPanel";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -38,9 +39,11 @@ export default async function ChatPage({
     redirect("/dashboard");
   }
 
+  const locale = (cookieStore.get(LOCALE_COOKIE)?.value ?? DEFAULT_LOCALE) as Locale;
+
   return (
     <main className="flex min-h-[calc(100vh-57px)] items-center justify-center p-4 md:p-8">
-      <LiveChatPanel token={accessToken} />
+      <LiveChatPanel token={accessToken} locale={locale} />
     </main>
   );
 }

@@ -11,6 +11,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TicketDetailSidebar } from "./TicketDetailSidebar";
 import { TicketMessageThread } from "./TicketMessageThread";
 import { TicketReplyComposer } from "./TicketReplyComposer";
+import { TicketSummaryPanel } from "./TicketSummaryPanel";
+import { getTicketHistory } from "./actions";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("TicketDetail");
@@ -28,6 +30,9 @@ interface TicketDetailResponse {
   customer: { id: string; name: string; email: string };
   assignedAgent: { id: string; name: string } | null;
   escalatedTo: { id: string; name: string } | null;
+  // Story 63: both null on a ticket created before this story shipped.
+  createdBy: { id: string; name: string } | null;
+  createdVia: "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +53,36 @@ export interface TicketMessage {
   attachments: TicketMessageAttachment[];
   createdAt: string;
 }
+
+// Story 63: shown as a badge on the subject line only for a staff-created
+// ticket — "customer_portal" and legacy (null) tickets render no badge at
+// all (see the render site below). Each channel gets its own emoji + vivid
+// color (globals.css's --channel-* tokens) rather than one flat "secondary"
+// badge for all of them — see memory: icons/badges carry their own color,
+// never inherit the surrounding muted text.
+const CREATED_VIA_EMOJI: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "🤖",
+  phone: "📞",
+  email: "✉️",
+  in_person: "🧑‍💼",
+  other: "🧩",
+};
+
+const CREATED_VIA_BADGE_CLASS: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "border-transparent bg-channel-ai/10 text-channel-ai",
+  phone: "border-transparent bg-channel-phone/10 text-channel-phone",
+  email: "border-transparent bg-channel-email/10 text-channel-email",
+  in_person: "border-transparent bg-channel-in-person/10 text-channel-in-person",
+  other: "border-transparent bg-channel-other/10 text-channel-other",
+};
+
+const CREATED_VIA_KEY: Record<"ai" | "phone" | "email" | "in_person" | "other", string> = {
+  ai: "createdViaAi",
+  phone: "createdViaPhone",
+  email: "createdViaEmail",
+  in_person: "createdViaInPerson",
+  other: "createdViaOther",
+};
 
 const STATUS_KEY: Record<TicketDetailResponse["status"], string> = {
   new: "statusNew",
@@ -92,7 +127,7 @@ export default async function TicketDetailPage({
     redirect("/dashboard");
   }
 
-  const [res, messagesRes] = await Promise.all([
+  const [res, messagesRes, historyEvents] = await Promise.all([
     fetch(`${API_URL}/api/v1/tickets/${id}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
@@ -101,6 +136,11 @@ export default async function TicketDetailPage({
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     }),
+    // ticket-management Story 13: getTicketHistory already degrades to []
+    // on any failure — never blocks the rest of this page's render. Takes
+    // accessToken directly (see actions.ts's comment on why) rather than
+    // resolving its own.
+    getTicketHistory(id, accessToken),
   ]);
 
   if (res.status === 401) {
@@ -143,6 +183,14 @@ export default async function TicketDetailPage({
   const canCloseReopen = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:close_reopen"));
   // Story 12: manual escalation to a senior agent or admin.
   const canEscalate = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:escalate"));
+  // Story 13: sub-admin-tier — the "Recent activity"/full-timeline section
+  // itself has no permission gate (every staff role sees it, same as GET
+  // /:id having no tickets:view_all-style restriction), only the export
+  // anchor is gated.
+  const canExportHistory = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("tickets:export_history"));
+  // ai-features Story 32: agent-only, same "no bare role check" shape as
+  // every other canX flag above.
+  const canSummarize = isStaffViewer && (isViewerAdmin || viewerPermissions.includes("ai:summarize"));
   // Story 11's read-only-when-closed rule: Category/Priority/Assigned Agent
   // lock regardless of the viewer's own permission for that field, and the
   // reply composer is hidden outright. The status control is exempt — it
@@ -169,7 +217,21 @@ export default async function TicketDetailPage({
             <Card>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
-                  <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+                    {/* Story 63: only a staff-created ticket carries a
+                        meaningful channel — "customer_portal" and legacy
+                        (null) tickets render no badge at all. */}
+                    {isStaffViewer && ticket.createdVia && ticket.createdVia !== "customer_portal" && (
+                      <Badge
+                        variant="outline"
+                        className={`shrink-0 gap-1 ${CREATED_VIA_BADGE_CLASS[ticket.createdVia]}`}
+                      >
+                        <span aria-hidden="true">{CREATED_VIA_EMOJI[ticket.createdVia]}</span>
+                        {t(CREATED_VIA_KEY[ticket.createdVia])}
+                      </Badge>
+                    )}
+                  </div>
                   {/* Story 60: customer-facing read-only view shows status inline
                       here instead of in the staff-only sidebar Card below. */}
                   {!isStaffViewer && (
@@ -190,7 +252,11 @@ export default async function TicketDetailPage({
                   </div>
                 )}
                 <div className="flex flex-col gap-3 border-t border-border pt-4">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
+                  {isStaffViewer ? (
+                    <TicketSummaryPanel ticketId={ticket.id} canSummarize={canSummarize} messageCount={messages.length} />
+                  ) : (
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{t("thread")}</span>
+                  )}
                   <TicketMessageThread messages={messages} ticketId={ticket.id} />
                   {/* Story 61 (deferred): customer email replies aren't captured yet — see USER_STORIES.md. */}
                   {isStaffViewer && <p className="text-xs italic text-muted-foreground">{t("emailReplyComingSoon")}</p>}
@@ -228,6 +294,8 @@ export default async function TicketDetailPage({
                     canEscalate={canEscalate}
                     isLocked={isLocked}
                     viewerIsUnrestrictedReassigner={viewerIsUnrestrictedReassigner}
+                    events={historyEvents}
+                    canExportHistory={canExportHistory}
                   />
                 </CardContent>
               </Card>

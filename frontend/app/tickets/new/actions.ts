@@ -15,11 +15,15 @@ const submitTicketSchema = z.object({
   category: z.string().trim().max(100).optional(),
   priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
   notifyCustomer: z.boolean().optional(),
+  // Story 63: required for mode: "staff" (checked below, not here — the
+  // required-ness depends on `mode`, same reasoning customerId's own
+  // staff-only check already uses).
+  createdVia: z.enum(["phone", "email", "in_person", "other"]).optional(),
 });
 
 export interface SubmitTicketActionState {
   error: string | null;
-  fieldErrors?: { subject?: string; description?: string; customerId?: string; priority?: string };
+  fieldErrors?: { subject?: string; description?: string; customerId?: string; priority?: string; createdVia?: string };
   referenceNumber?: string;
 }
 
@@ -36,6 +40,7 @@ export async function submitTicket(
     category: formData.get("category") || undefined,
     priority: formData.get("priority") || undefined,
     notifyCustomer: formData.get("notifyCustomer") === "true",
+    createdVia: formData.get("createdVia") || undefined,
   });
 
   if (!parsed.success) {
@@ -49,10 +54,13 @@ export async function submitTicket(
     };
   }
 
-  const { mode, subject, description, customerId, category, priority, notifyCustomer } = parsed.data;
+  const { mode, subject, description, customerId, category, priority, notifyCustomer, createdVia } = parsed.data;
 
   if (mode === "staff" && !customerId) {
     return { error: null, fieldErrors: { customerId: t("customerRequired") } };
+  }
+  if (mode === "staff" && !createdVia) {
+    return { error: null, fieldErrors: { createdVia: t("createdViaRequired") } };
   }
 
   const cookieStore = await cookies();
@@ -70,7 +78,7 @@ export async function submitTicket(
 
   const body =
     mode === "staff"
-      ? { subject, description, customerId, category: resolvedCategory, priority, notifyCustomer }
+      ? { subject, description, customerId, category: resolvedCategory, priority, notifyCustomer, createdVia }
       : { subject, description, category: resolvedCategory };
 
   const doFetch = (bearer: string) =>

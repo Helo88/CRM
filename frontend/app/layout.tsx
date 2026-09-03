@@ -2,18 +2,19 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import { Direction } from "radix-ui";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/SiteHeader";
+import { Toaster } from "@/components/ui/sonner";
 import { THEME_COOKIE, type Theme } from "@/lib/theme";
 import { localeDir, type Locale } from "@/lib/locale";
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
+  subsets: ["latin", "arabic"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
 });
 
@@ -39,7 +40,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html
       lang={locale}
       dir={dir}
-      className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}
+      className={cn(theme === "dark" && "dark", "font-sans", ibmPlexSansArabic.variable)}
       // Browser extensions commonly inject their own attributes onto <html>
       // before React hydrates (the reported data-qb-installed one is exactly
       // that) — React then reports a hydration mismatch it can't actually do
@@ -53,6 +54,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <Direction.Provider dir={dir}>
             <SiteHeader />
             {children}
+            <Toaster
+              theme={theme}
+              dir={dir}
+              position={dir === "rtl" ? "top-left" : "top-right"}
+              // Persistent chat-needs-agent alerts (StaffNotificationSocket.tsx)
+              // can pile up several at once with none auto-dismissing — always
+              // show them as a full vertical list rather than sonner's default
+              // collapsed/peek stack that only expands on hover.
+              expand
+            />
           </Direction.Provider>
         </NextIntlClientProvider>
       </body>

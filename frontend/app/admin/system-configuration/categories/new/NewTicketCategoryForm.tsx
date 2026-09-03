@@ -51,7 +51,10 @@ export function NewTicketCategoryForm() {
           <Button type="submit" disabled={pending} className="w-full transition-transform active:scale-[0.98]">
             {pending ? t("submitPending") : t("submit")}
           </Button>
-          <Link href="/admin/ticket-categories" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+          <Link
+            href="/admin/system-configuration/categories"
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          >
             {t("cancel")}
           </Link>
         </CardFooter>

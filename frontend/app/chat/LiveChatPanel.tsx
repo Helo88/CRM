@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
 import { useTranslations } from "next-intl";
-import { CircleAlert, Send, MessageSquareWarning, CircleHelp, Ticket, X } from "lucide-react";
+import { CircleAlert, Send, MessageSquareWarning, CircleHelp, Ticket, BookOpen, X } from "lucide-react";
 import { API_URL } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
+import { pickLocalized } from "@/lib/localized";
+import type { Locale } from "@/lib/locale";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -29,12 +31,20 @@ interface TicketSuggestion {
   description: string;
 }
 
+interface KbSuggestion {
+  type: "faq" | "article";
+  id: string;
+  title: { en: string; ar: string };
+  slug?: string;
+}
+
 interface ChatMessage {
   _id: string;
   text: string;
   senderType: "customer" | "agent" | "ai" | "system";
   createdAt: string;
   aiTicketSuggestion?: TicketSuggestion | null;
+  aiKbSuggestion?: KbSuggestion | null;
 }
 
 const STATUS_KEY: Record<ChatTicketSummary["status"], string> = {
@@ -183,13 +193,54 @@ function TicketSuggestionCard({
   );
 }
 
+// ai-features Story 34/35 (live-chat half): the inline "you might find this
+// helpful" card rendered under an AI message that carries a KB suggestion.
+// Unlike TicketSuggestionCard there's no server round-trip on interaction —
+// it's a straight link to the existing public Help Center content, so
+// dismissing it is purely local UI state (see dismissedKbSuggestions below).
+function KbSuggestionCard({
+  suggestion,
+  locale,
+  onDismiss,
+}: {
+  suggestion: KbSuggestion;
+  locale: Locale;
+  onDismiss: () => void;
+}) {
+  const t = useTranslations("Chat");
+  const title = pickLocalized(suggestion.title, locale);
+  const href = suggestion.type === "article" ? `/help/${suggestion.slug}` : `/help?tab=faqs#faq-${suggestion.id}`;
+
+  return (
+    <div className="flex w-full max-w-[90%] items-center gap-2 self-start rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+      <BookOpen className="size-4 shrink-0 text-primary" />
+      <Link href={href} target="_blank" className="min-w-0 flex-1 text-primary hover:underline">
+        <span className="block truncate" lang={title.language} dir={title.language === "ar" ? "rtl" : "ltr"}>
+          {t("kbSuggestionLabel")} <span className="font-medium">{title.value}</span>
+        </span>
+      </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        onClick={onDismiss}
+        title={t("kbSuggestionDismiss")}
+      >
+        <X className="size-3.5" />
+        <span className="sr-only">{t("kbSuggestionDismiss")}</span>
+      </Button>
+    </div>
+  );
+}
+
 // Story 14: the access token is passed down once, purely so the Socket.io
 // handshake can authenticate (there is no other way for a WebSocket
 // connection to carry the httpOnly session cookie) — it is never written to
 // localStorage or any client-readable cookie, matching CLAUDE.md's auth
 // model everywhere else; it only lives in this component's state for the
 // life of the page.
-export function LiveChatPanel({ token }: { token: string }) {
+export function LiveChatPanel({ token, locale }: { token: string; locale: Locale }) {
   const router = useRouter();
   const t = useTranslations("Chat");
   const tt = useTranslations("Tickets");
@@ -199,16 +250,17 @@ export function LiveChatPanel({ token }: { token: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiTyping, setAiTyping] = useState(false);
   const [escalationState, setEscalationState] = useState<EscalationState>("idle");
-  // Story 17: shown when escalation finds no online agent — offers the two
-  // options (keep chatting with AI, or close) instead of the old
-  // email/ticket suggestion.
-  const [noAgentAvailable, setNoAgentAvailable] = useState(false);
   const [conversationClosed, setConversationClosed] = useState(false);
   // Story 62: once the customer declines one suggestion, every suggestion
   // card in this conversation hides (mirrors the server's
   // aiTicketSuggestionDeclined flag, which stops the classifier from being
   // called again — this local flag just keeps the UI in sync immediately).
   const [suggestionDeclined, setSuggestionDeclined] = useState(false);
+  // ai-features Story 34/35: per-message dismiss, not a conversation-wide
+  // flag like suggestionDeclined above — each KB suggestion is tied to the
+  // specific customer message it was matched against, so dismissing one says
+  // nothing about whether the next one is worth showing.
+  const [dismissedKbSuggestions, setDismissedKbSuggestions] = useState<Set<string>>(new Set());
   const [acceptedTickets, setAcceptedTickets] = useState<Record<string, { id: string; reference: string }>>({});
   const [previousTicketsOpen, setPreviousTicketsOpen] = useState(false);
   const [previousTicketsLoading, setPreviousTicketsLoading] = useState(false);
@@ -278,19 +330,10 @@ export function LiveChatPanel({ token }: { token: string }) {
       socket.on("conversation:assigned", () => {
         if (cancelled) return;
         setEscalationState("assigned");
-        setNoAgentAvailable(false);
-      });
-      socket.on("conversation:no-agent-available", () => {
-        if (cancelled) return;
-        // Backend already reverted status to ai_handling — reset to "idle"
-        // so "Talk to a human" is reachable again once the hint is dismissed.
-        setEscalationState("idle");
-        setNoAgentAvailable(true);
       });
       socket.on("conversation:closed", () => {
         if (cancelled) return;
         setConversationClosed(true);
-        setNoAgentAvailable(false);
       });
       socket.on("conversation:error", (payload: { error: string }) => {
         if (!cancelled) {
@@ -346,16 +389,9 @@ export function LiveChatPanel({ token }: { token: string }) {
     socketRef.current.emit("conversation:escalate", { conversationId: conversationIdRef.current });
   }
 
-  // Story 17: dismiss the no-agent hint — nothing to emit, the backend
-  // already reverted status to ai_handling, so the next message the
-  // customer sends naturally hits the Story 15 AI branch again.
-  function handleKeepChattingWithAi() {
-    setNoAgentAvailable(false);
-  }
-
-  // The customer ending the chat on their own (header X button, or the
-  // no-agent hint's close option) lands them on their tickets list — there's
-  // nothing more to do in this widget once they've decided to leave.
+  // The customer ending the chat on their own (header X button) lands them
+  // on their tickets list — there's nothing more to do in this widget once
+  // they've decided to leave.
   function handleCloseConversation() {
     if (!socketRef.current || !conversationIdRef.current) return;
     socketRef.current.emit("conversation:close", { conversationId: conversationIdRef.current });
@@ -438,25 +474,6 @@ export function LiveChatPanel({ token }: { token: string }) {
             <AlertDescription>{t("agentJoined")}</AlertDescription>
           </Alert>
         )}
-        {noAgentAvailable && (
-          <Alert>
-            <MessageSquareWarning />
-            <AlertDescription className="flex flex-col gap-2">
-              <div>
-                <p className="font-medium">{t("noAgentAvailableTitle")}</p>
-                <p>{t("noAgentAvailableBody")}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={handleKeepChattingWithAi}>
-                  {t("noAgentKeepChattingAi")}
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={handleCloseConversation}>
-                  {t("noAgentClose")}
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
         {conversationClosed && (
           <Alert variant="destructive">
             <CircleAlert />
@@ -466,6 +483,20 @@ export function LiveChatPanel({ token }: { token: string }) {
         {messages.map((message) => {
           const isCustomer = message.senderType === "customer";
           const acceptedTicket = acceptedTickets[message._id];
+          // Story 16/17: a "system" message (currently just the escalation
+          // acknowledgment) is a status update, not a chat turn — it gets an
+          // eye-catching full-width banner instead of a bubble, since "help
+          // is on the way" is exactly the kind of detail a customer must not
+          // miss in a scrolling thread. Kept in its natural chronological
+          // position in the list, not pinned/hoisted.
+          if (message.senderType === "system") {
+            return (
+              <Alert key={message._id} className="border-primary/40 bg-primary/10 text-primary [&>svg]:text-primary">
+                <MessageSquareWarning />
+                <AlertDescription className="font-medium">{message.text}</AlertDescription>
+              </Alert>
+            );
+          }
           return (
             <div key={message._id} className="contents">
               <div className={`flex max-w-[80%] flex-col gap-1 ${isCustomer ? "self-end items-end" : "self-start items-start"}`}>
@@ -499,6 +530,15 @@ export function LiveChatPanel({ token }: { token: string }) {
                     />
                   )
                 ))}
+              {message.aiKbSuggestion && !dismissedKbSuggestions.has(message._id) && (
+                <KbSuggestionCard
+                  suggestion={message.aiKbSuggestion}
+                  locale={locale}
+                  onDismiss={() =>
+                    setDismissedKbSuggestions((prev) => new Set(prev).add(message._id))
+                  }
+                />
+              )}
             </div>
           );
         })}

@@ -14,7 +14,8 @@ Entry point for the **live-chat** feature. Stories execute in order by their `NN
 | 23 | `23-story-agent-replies-to-a-live-chat-in-real-time.md` | Agent replies to a live chat in real time | agent-replies-to-a-live-chat-in-real-time | — |
 | 24 | `24-story-ai-agent-suggests-opening-a-ticket.md` | AI agent suggests opening a ticket | ai-agent-suggests-opening-a-ticket | — |
 | 25 | `25-story-close-a-live-chat-conversation.md` | Close a live chat conversation | close-a-live-chat-conversation | — |
+| 41 | `41-story-show-which-staff-member-is-already-handling-a-live-chat.md` | Show which staff member is already handling a live chat | show-which-staff-member-is-already-handling-a-live-chat | Story 18, Story 62, ticket-management Story 13/63 |
 
 ## Dependency notes
 
-_Describe sequencing, shared contracts, or cross-feature dependencies here._
+- Story 41 extends `backend/src/sockets/chat.socket.ts` (Story 18's join/message handlers) and `backend/src/services/ticketHistory.service.ts` + `backend/src/models/Ticket.ts` (ticket-management Stories 13/63's history pattern and Story 62's `sourceConversation` link) — see that story's own `## Prerequisites` for exact line references. It does not touch the separate "notify available agents when a chat needs a human" story (unplanned as of this writing; see `.squad/stories/live-chat/notify-available-agents-when-a-chat-needs-a-human/intake.md`).

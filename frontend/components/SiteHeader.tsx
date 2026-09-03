@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderSearch } from "@/components/HeaderSearch";
 import { NotificationBell } from "@/components/NotificationBell";
+import { StaffNotificationSocket } from "@/components/StaffNotificationSocket";
 import { ThemeToggleButton } from "@/components/ThemeToggleButton";
 import { LocaleToggleButton } from "@/components/LocaleToggleButton";
 import { MobileStaffNav } from "@/components/MobileStaffNav";
@@ -104,6 +105,7 @@ export async function SiteHeader() {
           {isSignedIn ? (
             isStaff ? (
               <>
+                {accessToken && <StaffNotificationSocket token={accessToken} />}
                 <MobileStaffNav role={role} permissions={permissions} />
                 <HeaderSearch variant="staff" role={role} permissions={permissions} />
                 <NotificationBell />
@@ -113,6 +115,12 @@ export async function SiteHeader() {
             ) : (
               <>
                 <HeaderSearch variant="customer" />
+                {/* Must be reachable while signed in too, not just from
+                    /support's card — this is a real destination, not an
+                    ad hoc link (CLAUDE.md). Mobile keeps the /support path. */}
+                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                  <Link href="/help">{t("helpCenter")}</Link>
+                </Button>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link href="/tickets">{t("myTickets")}</Link>
                 </Button>
@@ -133,6 +141,12 @@ export async function SiteHeader() {
             <>
               <ThemeToggleButton theme={theme} />
               <LocaleToggleButton locale={locale} />
+              {/* Must be reachable while signed out — there's no UserMenu
+                  yet to hold it, and self-serve help shouldn't require an
+                  account. */}
+              <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                <Link href="/help">{t("helpCenter")}</Link>
+              </Button>
               <Button asChild variant="ghost" size="sm">
                 <Link href="/login">{t("logIn")}</Link>
               </Button>

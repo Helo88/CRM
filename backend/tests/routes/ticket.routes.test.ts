@@ -5,11 +5,13 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { createApp } from "../../src/app";
 import { User } from "../../src/models/User";
 import { Ticket } from "../../src/models/Ticket";
+import { SlaTarget } from "../../src/models/SlaTarget";
 import { TicketCategory } from "../../src/models/TicketCategory";
 import { Message } from "../../src/models/Message";
 import { Conversation } from "../../src/models/Conversation";
 import { Notification } from "../../src/models/Notification";
 import * as emailService from "../../src/services/email.service";
+import * as summaryService from "../../src/services/summary.service";
 
 const app = createApp();
 let mongod: MongoMemoryServer;
@@ -17,6 +19,11 @@ let mongod: MongoMemoryServer;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri("ticket-routes-test"));
+  // sla-automation Story 26: Ticket.create now resolves SLA targets on every
+  // creation, which requires the mandatory default SlaTarget row to exist.
+  // Seeded once here (not cleared by beforeEach below) so every existing
+  // ticket-creation test keeps working unmodified.
+  await SlaTarget.create({ priority: null, category: null, responseMinutes: 60, resolutionMinutes: 480 });
 });
 
 afterAll(async () => {
@@ -110,6 +117,25 @@ describe("POST /api/v1/tickets (Story 8)", () => {
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: "customer@example.com" }));
   });
 
+  it("populates sla.responseTargetAt/resolutionTargetAt and returns slaStatus 'on_track' (Story 26)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Login broken", description: "Cannot sign in since this morning" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.slaStatus).toBe("on_track");
+    expect(new Date(res.body.responseTargetAt).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBeGreaterThan(Date.now());
+
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.sla.responseTargetAt).toBeInstanceOf(Date);
+    expect(ticket!.sla.resolutionTargetAt).toBeInstanceOf(Date);
+  });
+
   it("still creates the ticket and returns 201 when the acknowledgment email fails to send", async () => {
     vi.spyOn(emailService, "sendEmail").mockRejectedValue(new Error("SMTP down"));
     const { token } = await seedUser();
@@ -137,6 +163,21 @@ describe("POST /api/v1/tickets (Story 8)", () => {
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.category).toBe("Billing");
   });
+
+  it("sets createdBy to the customer and createdVia to customer_portal, ignoring any client-supplied createdVia (Story 63)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user, token } = await seedUser();
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "Login broken", description: "Cannot sign in", createdVia: "phone" });
+
+    expect(res.status).toBe(201);
+    const ticket = await Ticket.findById(res.body.id);
+    expect(ticket!.createdBy?.toString()).toBe(user.id);
+    expect(ticket!.createdVia).toBe("customer_portal");
+  });
 });
 
 describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
@@ -157,6 +198,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         customerId: pickedCustomer.id,
         category: "billing",
         priority: "high",
+        createdVia: "phone",
       });
 
     expect(res.status).toBe(201);
@@ -188,6 +230,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         subject: "No category or priority set",
         description: "Should still work with defaults.",
         customerId: pickedCustomer.id,
+        createdVia: "email",
       });
     expect(withDefaults.status).toBe(201);
     const defaultTicket = await Ticket.findById(withDefaults.body.id);
@@ -232,6 +275,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
         subject: "Opened by admin",
         description: "Reported in person at the front desk.",
         customerId: pickedCustomer.id,
+        createdVia: "in_person",
       });
 
     expect(res.status).toBe(201);
@@ -274,7 +318,7 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: false });
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: false, createdVia: "other" });
 
     expect(res.status).toBe(201);
     expect(sendEmailMock).not.toHaveBeenCalled();
@@ -288,11 +332,72 @@ describe("POST /api/v1/tickets — staff mode (Story 57)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: true });
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, notifyCustomer: true, createdVia: "phone" });
 
     expect(res.status).toBe(201);
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({ to: "notify-me@example.com" }));
+  });
+
+  it("returns 400 when createdVia is missing (Story 63)", async () => {
+    const { user: pickedCustomer } = await seedUser();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when a staff caller sends createdVia: customer_portal (Story 63)", async () => {
+    const { user: pickedCustomer } = await seedUser();
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:create_for_customer"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, createdVia: "customer_portal" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("sets createdBy to the staff user and round-trips createdVia through GET /:id (Story 63)", async () => {
+    vi.spyOn(emailService, "sendEmail").mockResolvedValue({ dryRun: true });
+    const { user: pickedCustomer } = await seedUser();
+    const { user: staffUser, token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:create_for_customer"],
+    });
+
+    const createRes = await request(app)
+      .post("/api/v1/tickets")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ subject: "x", description: "y", customerId: pickedCustomer.id, createdVia: "phone" });
+    expect(createRes.status).toBe(201);
+
+    const stored = await Ticket.findById(createRes.body.id);
+    expect(stored!.createdBy?.toString()).toBe(staffUser.id);
+    expect(stored!.createdVia).toBe("phone");
+
+    const getRes = await request(app)
+      .get(`/api/v1/tickets/${createRes.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.createdVia).toBe("phone");
+    expect(getRes.body.createdBy).toMatchObject({ id: staffUser.id, name: staffUser.name });
+  });
+
+  it("returns 200 from GET /:id with createdBy/createdVia null for a ticket seeded without them (no migration required, Story 63)", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.createdBy).toBeNull();
+    expect(res.body.createdVia).toBeNull();
   });
 });
 
@@ -351,7 +456,7 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     const notifications = await Notification.find({ recipient: agent._id });
     expect(notifications).toHaveLength(1);
     expect(notifications[0].type).toBe("ticket_assigned");
-    expect(notifications[0].ticketId.toString()).toBe(res.body.id);
+    expect(notifications[0].ticketId!.toString()).toBe(res.body.id);
   });
 
   it("writes no notification when no agent is online", async () => {
@@ -409,7 +514,7 @@ describe("POST /api/v1/tickets — auto-assignment (Story 10)", () => {
     const res = await request(app)
       .post("/api/v1/tickets")
       .set("Authorization", `Bearer ${token}`)
-      .send({ subject: "Help", description: "It's broken", customerId: pickedCustomer.id });
+      .send({ subject: "Help", description: "It's broken", customerId: pickedCustomer.id, createdVia: "email" });
 
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
@@ -536,6 +641,9 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.sourceConversation?.toString()).toBe(conversation.id);
+    // Story 63: accepting the AI's in-chat suggestion is a distinct channel
+    // from a plain portal submission, even though both are self-submits.
+    expect(ticket!.createdVia).toBe("ai");
   });
 
   it("returns 403 when sourceConversation belongs to a different customer", async () => {
@@ -575,6 +683,7 @@ describe("POST /api/v1/tickets — sourceConversation (Story 62)", () => {
     expect(res.status).toBe(201);
     const ticket = await Ticket.findById(res.body.id);
     expect(ticket!.sourceConversation).toBeNull();
+    expect(ticket!.createdVia).toBe("customer_portal");
   });
 });
 
@@ -639,6 +748,19 @@ describe("GET /api/v1/tickets/:id (Story 9)", () => {
       subject: ticket.subject,
       customer: { name: populatedCustomer!.name, email: populatedCustomer!.email },
     });
+  });
+
+  it("a legacy ticket with no sla.responseTargetAt reads back as slaStatus 'on_track' (Story 26)", async () => {
+    const ticket = await seedTicket();
+    expect(ticket.sla?.responseTargetAt).toBeUndefined();
+    const { token } = await seedUser({ role: "agent" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.slaStatus).toBe("on_track");
+    expect(res.body.responseTargetAt).toBeNull();
+    expect(res.body.resolutionTargetAt).toBeNull();
   });
 });
 
@@ -884,6 +1006,156 @@ describe("PATCH /api/v1/tickets/:id (Story 9)", () => {
 
     expect(res.status).toBe(403);
   });
+
+  it("appends to categoryHistory and priorityHistory (Story 13 follow-up audit trail)", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    const ticket = await seedTicket();
+    const { user: agent, token } = await seedUser({
+      role: "agent",
+      permissions: ["tickets:categorize", "tickets:change_priority"],
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing", priority: "high" });
+
+    expect(res.status).toBe(200);
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.categoryHistory).toHaveLength(1);
+    expect(stored!.categoryHistory[0]).toMatchObject({
+      category: "Billing",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+    expect(stored!.priorityHistory).toHaveLength(1);
+    expect(stored!.priorityHistory[0]).toMatchObject({
+      priority: "high",
+      changedBy: new mongoose.Types.ObjectId(agent.id),
+    });
+  });
+});
+
+// sla-automation gap fix: sla.responseTargetAt/resolutionTargetAt were only
+// ever computed once, at POST /tickets creation time — changing priority or
+// category afterward via this same PATCH /:id left a ticket running against
+// its original (possibly now-wrong) deadlines forever. See sla.service.ts's
+// recomputeTicketSla.
+describe("PATCH /api/v1/tickets/:id — recomputes SLA targets when priority/category change (sla-automation gap fix)", () => {
+  afterEach(async () => {
+    // The default (null, null) row seeded in beforeAll must survive; only
+    // clear the extra specific rows each test adds.
+    await SlaTarget.deleteMany({ $or: [{ priority: { $ne: null } }, { category: { $ne: null } }] });
+  });
+
+  // Mongoose's `timestamps: true` makes `createdAt` immutable after insert,
+  // so these tests can't force it to a fixed literal — they check the
+  // recomputed targets against the ticket's REAL createdAt via arithmetic
+  // instead of hardcoded absolute ISO strings.
+  async function seedTicketWithSla(overrides: {
+    category?: string | null;
+    priority?: string;
+    responseTargetAt: Date;
+    resolutionTargetAt: Date;
+    atRiskAlerted?: boolean;
+    breached?: boolean;
+  }) {
+    const ticket = await seedTicket({ category: overrides.category, priority: overrides.priority });
+    ticket.sla = {
+      responseTargetAt: overrides.responseTargetAt,
+      resolutionTargetAt: overrides.resolutionTargetAt,
+      breached: overrides.breached ?? false,
+      atRiskAlerted: overrides.atRiskAlerted ?? true,
+    };
+    await ticket.save();
+    return ticket;
+  }
+
+  it("recomputes responseTargetAt/resolutionTargetAt anchored on the ticket's createdAt when priority changes to a stricter target", async () => {
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+    const ticket = await seedTicketWithSla({
+      priority: "medium",
+      responseTargetAt: new Date(Date.now() + 60 * 60_000),
+      resolutionTargetAt: new Date(Date.now() + 480 * 60_000),
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_priority"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ priority: "high" });
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.responseTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 5 * 60_000);
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 15 * 60_000);
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.atRiskAlerted).toBe(false);
+  });
+
+  it("recomputes SLA targets when only category changes", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    await SlaTarget.create({ priority: null, category: "Billing", responseMinutes: 20, resolutionMinutes: 90 });
+    const ticket = await seedTicketWithSla({
+      category: null,
+      responseTargetAt: new Date(Date.now() + 60 * 60_000),
+      resolutionTargetAt: new Date(Date.now() + 480 * 60_000),
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:categorize"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing" });
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.responseTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 20 * 60_000);
+    expect(new Date(res.body.resolutionTargetAt).getTime()).toBe(ticket.createdAt.getTime() + 90 * 60_000);
+  });
+
+  it("leaves SLA targets untouched when neither category nor priority is sent (e.g. reassignment-only)", async () => {
+    const responseTargetAt = new Date(Date.now() + 60 * 60_000);
+    const resolutionTargetAt = new Date(Date.now() + 480 * 60_000);
+    const ticket = await seedTicketWithSla({ responseTargetAt, resolutionTargetAt, atRiskAlerted: true });
+    const { user: agent } = await seedUser({ role: "agent", isActive: true });
+    const { token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.responseTargetAt).toBe(responseTargetAt.toISOString());
+    expect(res.body.resolutionTargetAt).toBe(resolutionTargetAt.toISOString());
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.atRiskAlerted).toBe(true);
+  });
+
+  it("does not recompute (and does not un-breach) a ticket whose SLA already breached", async () => {
+    await SlaTarget.create({ priority: "high", category: null, responseMinutes: 5, resolutionMinutes: 15 });
+    const responseTargetAt = new Date(Date.now() + 60 * 60_000);
+    const resolutionTargetAt = new Date(Date.now() + 480 * 60_000);
+    const ticket = await seedTicketWithSla({
+      priority: "medium",
+      responseTargetAt,
+      resolutionTargetAt,
+      breached: true,
+    });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:change_priority"] });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ priority: "high" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.responseTargetAt).toBe(responseTargetAt.toISOString());
+    expect(res.body.resolutionTargetAt).toBe(resolutionTargetAt.toISOString());
+
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.sla.breached).toBe(true);
+  });
 });
 
 async function seedActiveAgent(overrides: Partial<{ isOnline: boolean; email: string }> = {}) {
@@ -985,6 +1257,25 @@ describe("PATCH /api/v1/tickets/:id — reassignment (Story 25)", () => {
     expect(res.status).toBe(200);
     expect(res.body.assignedAgent).toEqual({ id: agent.id, name: agent.name });
     expect((await Ticket.findById(ticket.id))!.assignedAgent?.toString()).toBe(agent.id);
+  });
+
+  it("appends to assignedAgentHistory (Story 13 follow-up audit trail)", async () => {
+    const ticket = await seedTicket();
+    const agent = await seedActiveAgent({ isOnline: false });
+    const { user: admin, token } = await seedUser({ role: "admin" });
+
+    const res = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignedAgent: agent.id });
+
+    expect(res.status).toBe(200);
+    const stored = await Ticket.findById(ticket.id);
+    expect(stored!.assignedAgentHistory).toHaveLength(1);
+    expect(stored!.assignedAgentHistory[0]).toMatchObject({
+      assignedAgent: new mongoose.Types.ObjectId(agent.id),
+      changedBy: new mongoose.Types.ObjectId(admin.id),
+    });
   });
 
   it("lets a sub-admin holding tickets:reassign reassign to an OFFLINE agent, same as admin", async () => {
@@ -1919,6 +2210,19 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     }
   });
 
+  it("exposes slaStatus/responseTargetAt/resolutionTargetAt per row, 'on_track' for a legacy ticket with no sla (Story 26)", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    await seedTicketFor(customer.id);
+
+    const res = await request(app).get("/api/v1/tickets").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tickets).toHaveLength(1);
+    expect(res.body.tickets[0].slaStatus).toBe("on_track");
+    expect(res.body.tickets[0].responseTargetAt).toBeNull();
+    expect(res.body.tickets[0].resolutionTargetAt).toBeNull();
+  });
+
   it("scopes an agent without tickets:view_all to only their assigned tickets", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
     const { user: agent1, token: token1 } = await seedUser({ role: "agent" });
@@ -2177,6 +2481,31 @@ describe("GET /api/v1/tickets (Story 60)", () => {
     expect(res.body.tickets[0].status).toBe("closed");
   });
 
+  it("filters the staff queue by createdVia (Story 63)", async () => {
+    const { user: customer } = await seedUser({ role: "customer" });
+    const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
+    await Ticket.create({
+      subject: "Self-submitted",
+      description: "D",
+      customer: customer._id,
+      createdBy: customer._id,
+      createdVia: "customer_portal",
+    });
+    await Ticket.create({
+      subject: "Reported by phone",
+      description: "D",
+      customer: customer._id,
+      createdBy: customer._id,
+      createdVia: "phone",
+    });
+
+    const res = await request(app).get("/api/v1/tickets?createdVia=phone").set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.tickets[0].subject).toBe("Reported by phone");
+  });
+
   it("reports statusCounts scoped by category/priority but not narrowed by the selected status (Plan 29 chips)", async () => {
     const { user: customer } = await seedUser({ role: "customer" });
     const { token } = await seedUser({ role: "agent", permissions: ["tickets:view_all"] });
@@ -2267,5 +2596,277 @@ describe("GET /api/v1/tickets/:id/messages — customer ownership + internal fil
       .set("Authorization", `Bearer ${agentToken}`);
     expect(agentRes.status).toBe(200);
     expect(agentRes.body).toHaveLength(2);
+  });
+});
+
+describe("GET /api/v1/tickets/:id/history (Story 13)", () => {
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser({ role: "agent" });
+    const res = await request(app)
+      .get("/api/v1/tickets/not-an-object-id/history")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 for the assigned agent, with events in the response body", async () => {
+    const { user: agent, token } = await seedUser({ role: "agent" });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ticketId).toBe(ticket.id);
+    expect(res.body.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "created" })])
+    );
+  });
+
+  it("returns 200 for a sub-admin viewing an unassigned ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 (not 403) for a different customer's ticket", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("does not include internal_note_added events when the customer views their own ticket", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const { user: agent } = await seedUser({ role: "agent" });
+    const ticket = await seedTicketFor(customer.id);
+    await Message.create({
+      parentType: "ticket",
+      parentId: ticket._id,
+      senderType: "agent",
+      senderId: agent._id,
+      text: "internal note",
+      internal: true,
+    });
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.events.some((e: { kind: string }) => e.kind === "internal_note_added")).toBe(false);
+  });
+
+  it("includes category_changed, priority_changed, and assignee_changed events end-to-end through PATCH /:id (Story 13 follow-up)", async () => {
+    await TicketCategory.create({ name: "Billing", active: true });
+    const ticket = await seedTicket();
+    const agentTarget = await seedActiveAgent({ isOnline: false });
+    const { token } = await seedUser({
+      role: "admin",
+    });
+
+    const patchRes = await request(app)
+      .patch(`/api/v1/tickets/${ticket.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ category: "Billing", priority: "high", assignedAgent: agentTarget.id });
+    expect(patchRes.status).toBe(200);
+
+    const res = await request(app).get(`/api/v1/tickets/${ticket.id}/history`).set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    const kinds = res.body.events.map((e: { kind: string }) => e.kind);
+    expect(kinds).toEqual(
+      expect.arrayContaining(["category_changed", "priority_changed", "assignee_changed"])
+    );
+    const assigneeEvent = res.body.events.find((e: { kind: string }) => e.kind === "assignee_changed");
+    expect(assigneeEvent.data.to).toMatchObject({ id: agentTarget.id, name: agentTarget.name });
+  });
+});
+
+describe("GET /api/v1/tickets/:id/history/export (Story 13)", () => {
+  it("returns 200 with a JSON attachment for a sub-admin holding tickets:export_history", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["tickets:export_history"] });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("attachment");
+    expect(res.headers["content-disposition"]).toContain(`ticket-${ticket.ticketNumber}-history.json`);
+    const body = JSON.parse(res.text);
+    expect(body.ticket.id).toBe(ticket.id);
+    expect(Array.isArray(body.events)).toBe(true);
+  });
+
+  it("returns 403 for an agent without tickets:export_history, even the assigned agent", async () => {
+    const { user: agent, token } = await seedUser({ role: "agent" });
+    const ticket = await seedTicket({ assignedAgent: agent._id });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "customer" });
+
+    const res = await request(app)
+      .get(`/api/v1/tickets/${ticket.id}/history/export`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ai-features Story 32: one-click AI summary. summary.service.ts's own unit
+// tests (summary.service.test.ts) cover the prompt/transcript logic — these
+// only cover the route's auth/permission/status-mapping contract, so
+// summarizeTicket is stubbed at the module level throughout.
+describe("POST /api/v1/tickets/:id/summarize (ai-features Story 32)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 401 without a token", async () => {
+    const ticket = await seedTicket();
+    const res = await request(app).post(`/api/v1/tickets/${ticket.id}/summarize`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for an agent without ai:summarize", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: [] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 403 for a customer, even the ticket's own customer", async () => {
+    const { user: customer, token } = await seedUser({ role: "customer" });
+    const ticket = await Ticket.create({
+      subject: "Something is broken",
+      description: "Details here",
+      customer: customer._id,
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a missing ticket", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${new mongoose.Types.ObjectId()}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a malformed id", async () => {
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+
+    const res = await request(app)
+      .post("/api/v1/tickets/not-an-object-id/summarize")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when the service reports not_enough_messages", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({
+      ok: false,
+      reason: "not_enough_messages",
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_enough_messages");
+  });
+
+  it("returns 404 when the service reports not_found", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: false, reason: "not_found" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("not_found");
+  });
+
+  it("returns 503 when the service reports ai_unavailable", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: false, reason: "ai_unavailable" });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe("ai_unavailable");
+  });
+
+  it("returns 200 with the summary on success", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "agent", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ summary: "Issue: ..." });
+  });
+
+  it("succeeds for a sub-admin holding ai:summarize", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "subadmin", permissions: ["ai:summarize"] });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("succeeds for an admin without an explicit permission grant", async () => {
+    const ticket = await seedTicket();
+    const { token } = await seedUser({ role: "admin" });
+    vi.spyOn(summaryService, "summarizeTicket").mockResolvedValue({ ok: true, summary: "Issue: ..." });
+
+    const res = await request(app)
+      .post(`/api/v1/tickets/${ticket.id}/summarize`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
   });
 });

@@ -26,6 +26,7 @@ import { UNSPECIFIED_CATEGORY } from "./constants";
 
 const INITIAL_STATE: SubmitTicketActionState = { error: null };
 type Priority = "low" | "medium" | "high" | "urgent";
+type CreatedVia = "phone" | "email" | "in_person" | "other";
 
 export function SubmitTicketForm({ mode }: { mode: "customer" | "staff" }) {
   const t = useTranslations("NewTicket");
@@ -49,6 +50,8 @@ export function SubmitTicketForm({ mode }: { mode: "customer" | "staff" }) {
   const [category, setCategory] = useState(UNSPECIFIED_CATEGORY);
   const [priority, setPriority] = useState<Priority>("medium");
   const [notifyCustomer, setNotifyCustomer] = useState(false);
+  // Story 63: undefined (not defaulted) — staff must actively pick one.
+  const [createdVia, setCreatedVia] = useState<CreatedVia | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +224,27 @@ export function SubmitTicketForm({ mode }: { mode: "customer" | "staff" }) {
           </div>
           {mode === "staff" && (
             <>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="createdVia">{t("createdViaLabel")}</Label>
+                <input type="hidden" name="createdVia" value={createdVia ?? ""} />
+                <Select
+                  value={createdVia}
+                  onValueChange={(v) => setCreatedVia(v as CreatedVia)}
+                >
+                  <SelectTrigger id="createdVia" className="w-full" aria-invalid={Boolean(state.fieldErrors?.createdVia)}>
+                    <SelectValue placeholder={t("createdViaPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="phone">{t("createdViaPhone")}</SelectItem>
+                    <SelectItem value="email">{t("createdViaEmail")}</SelectItem>
+                    <SelectItem value="in_person">{t("createdViaInPerson")}</SelectItem>
+                    <SelectItem value="other">{t("createdViaOther")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {state.fieldErrors?.createdVia && (
+                  <p className="text-sm text-destructive">{state.fieldErrors.createdVia}</p>
+                )}
+              </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="priority">{t("priority")}</Label>
                 <Select name="priority" value={priority} onValueChange={(v) => setPriority(v as Priority)}>

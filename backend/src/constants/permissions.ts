@@ -2,7 +2,7 @@
 // Permissions are granted PER INDIVIDUAL agent/sub-admin account (stored on
 // User.permissions, see backend/src/models/User.ts) — there is no shared
 // per-role permission set. Keys not yet backed by a real feature
-// (sla:configure, kb:publish, ...) are reserved here, ready for the story
+// (sla:configure, ...) are reserved here, ready for the story
 // that builds that feature to start gating its own routes with
 // requirePermission(key) using one of these.
 //
@@ -41,12 +41,40 @@ export const PERMISSION_KEYS = [
   // account can be granted this without also getting close/reopen or vice
   // versa).
   "tickets:escalate",
+  // ticket-management Story 13 (view full ticket history): exporting a
+  // ticket's full audit timeline as a file is a sub-admin-tier action,
+  // distinct from just viewing the (already-unrestricted) timeline itself.
+  "tickets:export_history",
   "chats:manage",
   "sla:configure",
-  "kb:publish",
+  // sla-automation Story 25: view/edit the admin-configurable
+  // (priority, category) -> duration lookup rows. Distinct from
+  // sla:configure, which gates the monitor's own tuning (at-risk threshold,
+  // scan interval), not the target rows themselves.
+  "sla:targets_view",
+  "sla:targets_edit",
+  // knowledge-base Stories 29/30: FAQs and help articles. Per-ENTITY,
+  // per-ACTION keys (view/create/edit/delete for each of kb:faq_* and
+  // kb:article_* separately) rather than one umbrella "kb:manage" — see
+  // [[feedback_granular_action_permissions]]. Curating short Q&A pairs and
+  // writing long-form guides are separately delegable jobs, so an account
+  // can hold one family without the other. There is no draft/published
+  // state and no separate "publish" authority (product decision, 2026-09-02):
+  // an FAQ or article is live for customers as soon as it's saved, so
+  // *_create and *_edit are the only gates a customer-visible change needs.
+  "kb:faq_view_list",
+  "kb:faq_create",
+  "kb:faq_edit",
+  "kb:faq_delete",
+  "kb:article_view_list",
+  "kb:article_create",
+  "kb:article_edit",
+  "kb:article_delete",
   "reports:view",
   "reports:export",
   "ai:override_category",
+  // ai-features Story 32: AI summary of a ticket/chat thread.
+  "ai:summarize",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -67,12 +95,22 @@ export const SUBADMIN_ONLY_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
   "audit:view",
   "config:edit",
   "sla:configure",
-  "kb:publish",
+  "sla:targets_view",
+  "sla:targets_edit",
+  "kb:faq_view_list",
+  "kb:faq_create",
+  "kb:faq_edit",
+  "kb:faq_delete",
+  "kb:article_view_list",
+  "kb:article_create",
+  "kb:article_edit",
+  "kb:article_delete",
   "reports:export",
   "tickets:categories_view",
   "tickets:categories_create",
   "tickets:categories_edit",
   "tickets:categories_toggle_status",
+  "tickets:export_history",
 ]);
 
 export function permissionKeysAllowedForRole(role: CreatableStaffRole): readonly PermissionKey[] {
@@ -101,6 +139,14 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CreatableStaffRole, PermissionK
     // customer.routes.ts) — pre-existing agent accounts won't have it and
     // need a manual grant; no backfill migration exists for this.
     "customers:manage",
+    "ai:summarize",
   ],
+  // Deliberately empty — sub-admin accounts start with no default
+  // permissions, granted individually post-creation, unlike agents above.
+  // ai-features Story 32's plan called for adding "ai:summarize" here too,
+  // but that would make it the first-ever entry in this list and break that
+  // invariant for no story-specific reason — a sub-admin who needs it can
+  // still be granted it manually like
+  // every other sub-admin permission.
   subadmin: [],
 };

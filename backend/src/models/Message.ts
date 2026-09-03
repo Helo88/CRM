@@ -29,6 +29,23 @@ export interface IAiTicketSuggestion {
   description: string;
 }
 
+// ai-features Story 34/35 (live-chat half): set on an "ai" message when
+// Gemini found one existing, published FAQ or help article genuinely
+// relevant to the customer's latest message. `id` always refers to a real
+// Faq/HelpArticle document (kbAi.service.ts's suggestKbContent only ever
+// returns an id drawn from its own DB-backed shortlist, never one Gemini
+// invented) — the frontend links straight to it, never renders fabricated
+// content. `title` carries both languages, like every other bilingual KB
+// field, so the client picks the viewer's locale the same way the public
+// Help Center does. `slug` is only present for articles (FAQs are linked via
+// the public Help Center's #faq-<id> anchor instead).
+export interface IAiKbSuggestion {
+  type: "faq" | "article";
+  id: string;
+  title: { en: string; ar: string };
+  slug?: string;
+}
+
 export interface IMessage extends Document {
   parentType: MessageParentType;
   parentId: Types.ObjectId;
@@ -42,6 +59,7 @@ export interface IMessage extends Document {
   // Persisted (not just emitted) so the card re-hydrates correctly on
   // reconnect/history reload.
   aiTicketSuggestion: IAiTicketSuggestion | null;
+  aiKbSuggestion: IAiKbSuggestion | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +86,19 @@ const messageSchema = new Schema<IMessage>(
 
     aiTicketSuggestion: {
       type: new Schema({ subject: String, description: String }, { _id: false }),
+      default: null,
+    },
+
+    aiKbSuggestion: {
+      type: new Schema(
+        {
+          type: { type: String, enum: ["faq", "article"], required: true },
+          id: { type: String, required: true },
+          title: { en: { type: String, default: "" }, ar: { type: String, default: "" } },
+          slug: { type: String, required: false },
+        },
+        { _id: false }
+      ),
       default: null,
     },
   },

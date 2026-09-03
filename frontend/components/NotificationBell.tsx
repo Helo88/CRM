@@ -15,13 +15,14 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { fetchNotifications, markNotificationRead, type NotificationItem } from "@/app/actions/notifications";
+import { formatDateTime } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 60_000;
 // The dropdown is a quick-glance surface, not a browsable history — capped
 // at 10 with a "View all" link to the dedicated /notifications page (which
 // has real pagination + date filtering) rather than letting this list grow
 // unbounded as notifications pile up.
-const DROPDOWN_ITEM_LIMIT = 10;
+const DROPDOWN_ITEM_LIMIT = 8;
 
 const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_assigned: "notificationTicketAssigned",
@@ -33,6 +34,9 @@ const TYPE_KEY: Record<NotificationItem["type"], string> = {
   ticket_needs_assignment: "notificationTicketNeedsAssignment",
   ticket_reopened: "notificationTicketReopened",
   ticket_reopened_oversight: "notificationTicketReopenedOversight",
+  chat_needs_agent: "notificationChatNeedsAgent",
+  sla_at_risk: "notificationSlaAtRisk",
+  sla_breached: "notificationSlaBreached",
 };
 
 // Story 54: was a static "coming soon" placeholder — now fetches on mount,
@@ -107,7 +111,7 @@ export function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-96">
         <DropdownMenuLabel className="font-normal text-muted-foreground">{t("notifications")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {items.length === 0 ? (
@@ -115,18 +119,30 @@ export function NotificationBell() {
             {t("notificationsEmpty")}
           </DropdownMenuLabel>
         ) : (
-          items.slice(0, DROPDOWN_ITEM_LIMIT).map((item) => (
-            <DropdownMenuItem key={item.id} asChild className="flex-col items-start gap-0.5">
-              <Link href={`/tickets/${item.ticket.id}`} onClick={() => handleItemClick(item)}>
-                <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
-                  {t(TYPE_KEY[item.type])}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  {item.ticket.reference} — {item.ticket.subject}
-                </span>
-              </Link>
-            </DropdownMenuItem>
-          ))
+          // A notification whose type isn't in TYPE_KEY (a legacy/removed
+          // type on an old unread row still sitting in the DB) has no
+          // matching label to render — skip it rather than crash the whole
+          // dropdown, which next-intl's t() would otherwise do on an
+          // undefined key.
+          items
+            .filter((item) => item.type in TYPE_KEY)
+            .slice(0, DROPDOWN_ITEM_LIMIT)
+            .map((item) => (
+              <DropdownMenuItem key={item.id} asChild className="flex-col items-start gap-0.5">
+                <Link
+                  href={item.ticket ? `/tickets/${item.ticket.id}` : `/chats/${item.conversation!.id}`}
+                  onClick={() => handleItemClick(item)}
+                >
+                  <span className={item.read ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
+                    {t(TYPE_KEY[item.type])}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {item.ticket ? `${item.ticket.reference} — ${item.ticket.subject}` : t("notificationChatLabel")}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/70">{formatDateTime(item.createdAt)}</span>
+                </Link>
+              </DropdownMenuItem>
+            ))
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="justify-center text-sm font-medium text-primary">

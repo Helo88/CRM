@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { MessageSquare, ArrowUpCircle, Trash2 } from "lucide-react";
+import { ArrowUpCircle, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -10,6 +10,8 @@ import { TicketFilterBar } from "./TicketFilterBar";
 import { StatusQuickFilterChips } from "./StatusQuickFilterChips";
 import { ReassignAgentMenu } from "./ReassignAgentMenu";
 
+export type TicketCreationChannel = "customer_portal" | "ai" | "phone" | "email" | "in_person" | "other";
+
 export interface StaffTicketRow {
   id: string;
   reference: string;
@@ -17,6 +19,8 @@ export interface StaffTicketRow {
   status: "new" | "in_progress" | "answered" | "escalated" | "closed";
   category: string | null;
   priority: "low" | "medium" | "high" | "urgent";
+  // Story 63: null on a ticket created before this story shipped.
+  createdVia: TicketCreationChannel | null;
   customer: { id: string; name: string; email: string };
   assignedAgent: { id: string; name: string } | null;
   updatedAt: string;
@@ -80,6 +84,40 @@ const PRIORITY_BADGE_CLASS: Record<StaffTicketRow["priority"], string> = {
   medium: "border-transparent bg-warning/10 text-warning",
   high: "border-transparent bg-destructive/10 text-destructive",
   urgent: "border-transparent bg-destructive/20 text-destructive",
+};
+
+// Story 63: the source badge is provenance, not an SLA/ticket status, so it
+// deliberately does not reach for --success/--warning/--destructive — each
+// channel instead gets its own emoji + vivid color (globals.css's
+// --channel-* tokens) so the column reads at a glance instead of every row
+// showing the same flat gray pill. --channel-portal-equivalent is just
+// --primary directly — the portal is this app's own default channel, not
+// one more category to color-code.
+const SOURCE_LABEL_KEY: Record<TicketCreationChannel, string> = {
+  customer_portal: "sourceCustomer",
+  ai: "sourceAi",
+  phone: "sourceStaffPhone",
+  email: "sourceStaffEmail",
+  in_person: "sourceStaffInPerson",
+  other: "sourceStaffOther",
+};
+
+const SOURCE_EMOJI: Record<TicketCreationChannel, string> = {
+  customer_portal: "🌐",
+  ai: "🤖",
+  phone: "📞",
+  email: "✉️",
+  in_person: "🧑‍💼",
+  other: "🧩",
+};
+
+const SOURCE_BADGE_CLASS: Record<TicketCreationChannel, string> = {
+  customer_portal: "border-transparent bg-primary/10 text-primary",
+  ai: "border-transparent bg-channel-ai/10 text-channel-ai",
+  phone: "border-transparent bg-channel-phone/10 text-channel-phone",
+  email: "border-transparent bg-channel-email/10 text-channel-email",
+  in_person: "border-transparent bg-channel-in-person/10 text-channel-in-person",
+  other: "border-transparent bg-channel-other/10 text-channel-other",
 };
 
 // Story 60: the staff branch of /tickets — filterable/sortable/paginated
@@ -160,6 +198,7 @@ export async function StaffTicketQueue({
                   <TableHead>{t("columnCategory")}</TableHead>
                   <TableHead>{t("columnPriority")}</TableHead>
                   <TableHead>{t("columnStatus")}</TableHead>
+                  <TableHead>{t("columnSource")}</TableHead>
                   {canViewAll && <TableHead>{t("columnAssignedTo")}</TableHead>}
                   <TableHead>{t("columnUpdated")}</TableHead>
                   <TableHead />
@@ -196,6 +235,18 @@ export async function StaffTicketQueue({
                         {t(STATUS_KEY[ticket.status])}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      {ticket.createdVia ? (
+                        <Badge variant="outline" className={`gap-1 ${SOURCE_BADGE_CLASS[ticket.createdVia]}`}>
+                          <span aria-hidden="true">{SOURCE_EMOJI[ticket.createdVia]}</span>
+                          {t(SOURCE_LABEL_KEY[ticket.createdVia])}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-muted-foreground">
+                          {t("sourceUnknown")}
+                        </Badge>
+                      )}
+                    </TableCell>
                     {canViewAll && (
                       <TableCell className="text-sm text-muted-foreground">
                         {(() => {
@@ -216,18 +267,6 @@ export async function StaffTicketQueue({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          title={t("reply")}
-                          className="text-primary hover:bg-primary/10 hover:text-primary"
-                        >
-                          <Link href={`/tickets/${ticket.id}#reply`}>
-                            <MessageSquare className="size-4" />
-                            <span className="sr-only">{t("reply")}</span>
-                          </Link>
-                        </Button>
                         <Button
                           asChild
                           variant="ghost"

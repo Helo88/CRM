@@ -157,17 +157,17 @@ Add to both `frontend/messages/en.json` and `frontend/messages/ar.json` in the s
 
 ## Done Criteria
 
-- [ ] `createdBy`/`createdVia` added to `Ticket` model, both nullable, no migration required.
-- [ ] `POST /tickets` sets `createdVia: "customer_portal"` for customer self-submit, unconditionally (never client-supplied for that branch).
-- [ ] `POST /tickets` requires a valid staff `createdVia` (`phone`/`email`/`in_person`/`other`) when staff-created; rejects missing/invalid with 400; rejects a staff caller trying to send `"customer_portal"`.
-- [ ] `createdBy` is set to the actual creator (customer or staff user id) on every new ticket, reusing the existing `creatorId` local rather than recomputing it.
-- [ ] GET `/:id` and every other `toTicketDetailResponse` call site returns populated `createdBy` (`{id, name}` or `null`) and `createdVia`.
-- [ ] GET `/` (list) includes `createdVia` per row (no populate needed) and accepts an optional `createdVia` filter param, scoped/counted the same way `category`/`priority` already are.
-- [ ] Staff "create on behalf of" form requires picking a contact method; customer's own submit form is unchanged (no new field shown to customers).
-- [ ] Ticket queue has a real, always-present source **column** (never blank) — "Customer," "Staff · `<method>`," or "Unknown" for legacy tickets — and a matching filter dropdown in the filter bar, fully wired end-to-end (filter bar → `page.tsx` → backend), verified per [[feedback_wire_filter_params_end_to_end]]'s lesson rather than assumed.
-- [ ] Filter bar redesign: 2-4 concrete layout options presented to and picked by the user **before** implementation; chosen design applied to `TicketFilterBar.tsx`.
-- [ ] "Reply" quick-action removed from the staff ticket queue row; Escalate/Reassign/Delete actions unaffected; reply composer on the detail page still works.
-- [ ] Ticket detail view shows the creation-channel badge (with icon) on the same line as the subject; no badge shown for legacy tickets with `createdVia: null`.
-- [ ] EN and AR strings added for every new label, in the same change.
-- [ ] New/updated backend tests pass; `npm run build` succeeds in both `backend/` and `frontend/`.
-- [ ] Verified against the real local dev backend + MongoDB: create one ticket via customer self-submit and one via staff-on-behalf-of with each contact method, confirm the queue column+filter and detail-view badge render correctly for each, and confirm a ticket seeded before this change (no `createdBy`/`createdVia`) renders "Unknown"/no-badge rather than erroring.
+- [x] `createdBy`/`createdVia` added to `Ticket` model, both nullable, no migration required.
+- [x] `POST /tickets` sets `createdVia: "customer_portal"` for customer self-submit, unconditionally (never client-supplied for that branch).
+- [x] `POST /tickets` requires a valid staff `createdVia` (`phone`/`email`/`in_person`/`other`) when staff-created; rejects missing/invalid with 400; rejects a staff caller trying to send `"customer_portal"`.
+- [x] `createdBy` is set to the actual creator (customer or staff user id) on every new ticket, reusing the existing `creatorId` local rather than recomputing it.
+- [x] GET `/:id` and every other `toTicketDetailResponse` call site returns populated `createdBy` (`{id, name}` or `null`) and `createdVia`.
+- [x] GET `/` (list) includes `createdVia` per row (no populate needed) and accepts an optional `createdVia` filter param, scoped/counted the same way `category`/`priority` already are.
+- [x] Staff "create on behalf of" form requires picking a contact method; customer's own submit form is unchanged (no new field shown to customers).
+- [x] Ticket queue has a real, always-present source **column** (never blank) — "Customer," "Staff · `<method>`," or "Unknown" for legacy tickets — and a matching filter dropdown in the filter bar, fully wired end-to-end (filter bar → `page.tsx` → backend), verified per [[feedback_wire_filter_params_end_to_end]]'s lesson rather than assumed.
+- [x] Filter bar redesign: superseded — the redesign this task asked for had already shipped separately earlier the same day (`f26cf1c`, the "Concept C" full-screen filter dialog); user confirmed (2026-09-01) to reuse it rather than re-run the 2-4-option picker, so the Source filter was added as a new field inside that existing design instead.
+- [x] "Reply" quick-action removed from the staff ticket queue row; Escalate/Reassign/Delete actions unaffected; reply composer on the detail page still works.
+- [x] Ticket detail view shows the creation-channel badge (with icon) on the same line as the subject; no badge shown for legacy tickets with `createdVia: null`.
+- [x] EN and AR strings added for every new label, in the same change.
+- [x] New/updated backend tests pass; `npm run build` succeeds in both `backend/` and `frontend/`.
+- [x] Verified against the real local dev backend + MongoDB: created a ticket via customer self-submit (shows "Customer" badge) and via staff-on-behalf-of with `phone`/`in_person` (shows "Staff · Phone"/badge+icon on detail view), confirmed the required-field error and successful submission in a real browser session, and confirmed a ticket seeded before this change (no `createdBy`/`createdVia`) renders "Unknown" in the queue with no badge on its detail page.

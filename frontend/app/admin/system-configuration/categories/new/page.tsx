@@ -11,11 +11,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("heading"), robots: { index: false, follow: false } };
 }
 
-// Story 58. Reachable by a true admin or a sub-admin delegated
-// tickets:categories_create (the same key the POST itself requires) —
-// checked directly from the access token, same UI-nicety caveat as
-// admin/users/new/page.tsx: requirePermission on the actual POST is what
-// really enforces this.
+// Reachable by a true admin or a sub-admin delegated tickets:categories_create
+// (the same key the POST itself requires) — checked directly from the
+// access token, same UI-nicety caveat as admin/users/new/page.tsx:
+// requirePermission on the actual POST is what really enforces this.
 export default async function NewTicketCategoryPage({
   searchParams,
 }: {
@@ -28,7 +27,7 @@ export default async function NewTicketCategoryPage({
 
   if (!accessToken) {
     if (hasRefreshToken && !_refreshed) {
-      redirect("/api/session/refresh?next=/admin/ticket-categories/new");
+      redirect("/api/session/refresh?next=/admin/system-configuration/categories/new");
     }
     redirect("/");
   }
@@ -39,7 +38,7 @@ export default async function NewTicketCategoryPage({
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
+    <main className="flex items-center justify-center p-8">
       <NewTicketCategoryForm />
     </main>
   );
